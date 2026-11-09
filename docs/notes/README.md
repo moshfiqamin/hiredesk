@@ -9,6 +9,8 @@ alongside the code it describes.
 | Module | Note | Covers |
 |---|---|---|
 | 0 | [00-foundation.md](00-foundation.md) | Go modules, `internal/`, config loading, Gin, Docker, Compose, Makefile, CI |
+| 1 | [01-schema.md](01-schema.md) | `timestamptz`, `CHECK` vs enums, uuid keys, token hashing, delete policy, `numeric` money, `text[]`, `jsonb`, unique constraints and the duplicate-application race |
+| 2 | [02-database.md](02-database.md) | Connection pools, pgx pool tuning, the startup ping, `/healthz` vs `/readyz`, `context.WithTimeout`, graceful shutdown, migrations on startup, Adminer |
 
 ## Why these are separate from the code
 

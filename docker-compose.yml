@@ -32,6 +32,36 @@ services:
       retries: 5
       start_period: 10s
 
+  # Runs the schema migrations, then exits. Not a long-running service: the api
+  # below waits for this container to finish successfully before it starts, so
+  # the API never serves a request against a schema that is not yet applied.
+  migrate:
+    # Pinned to the same version as the local CLI, so `make migrate-create`
+    # and the automatic run cannot disagree about file naming.
+    image: migrate/migrate:v4.20.1
+    container_name: hiredesk-migrate
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    # Writable, not :ro — `make migrate-create` writes new files here.
+    volumes:
+      - ./migrations:/migrations
+
+    # The image's ENTRYPOINT is `migrate`, so these are its arguments. Host is
+    # the service name and the port is the container's own 5432, as for the api
+    # below. Re-running with nothing pending prints "no change" and exits 0,
+    # which is what keeps `make up` idempotent.
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://${POSTGRES_USER:-hiredesk}:${POSTGRES_PASSWORD:-hiredesk_dev_password}@postgres:5432/${POSTGRES_DB:-hiredesk}?sslmode=disable"
+      - "up"
+
+    # Must not restart: this is a task that completes, and a restart policy
+    # would make Compose treat its clean exit as a crash and run it forever.
+    restart: "no"
+
   api:
     build:
       context: .
@@ -44,6 +74,11 @@ services:
         # Waits for the healthcheck to pass. Plain `depends_on` would only wait
         # for the container to be created, not for Postgres to accept queries.
         condition: service_healthy
+      migrate:
+        # Waits for the migration container to exit 0. If a migration fails,
+        # the API is never started — far better than booting against a
+        # half-applied schema.
+        condition: service_completed_successfully
 
     environment:
       PORT: 8080
@@ -53,8 +88,49 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set. Run `make env` to generate .env}
       ENV: ${ENV:-development}
 
+      # Connection pool. Set explicitly rather than left to pgx's defaults,
+      # which derive MaxConns from the host's CPU count.
+      DB_MAX_CONNS: ${DB_MAX_CONNS:-10}
+      DB_MIN_CONNS: ${DB_MIN_CONNS:-2}
+      DB_MAX_CONN_LIFETIME: ${DB_MAX_CONN_LIFETIME:-1h}
+      DB_MAX_CONN_IDLE_TIME: ${DB_MAX_CONN_IDLE_TIME:-30m}
+      DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5s}
+      DB_PING_TIMEOUT: ${DB_PING_TIMEOUT:-2s}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-10s}
+
     ports:
       - "${API_PORT:-8080}:8080"
+
+    # Gives the Go server time to finish in-flight requests on `docker stop`
+    # before Docker escalates from SIGTERM to SIGKILL. Must exceed
+    # SHUTDOWN_TIMEOUT, or the graceful drain is cut short by the kill.
+    stop_grace_period: 15s
+
+  # Database browser, so the schema and its rows can be inspected without psql.
+  # Development only — it is unauthenticated apart from the Postgres password
+  # and must never be exposed outside localhost.
+  adminer:
+    image: adminer:5.4.0
+    container_name: hiredesk-adminer
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    environment:
+      # Only sets the fallback server name. Adminer still opens on MySQL with
+      # an empty form, so the usable entry point is the pre-filled link printed
+      # by `make up` and `make adminer`:
+      #   /?pgsql=postgres&username=hiredesk&db=hiredesk
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: pepa-linha-dark
+
+    # Bound to 127.0.0.1 explicitly, unlike the other services: without the
+    # host part, Docker publishes on 0.0.0.0 and anyone on the same network
+    # reaches a database console.
+    ports:
+      - "127.0.0.1:${ADMINER_PORT:-8081}:8080"
 
 volumes:
   postgres_data:

@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Recognised values for Config.Env.
@@ -20,6 +21,35 @@ const (
 const (
 	defaultPort = 8080
 	defaultEnv  = EnvDevelopment
+)
+
+// Connection pool defaults. These are set explicitly rather than left to pgx,
+// whose own default is MaxConns = max(4, NumCPU) and MinConns = 0 — a value
+// that depends on the machine the container happens to land on.
+const (
+	defaultDBMaxConns        = 10
+	defaultDBMinConns        = 2
+	defaultDBMaxConnLifetime = time.Hour
+	defaultDBMaxConnIdleTime = 30 * time.Minute
+
+	// Budget for the startup Ping. Long enough for a container still
+	// accepting connections, short enough that a wrong host fails visibly.
+	defaultDBConnectTimeout = 5 * time.Second
+
+	// Budget for the /readyz Ping. Deliberately shorter than any load
+	// balancer's own probe timeout, so the handler answers first.
+	defaultDBPingTimeout = 2 * time.Second
+
+	// Grace period for in-flight requests to finish during shutdown.
+	defaultShutdownTimeout = 10 * time.Second
+)
+
+// Upper bounds, so a typo such as DB_MAX_CONNS=1000000 is refused at startup
+// rather than exhausting the server's connection slots at runtime.
+const (
+	maxAllowedDBConns      = 500
+	maxAllowedDuration     = 24 * time.Hour
+	minAllowedPoolDuration = time.Second
 )
 
 // Config holds every setting the API needs. It is built once in main and then
@@ -38,6 +68,35 @@ type Config struct {
 
 	// Env is one of the Env* constants.
 	Env string
+
+	// DBMaxConns is the hard ceiling on connections this instance may hold.
+	// int32 rather than int because that is pgxpool.Config's own type; keeping
+	// it here avoids a lossy conversion at the call site.
+	DBMaxConns int32
+
+	// DBMinConns is the number of idle connections kept open even when the API
+	// is idle, so the first request after a quiet spell does not pay for a TCP
+	// handshake, TLS and Postgres authentication.
+	DBMinConns int32
+
+	// DBMaxConnLifetime caps how long a single connection may live, however
+	// healthy. Bounds the blast radius of a leaked server-side session and
+	// lets connections migrate after a failover.
+	DBMaxConnLifetime time.Duration
+
+	// DBMaxConnIdleTime closes a connection that has gone unused for this
+	// long, releasing server memory during quiet periods.
+	DBMaxConnIdleTime time.Duration
+
+	// DBConnectTimeout bounds the startup Ping.
+	DBConnectTimeout time.Duration
+
+	// DBPingTimeout bounds the /readyz Ping.
+	DBPingTimeout time.Duration
+
+	// ShutdownTimeout bounds how long the server waits for in-flight requests
+	// before giving up and closing anyway.
+	ShutdownTimeout time.Duration
 }
 
 // MissingVarsError reports every required environment variable that was absent
@@ -104,11 +163,63 @@ func Load() (*Config, error) {
 		env = strings.ToLower(strings.TrimSpace(raw))
 	}
 
+	maxConns, err := lookupInt32("DB_MAX_CONNS", defaultDBMaxConns, 1, maxAllowedDBConns)
+	if err != nil {
+		return nil, err
+	}
+
+	minConns, err := lookupInt32("DB_MIN_CONNS", defaultDBMinConns, 0, maxAllowedDBConns)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cross-field check: pgx would accept this and then never honour MinConns,
+	// so catching it here turns a silent misconfiguration into a startup error.
+	if minConns > maxConns {
+		return nil, &InvalidVarError{
+			Name:  "DB_MIN_CONNS",
+			Value: strconv.FormatInt(int64(minConns), 10),
+			Err:   fmt.Errorf("must not exceed DB_MAX_CONNS (%d)", maxConns),
+		}
+	}
+
+	maxConnLifetime, err := lookupDuration("DB_MAX_CONN_LIFETIME", defaultDBMaxConnLifetime)
+	if err != nil {
+		return nil, err
+	}
+
+	maxConnIdleTime, err := lookupDuration("DB_MAX_CONN_IDLE_TIME", defaultDBMaxConnIdleTime)
+	if err != nil {
+		return nil, err
+	}
+
+	connectTimeout, err := lookupDuration("DB_CONNECT_TIMEOUT", defaultDBConnectTimeout)
+	if err != nil {
+		return nil, err
+	}
+
+	pingTimeout, err := lookupDuration("DB_PING_TIMEOUT", defaultDBPingTimeout)
+	if err != nil {
+		return nil, err
+	}
+
+	shutdownTimeout, err := lookupDuration("SHUTDOWN_TIMEOUT", defaultShutdownTimeout)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
-		Port:        port,
-		DatabaseURL: databaseURL,
-		JWTSecret:   jwtSecret,
-		Env:         env,
+		Port:              port,
+		DatabaseURL:       databaseURL,
+		JWTSecret:         jwtSecret,
+		Env:               env,
+		DBMaxConns:        maxConns,
+		DBMinConns:        minConns,
+		DBMaxConnLifetime: maxConnLifetime,
+		DBMaxConnIdleTime: maxConnIdleTime,
+		DBConnectTimeout:  connectTimeout,
+		DBPingTimeout:     pingTimeout,
+		ShutdownTimeout:   shutdownTimeout,
 	}, nil
 }
 
@@ -144,4 +255,58 @@ func lookupNonEmpty(name string) (string, bool) {
 		return "", false
 	}
 	return value, true
+}
+
+// lookupInt32 reads name as an int32 within [lo, hi], returning def when unset.
+//
+// Parsed with a bit size of 32 so a value above the int32 range is rejected by
+// strconv rather than silently truncated by a conversion.
+func lookupInt32(name string, def, lo, hi int32) (int32, error) {
+	raw, ok := lookupNonEmpty(name)
+	if !ok {
+		return def, nil
+	}
+
+	parsed, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil {
+		return 0, &InvalidVarError{Name: name, Value: raw, Err: err}
+	}
+
+	value := int32(parsed)
+	if value < lo || value > hi {
+		return 0, &InvalidVarError{
+			Name:  name,
+			Value: raw,
+			Err:   fmt.Errorf("must be between %d and %d", lo, hi),
+		}
+	}
+
+	return value, nil
+}
+
+// lookupDuration reads name as a Go duration string ("30s", "1h30m"),
+// returning def when unset.
+//
+// A bare number is rejected: time.ParseDuration("30") is an error, which is
+// the desired outcome — "30" is ambiguous between seconds and minutes.
+func lookupDuration(name string, def time.Duration) (time.Duration, error) {
+	raw, ok := lookupNonEmpty(name)
+	if !ok {
+		return def, nil
+	}
+
+	parsed, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, &InvalidVarError{Name: name, Value: raw, Err: err}
+	}
+
+	if parsed < minAllowedPoolDuration || parsed > maxAllowedDuration {
+		return 0, &InvalidVarError{
+			Name:  name,
+			Value: raw,
+			Err:   fmt.Errorf("must be between %s and %s", minAllowedPoolDuration, maxAllowedDuration),
+		}
+	}
+
+	return parsed, nil
 }
