@@ -1,0 +1,75 @@
+# golangci-lint configuration.
+#
+# This is the v2 schema and is NOT compatible with v1 examples found online.
+# Validate changes with: golangci-lint config verify
+version: "2"
+
+run:
+  timeout: 5m
+  build-tags:
+    - integration
+
+linters:
+  # Nothing is enabled implicitly, so this file is the complete answer to
+  # "what runs in CI?".
+  default: none
+
+  enable:
+    - errcheck      # unchecked error returns
+    - govet         # the standard library's suspicious-construct checks
+    - ineffassign   # assignments whose value is never read
+    - staticcheck   # large correctness and simplification rule set
+    - unused        # unused constants, variables, functions, types
+
+    - bodyclose     # unclosed http.Response.Body — leaks connections
+    - noctx         # HTTP requests with no context — no timeout
+    - rowserrcheck  # unchecked sql.Rows.Err() — silent partial results
+    - sqlclosecheck # unclosed sql.Rows/sql.Stmt — exhausts the pool
+    - errorlint     # error comparisons that break on wrapped errors
+    - nilerr        # returning nil after checking err != nil
+    - misspell      # typos in comments and strings
+    - revive        # style and naming
+
+  settings:
+    errcheck:
+      # Flag ignored type assertions: v := x.(T) panics where v, ok := x.(T) does not.
+      check-type-assertions: true
+      # Flag `_ = doThing()`, so silencing an error must be deliberate.
+      check-blank: true
+
+    govet:
+      enable-all: true
+      disable:
+        # Reorders struct fields by size to save padding, at the cost of
+        # grouping them by meaning.
+        - fieldalignment
+
+    staticcheck:
+      checks:
+        - all
+        # Would require a package comment on package main.
+        - -ST1000
+
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - checkPrivateReceivers
+        - name: indent-error-flow
+        - name: errorf
+
+  exclusions:
+    generated: lax
+    rules:
+      # Tests legitimately ignore some errors, e.g. a deferred Close in a helper.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - noctx
+
+# Formatters rewrite code rather than report on it. `golangci-lint fmt` applies
+# them; a run reports files that would change.
+formatters:
+  enable:
+    - gofmt
+    - goimports

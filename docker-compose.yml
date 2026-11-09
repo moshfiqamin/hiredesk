@@ -1,0 +1,61 @@
+# Local development stack. Variables come from .env (run `make env` to create).
+
+# Set explicitly so renaming the directory does not orphan the volumes.
+name: hiredesk
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hiredesk-postgres
+    restart: unless-stopped
+
+    # Read only while initialising an empty data directory. Changing them later
+    # requires `make reset` to destroy the volume first.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hiredesk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hiredesk_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-hiredesk}
+
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+    # Named volume, so data survives `docker compose down`.
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      # -d matters: without it pg_isready can pass before POSTGRES_DB exists,
+      # since the entrypoint creates the database after the server starts.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hiredesk} -d ${POSTGRES_DB:-hiredesk}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hiredesk-api
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        # Waits for the healthcheck to pass. Plain `depends_on` would only wait
+        # for the container to be created, not for Postgres to accept queries.
+        condition: service_healthy
+
+    environment:
+      PORT: 8080
+      # Host is the service name, not localhost, and the port is the container's
+      # 5432 rather than the published one.
+      DATABASE_URL: postgres://${POSTGRES_USER:-hiredesk}:${POSTGRES_PASSWORD:-hiredesk_dev_password}@postgres:5432/${POSTGRES_DB:-hiredesk}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set. Run `make env` to generate .env}
+      ENV: ${ENV:-development}
+
+    ports:
+      - "${API_PORT:-8080}:8080"
+
+volumes:
+  postgres_data:
+    driver: local

@@ -1,0 +1,44 @@
+# Keeps the build context small, and keeps secrets out of image layers where
+# `docker history` would expose them permanently.
+
+# ---- Secrets ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- Version control ----
+.git
+.gitignore
+.github
+
+# ---- Build output (host binaries are the wrong platform anyway) ----
+/bin
+/dist
+*.exe
+*.test
+*.out
+
+# ---- Go tooling ----
+coverage.*
+vendor/
+
+# ---- Docker and orchestration (so editing them does not bust the cache) ----
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml
+
+# ---- Docs and local config ----
+README.md
+Makefile
+LICENSE
+docs/
+*.docx
+.vscode/
+.idea/
+
+# ---- OS noise ----
+.DS_Store
+Thumbs.db

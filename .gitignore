@@ -1,0 +1,35 @@
+# ---- Secrets ----
+# A committed secret must be treated as compromised and rotated, even after a
+# later commit deletes it: git history is permanent and searchable.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.crt
+
+# ---- Build output ----
+/bin/
+/dist/
+hiredesk-api
+*.exe
+*.so
+*.dylib
+
+# ---- Go test and tooling artefacts ----
+*.test
+*.out
+coverage.*
+/vendor/
+
+# ---- Editors and OS ----
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ---- Local notes ----
+*.local
+/tmp/

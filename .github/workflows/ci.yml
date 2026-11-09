@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Supersede an in-progress run when a newer commit is pushed to the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          # Read from go.mod, so CI cannot drift from the declared version.
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      # Catches an import committed without its go.mod entry, which works
+      # locally (the module cache already has it) but breaks every clean build.
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code --name-only go.mod go.sum \
+            || { echo "::error::go.mod/go.sum are not tidy. Run 'make fmt' and commit the result."; exit 1; }
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # -count=1 defeats the test result cache. -covermode=atomic is required
+      # with -race, since the default counter is itself a data race.
+      - name: Test with race detector
+        run: go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -20
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage.out
+          retention-days: 7
+        if: always()
+
+  # A separate job so lint and tests run in parallel and one failure does not
+  # hide the other's result.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          # The lint action maintains its own cache.
+          cache: false
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          # Pinned, not "latest": a new release can add rules and turn the
+          # pipeline red on a commit that changed nothing.
+          version: v2.15
