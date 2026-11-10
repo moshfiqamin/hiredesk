@@ -216,9 +216,10 @@ The reasoning behind every constraint, index and delete action is in
 
 ## Engineering notes
 
-- **Multi-stage Docker build.** The runtime image is 22MB and contains only a
-  statically linked binary, CA certificates and an unprivileged user — no Go
-  toolchain, no source. A single-stage build of the same code is 679MB.
+- **Multi-stage Docker build.** The runtime image is 43MB and contains only two
+  statically linked binaries (the API and the development seeder), CA
+  certificates and an unprivileged user — no Go toolchain, no source. A
+  single-stage build is over 679MB.
 - **Runs as non-root.** UID 10001, no shell, no home directory.
 - **Startup ordering is explicit.** The API waits on Postgres's `pg_isready`
   healthcheck rather than on container creation, so a cold start cannot race

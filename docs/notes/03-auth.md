@@ -2478,15 +2478,27 @@ loop variable needed.
 | `golangci-lint run ./...`, with and without `--build-tags integration` | **0 issues** |
 | `CGO_ENABLED=0 GOOS=linux go build ./cmd/...` — the two build commands in the Dockerfile | both binaries build |
 | The two real binaries against that database: seed twice, seed with `ENV=production`, login, `/v1/me` with and without a token, refresh, replay, wrong password, register with a mixed-case email, logout | 4 created then 0 created / refused / 200 / 200 and 401 / 200 / 401 / 401 `invalid_credentials` / 201 with the email lowercased / 204 |
+| **The Compose stack** (Docker Desktop, image rebuilt from this commit) | |
+| `make up` | image builds with both binaries; migrations exit 0; api healthy; `/readyz` 200 |
+| Inside the api container | `hiredesk-api` and `hiredesk-seed` in `/usr/local/bin`, running as UID 10001 |
+| `make seed`, twice | 4 created, 0 already present / 0 created, 4 already present |
+| Through the published port: login, `/v1/me`, refresh, replay, logout | 200 / 200 / 200 / 401 / 204 |
+| `make test-integration` with the database published on 5432 | **fails on this machine** — `role "hiredesk" does not exist`: a Postgres installed on the host owns `localhost:5432` and answers instead (see *Still open*) |
+| `make up POSTGRES_PORT=5433`, then `make test-integration POSTGRES_PORT=5433` | pass |
+| Rows the tests left in the Compose database | none — the 4 seeded users, 0 live tokens |
+| Image size, summed from `docker history` / compressed | **42.6 MB** / 15.5 MB — up from 22.4 MB / 9.2 MB at module 0: the api binary is now 22.7 MB and the seeder adds 9.4 MB |
 | Every `#L` link in these notes (306) | resolves to an existing line; every target in a file this module added or changed was read against its section |
 
 ## Still open
 
-- **The Compose stack was not run for this module.** The store tests and the
-  live runs used a temporary PostgreSQL 16 with the migrations applied by
-  `psql`. The Dockerfile's two build commands were run on their own and both
-  binaries build for Linux, but **`make up`, `make seed` and
-  `make test-integration` were not run inside Docker**.
+- **`make test-integration` can reach the wrong database.** It connects to
+  `localhost:$POSTGRES_PORT`. On a machine that already runs Postgres on
+  5432, the host's server binds `127.0.0.1` and wins over Docker's wildcard
+  bind, so the tests fail with `role "hiredesk" does not exist`. Setting
+  `POSTGRES_PORT=5433` in `.env` avoids it. `make up` and `make seed` are
+  unaffected, because they never leave the Compose network.
+- **The seeder ships in the runtime image**, which costs 9.4 MB. A separate
+  build target or Compose profile would keep it out of a production image.
 - **Access tokens outlive revocation** by up to fifteen minutes (section 40).
 - **No absolute session lifetime.** A thief who steals a token from an
   abandoned session and keeps refreshing is never challenged, because the
@@ -2532,6 +2544,5 @@ loop variable needed.
 
 ## Next
 
-Run the stack once in Docker (`make up`, `make seed`, `make test-integration`)
-— the one thing not yet verified. After that, role checks, and the first
-endpoints that are about hiring: job posts.
+Role checks on top of `requireAuth`, and the first endpoints that are about
+hiring: job posts.

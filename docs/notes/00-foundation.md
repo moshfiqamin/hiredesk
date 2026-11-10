@@ -330,6 +330,10 @@ Measured, not estimated:
 | Single-stage (`FROM golang:alpine`, build in place) | **679.5 MB** | 182.5 MB |
 | Multi-stage (this one) | **22.4 MB** | 9.2 MB |
 
+These are the module 0 figures. The image has grown since, as the binary
+gained dependencies and a second one was added; the current size is in the
+verification table of [`03-auth.md`](03-auth.md#verified).
+
 A **30× reduction** — and that is against a single-stage *alpine* build. With
 `FROM golang:1.27` (Debian) it would be ~1.2GB.
 
