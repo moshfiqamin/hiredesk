@@ -23,6 +23,14 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
         -o /out/hiredesk-api \
         ./cmd/api
 
+# The development seeder, built the same way. It ships in the image so that
+# `make seed` needs nothing installed on the host but Docker.
+RUN CGO_ENABLED=0 GOOS=linux go build \
+        -trimpath \
+        -ldflags="-s -w" \
+        -o /out/hiredesk-seed \
+        ./cmd/seed
+
 # ---- Runtime stage: receives only the binary -------------------------------
 FROM alpine:3.22
 
@@ -34,6 +42,7 @@ RUN apk add --no-cache ca-certificates
 RUN adduser -D -H -s /sbin/nologin -u 10001 appuser
 
 COPY --from=builder --chown=appuser:appuser /out/hiredesk-api /usr/local/bin/hiredesk-api
+COPY --from=builder --chown=appuser:appuser /out/hiredesk-seed /usr/local/bin/hiredesk-seed
 
 # After the COPYs, since an unprivileged user cannot write to /usr/local/bin.
 USER appuser

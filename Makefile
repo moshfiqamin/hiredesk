@@ -30,13 +30,13 @@ MIGRATE     := $(COMPOSE) run --rm migrate -path=/migrations -database="$(MIGRAT
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up down logs build docker-build test lint fmt psql env reset ps \
+.PHONY: help up down logs build docker-build test test-integration lint fmt psql seed env reset ps \
         migrate-up migrate-down migrate-create migrate-version adminer
 
 help: ## Show this help
 	@echo "HireDesk — available commands:"
 	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(firstword $(MAKEFILE_LIST)) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 
@@ -72,6 +72,13 @@ docker-build: ## Rebuild the Docker image without starting anything
 # shell and echoed as if it were a command.
 test: ## Run all tests with the race detector and coverage
 	go test -race -cover ./...
+
+# The store tests that run real SQL. They sit behind a build tag so that plain
+# `make test` needs no database. The URL points at the published port on
+# localhost, because these run on the host, not inside the Compose network.
+test-integration: .env ## Run the database tests against the running stack (needs `make up`)
+	DATABASE_URL="postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$${POSTGRES_PORT:-5432}/$(POSTGRES_DB)?sslmode=disable" \
+		go test -race -count=1 -tags integration ./internal/store/...
 
 lint: ## Run golangci-lint
 	@command -v golangci-lint >/dev/null 2>&1 \
@@ -120,6 +127,12 @@ migrate-create: .env ## Create a migration pair: make migrate-create NAME=add_fo
 	$(COMPOSE) run --rm --no-deps --user $$(id -u):$$(id -g) migrate \
 		create -ext sql -dir /migrations -seq $(NAME)
 	@echo "created migrations/*_$(NAME).{up,down}.sql"
+
+# Runs inside the api container, which already has DATABASE_URL pointing at the
+# database on the Compose network. Safe to repeat: existing accounts are left
+# untouched.
+seed: ## Create the development accounts (needs `make up`; safe to run twice)
+	$(COMPOSE) exec api /usr/local/bin/hiredesk-seed
 
 env: .env ## Create .env from .env.example with a generated JWT_SECRET
 

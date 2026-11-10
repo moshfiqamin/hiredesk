@@ -13,8 +13,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/moshfiqamin/hiredesk/internal/api"
+	"github.com/moshfiqamin/hiredesk/internal/auth"
 	"github.com/moshfiqamin/hiredesk/internal/config"
 	"github.com/moshfiqamin/hiredesk/internal/store"
 )
@@ -67,21 +68,25 @@ func run(cfg *config.Config) error {
 		cfg.DBMaxConns, cfg.DBMinConns, cfg.DBMaxConnLifetime, cfg.DBMaxConnIdleTime,
 	)
 
-	// Must happen before gin.Default(), which reads the mode as it installs
-	// its middleware.
+	// Must happen before the router is built, which reads the mode as it
+	// installs its middleware.
 	if cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	router := gin.Default()
+	// Every dependency is constructed here and handed down, so this is the one
+	// place that shows what the server is made of.
+	tokens := auth.NewTokenManager(cfg.JWTSecret)
 
-	// Trust no proxy headers, so c.ClientIP() cannot be spoofed via
-	// X-Forwarded-For. Behind a reverse proxy, replace nil with its CIDR.
-	if err := router.SetTrustedProxies(nil); err != nil {
-		return fmt.Errorf("configure trusted proxies: %w", err)
+	router, err := api.NewRouter(api.Deps{
+		Auth:        api.NewAuthHandler(store.NewUserStore(pool), store.NewTokenStore(pool), tokens),
+		Tokens:      tokens,
+		DB:          pool,
+		PingTimeout: cfg.DBPingTimeout,
+	})
+	if err != nil {
+		return fmt.Errorf("build router: %w", err)
 	}
-
-	registerRoutes(router, cfg, pool)
 
 	srv := &http.Server{
 		Addr:    cfg.Addr(),
@@ -131,50 +136,4 @@ func run(cfg *config.Config) error {
 	}
 
 	return nil
-}
-
-// registerRoutes attaches every HTTP route to router.
-//
-// Split out of run so the route table is readable in one screen, and so a
-// test can build the same router without starting a listener.
-func registerRoutes(router *gin.Engine, cfg *config.Config, pool *pgxpool.Pool) {
-	// Liveness: "is this process able to answer HTTP?" A failure means restart
-	// me. Deliberately does not touch the database — a database outage must
-	// not cause every API process to be killed and restarted in a loop.
-	router.GET("/healthz", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
-
-	// Readiness: "should I receive traffic?" A failure means remove me from
-	// the load balancer but leave me running, so I can rejoin once the
-	// database returns without ever having been restarted.
-	router.GET("/readyz", func(c *gin.Context) {
-		// Derived from the request's context, so a client that disconnects
-		// cancels the query instead of leaving it running. The timeout caps
-		// the wait independently: a database that accepts the connection and
-		// then stalls must not stall the health check with it.
-		ctx, cancel := context.WithTimeout(c.Request.Context(), cfg.DBPingTimeout)
-		defer cancel()
-
-		// Takes a connection from the pool and round-trips to Postgres, so it
-		// proves the credentials and the network, not just that a pool object
-		// exists.
-		if err := pool.Ping(ctx); err != nil {
-			// Logged here because the response deliberately does not carry the
-			// detail: a health endpoint is usually unauthenticated, and the
-			// driver's error can name the host, port and user.
-			log.Printf("readiness check failed: %v", err)
-
-			// 503, not 500: the instance is working but its dependency is not,
-			// and the distinction is what tells a load balancer to stop
-			// sending traffic rather than to restart the process.
-			c.JSON(http.StatusServiceUnavailable, gin.H{
-				"status":   "degraded",
-				"database": "unreachable",
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
 }

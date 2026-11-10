@@ -14,20 +14,20 @@ full reasoning lives here.
 |---|---|---|
 | [1](#1-gomod-and-the-module-path) | `go.mod` and the module path | [`go.mod`](../../go.mod) |
 | [2](#2-why-internal-is-special) | Why `internal/` is special | [`internal/`](../../internal) |
-| [3](#3-config-in-a-struct-not-osgetenv) | Config in a struct, not `os.Getenv` | [`config.go:57`](../../internal/config/config.go#L57) |
-| [4](#4-reporting-every-missing-variable-at-once) | Reporting every missing variable at once | [`config.go:135`](../../internal/config/config.go#L135) |
-| [5](#5-the-string-pointer) | The `*[]string` pointer | [`config.go:237`](../../internal/config/config.go#L237) |
-| [6](#6-named-error-types-and-errorsas) | Named error types and `errors.As` | [`config.go:104`](../../internal/config/config.go#L104) |
-| [7](#7-healthz-vs-readyz) | `/healthz` vs `/readyz` | [`main.go:144`](../../cmd/api/main.go#L144) |
-| [8](#8-gin-modes-and-trusted-proxies) | Gin modes and trusted proxies | [`main.go:72`](../../cmd/api/main.go#L72) |
+| [3](#3-config-in-a-struct-not-osgetenv) | Config in a struct, not `os.Getenv` | [`config.go:62`](../../internal/config/config.go#L62) |
+| [4](#4-reporting-every-missing-variable-at-once) | Reporting every missing variable at once | [`config.go:157`](../../internal/config/config.go#L157) |
+| [5](#5-the-string-pointer) | The `*[]string` pointer | [`config.go:263`](../../internal/config/config.go#L263) |
+| [6](#6-named-error-types-and-errorsas) | Named error types and `errors.As` | [`config.go:109`](../../internal/config/config.go#L109) |
+| [7](#7-healthz-vs-readyz) | `/healthz` vs `/readyz` | [`health.go:21`](../../internal/api/health.go#L21) |
+| [8](#8-gin-modes-and-trusted-proxies) | Gin modes and trusted proxies | [`main.go:73`](../../cmd/api/main.go#L73) |
 | [9](#9-the-multi-stage-dockerfile) | The multi-stage Dockerfile | [`Dockerfile:4`](../../Dockerfile#L4) |
 | [10](#10-cgo_enabled0-and-static-linking) | `CGO_ENABLED=0` and static linking | [`Dockerfile:20`](../../Dockerfile#L20) |
 | [11](#11-docker-layer-cache-ordering) | Docker layer cache ordering | [`Dockerfile:12`](../../Dockerfile#L12) |
-| [12](#12-what-non-root-actually-buys-you) | What non-root actually buys you | [`Dockerfile:34`](../../Dockerfile#L34) |
+| [12](#12-what-non-root-actually-buys-you) | What non-root actually buys you | [`Dockerfile:42`](../../Dockerfile#L42) |
 | [13](#13-depends_on-condition-service_healthy) | `condition: service_healthy` | [`compose:46`](../../docker-compose.yml#L46) |
 | [14](#14-named-volumes) | Named volumes | [`compose:24`](../../docker-compose.yml#L24) |
 | [15](#15-container-to-container-dns) | Container-to-container DNS | [`compose:52`](../../docker-compose.yml#L52) |
-| [16](#16-makefile-mechanics) | Makefile mechanics | [`Makefile:78`](../../Makefile#L78) |
+| [16](#16-makefile-mechanics) | Makefile mechanics | [`Makefile:140`](../../Makefile#L140) |
 | [17](#17-what-ci-is-actually-for) | What CI is actually for | [`ci.yml`](../../.github/workflows/ci.yml) |
 | [18](#18-the-race-detector) | The race detector | [`ci.yml:50`](../../.github/workflows/ci.yml#L50) |
 | [19](#19-the-linters) | The linters | [`.golangci.yml:18`](../../.golangci.yml#L18) |
@@ -48,7 +48,7 @@ require github.com/gin-gonic/gin v1.11.0
 versioning and dependency management.
 
 The `module` line is not just a name. It is the **import path prefix** for
-everything inside, which is why [`main.go:18`](../../cmd/api/main.go#L18)
+everything inside, which is why [`main.go:19`](../../cmd/api/main.go#L19)
 imports `github.com/moshfiqamin/hiredesk/internal/config` rather than a
 relative `./internal/config`. Go has no relative imports: every package is
 addressed by module path + directory. Change the `module` line and every
@@ -98,7 +98,7 @@ The resulting shape:
 
 ## 3. Config in a struct, not `os.Getenv`
 
-**📍 Open:** [`internal/config/config.go:57`](../../internal/config/config.go#L57)
+**📍 Open:** [`internal/config/config.go:62`](../../internal/config/config.go#L62)
 
 ```go
 type Config struct {
@@ -115,7 +115,7 @@ Scattering `os.Getenv` across the codebase costs five things:
 `""` for an unset variable — no error, no panic. Call it inside token signing
 and the server boots happily, passes `/healthz` happily, and then signs tokens
 with an empty key the first time someone logs in.
-[`Load()`](../../internal/config/config.go#L135) refuses to boot instead. A
+[`Load()`](../../internal/config/config.go#L157) refuses to boot instead. A
 server that will not start is a loud, cheap failure; a server signing tokens
 with `""` is a silent, expensive one.
 
@@ -140,7 +140,7 @@ signatures.** `NewAuthService(cfg *config.Config)` tells you what it needs;
 
 ## 4. Reporting every missing variable at once
 
-**📍 Open:** [`internal/config/config.go:135`](../../internal/config/config.go#L135)
+**📍 Open:** [`internal/config/config.go:157`](../../internal/config/config.go#L157)
 
 ```go
 var missing []string
@@ -162,7 +162,7 @@ configuration error: missing required environment variable(s): DATABASE_URL, JWT
 
 Everything wrong, in one run.
 
-Note the ordering decision at [line 82](../../internal/config/config.go#L141):
+Note the ordering decision at [line 82](../../internal/config/config.go#L163):
 required variables are reported **before** optional ones are validated. A boot
 with no configuration at all should complain about the configuration, not
 about `PORT`.
@@ -171,7 +171,7 @@ about `PORT`.
 
 ## 5. The `*[]string` pointer
 
-**📍 Open:** [`internal/config/config.go:237`](../../internal/config/config.go#L237)
+**📍 Open:** [`internal/config/config.go:263`](../../internal/config/config.go#L263)
 
 ```go
 func lookupRequired(name string, missing *[]string) string {
@@ -194,7 +194,7 @@ Pass `missing []string` by value and the caller's slice never grows. The
 function would appear to work and silently do nothing. This catches nearly
 everyone learning Go.
 
-**Related:** [`lookupNonEmpty`](../../internal/config/config.go#L248) collapses
+**Related:** [`lookupNonEmpty`](../../internal/config/config.go#L292) collapses
 "unset" and "set but blank" into one case. `os.LookupEnv` distinguishes them,
 but that distinction is never useful for configuration — an empty secret is as
 broken as a missing one. It also trims whitespace, so a stray newline from a
@@ -204,7 +204,7 @@ broken as a missing one. It also trims whitespace, so a stray newline from a
 
 ## 6. Named error types and `errors.As`
 
-**📍 Open:** [`internal/config/config.go:104`](../../internal/config/config.go#L104)
+**📍 Open:** [`internal/config/config.go:109`](../../internal/config/config.go#L109)
 
 ```go
 type MissingVarsError struct {
@@ -222,7 +222,7 @@ Go's interface model in miniature.
 **Why a type instead of `fmt.Errorf`.** The type carries `Names []string` as
 structured data, so the caller can recognise this specific failure:
 
-**📍 Open:** [`cmd/api/main.go:26`](../../cmd/api/main.go#L26)
+**📍 Open:** [`cmd/api/main.go:27`](../../cmd/api/main.go#L27)
 
 ```go
 var missing *config.MissingVarsError
@@ -234,8 +234,8 @@ if errors.As(err, &missing) {
 With a formatted string the only way to detect the case is
 `strings.Contains` on the message — which breaks the moment you reword it.
 
-[`InvalidVarError`](../../internal/config/config.go#L117) also has
-[`Unwrap()`](../../internal/config/config.go#L128), which lets `errors.Is` and
+[`InvalidVarError`](../../internal/config/config.go#L122) also has
+[`Unwrap()`](../../internal/config/config.go#L133), which lets `errors.Is` and
 `errors.As` see through to the wrapped `strconv` failure. Wrapping preserves the
 chain; `fmt.Errorf("...: %v", err)` flattens it to text. Use `%w`, not `%v`,
 when you want the chain intact.
@@ -249,7 +249,7 @@ impossible.
 
 ## 7. `/healthz` vs `/readyz`
 
-**📍 Open:** [`cmd/api/main.go:144`](../../cmd/api/main.go#L144)
+**📍 Open:** [`internal/api/health.go:21`](../../internal/api/health.go#L21)
 
 The distinction people get wrong, and it is worth internalising **before**
 [module 2](02-database.md#5-healthz-versus-readyz) wires `/readyz` to the
@@ -274,24 +274,29 @@ which point `/readyz` gains a 503 branch and `/healthz` stays exactly as it is.
 
 ## 8. Gin modes and trusted proxies
 
-**📍 Open:** [`cmd/api/main.go:72`](../../cmd/api/main.go#L72)
+**📍 Open:** [`cmd/api/main.go:73`](../../cmd/api/main.go#L73)
 
 ```go
 if cfg.IsProduction() {
 	gin.SetMode(gin.ReleaseMode)
 }
 
-router := gin.Default()
+router, err := api.NewRouter(api.Deps{ /* ... */ })
 ```
 
-**Order matters.** `gin.Default()` reads the mode as it installs middleware, so
-setting it afterwards leaves debug behaviour in production.
+**Order matters.** The engine reads the mode as it installs middleware, so
+setting it afterwards leaves debug behaviour in production. The engine itself
+is built in [`internal/api/router.go:32`](../../internal/api/router.go#L32),
+where the routes moved in module 3.
 
 `gin.Default()` is `gin.New()` plus two middlewares: a request logger, and a
 recovery handler that converts a panic in any handler into a 500 instead of
-killing the process.
+killing the process. This project started with `gin.Default()` and now spells
+the two out, because module 3 swaps the recovery handler for one that answers
+in the API's error format — see
+[module 3, section 24](03-auth.md#24-errors-that-never-reach-a-handler).
 
-**📍 Open:** [`cmd/api/main.go:79`](../../cmd/api/main.go#L79)
+**📍 Open:** [`internal/api/router.go:43`](../../internal/api/router.go#L43)
 
 ```go
 if err := router.SetTrustedProxies(nil); err != nil {
@@ -312,11 +317,11 @@ flags discarded errors anyway.
 
 ## 9. The multi-stage Dockerfile
 
-**📍 Open:** [`Dockerfile:4`](../../Dockerfile#L4) and [`Dockerfile:27`](../../Dockerfile#L27)
+**📍 Open:** [`Dockerfile:4`](../../Dockerfile#L4) and [`Dockerfile:35`](../../Dockerfile#L35)
 
 Two `FROM` lines means two images. The first holds the Go toolchain and is
 **discarded**; the second starts empty and receives only what
-[`COPY --from=builder`](../../Dockerfile#L36) names.
+[`COPY --from=builder`](../../Dockerfile#L44) names.
 
 Measured, not estimated:
 
@@ -425,7 +430,7 @@ recompile for nothing.
 
 ## 12. What non-root actually buys you
 
-**📍 Open:** [`Dockerfile:34`](../../Dockerfile#L34)
+**📍 Open:** [`Dockerfile:42`](../../Dockerfile#L42)
 
 ```dockerfile
 RUN adduser -D -H -s /sbin/nologin -u 10001 appuser
@@ -577,7 +582,7 @@ permission mismatches because the container's `postgres` user is not your macOS
 UID. Named volumes live on a native filesystem inside the Linux VM.
 
 **To wipe deliberately:** `make reset`
-([`Makefile:86`](../../Makefile#L86)). You will need it after changing
+([`Makefile:148`](../../Makefile#L148)). You will need it after changing
 `POSTGRES_USER`, `POSTGRES_PASSWORD` or `POSTGRES_DB`, since those are read
 **only** while initialising an empty data directory — editing them in `.env`
 appears to do nothing until the volume is destroyed.
@@ -625,14 +630,14 @@ Three things that are unlike anything else in the project.
 Related trap: a **TAB-indented `#` comment is handed to the shell** as a shell
 comment, and Make echoes it before running it — so your explanation appears in
 the terminal as if it were a command. Comments must sit at column 0. See the
-note above [`test:`](../../Makefile#L58).
+note above [`test:`](../../Makefile#L73).
 
 **2. `.PHONY` is not decoration.** Without it, `make test` would do nothing the
 moment a directory named `test` existed, because Make would consider the target
 up to date.
 
 **3. Targets are files, with dependencies.**
-[`Makefile:78`](../../Makefile#L78):
+[`Makefile:140`](../../Makefile#L140):
 
 ```make
 up: .env

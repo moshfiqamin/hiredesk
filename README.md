@@ -47,6 +47,41 @@ Run `make` at any time to list every command.
 |---|---|---|
 | `GET` | `/healthz` | Liveness. Never touches the database, so a database outage cannot cause a restart loop. |
 | `GET` | `/readyz` | Readiness. Fails when a dependency is unavailable, removing the instance from the load balancer without restarting it. |
+| `POST` | `/v1/auth/register` | Create a candidate account. Body: `email`, `password` (8–72 characters), `full_name`. Returns 201 and the user. |
+| `POST` | `/v1/auth/login` | Body: `email`, `password`. Returns a 15-minute access token, a 30-day refresh token and the user. An unknown email and a wrong password get the same 401. |
+| `POST` | `/v1/auth/refresh` | Body: `refresh_token`. Returns a new access token and a **new** refresh token; the one presented stops working. Presenting a token a second time ends every session of that user. |
+| `POST` | `/v1/auth/logout` | Body: `refresh_token`. Revokes it. Always 204. |
+| `GET` | `/v1/me` | The current user. Requires `Authorization: Bearer <access token>`. |
+
+Create the development accounts, then try it:
+
+```bash
+make seed
+```
+
+| Role | Email | Password |
+|---|---|---|
+| admin | `admin@hiredesk.test` | `admin-password` |
+| interviewer | `interviewer@hiredesk.test` | `interviewer-password` |
+| candidate | `candidate1@hiredesk.test` | `candidate-password` |
+| candidate | `candidate2@hiredesk.test` | `candidate-password` |
+
+These are development fixtures with published passwords. The seed refuses to
+run when `ENV=production`, and is safe to run more than once.
+
+```bash
+curl -s -X POST localhost:8080/v1/auth/login -d '{"email":"admin@hiredesk.test","password":"admin-password"}'
+```
+
+Or register a candidate of your own:
+
+```bash
+curl -s -X POST localhost:8080/v1/auth/register -d '{"email":"demo@example.com","password":"correct horse","full_name":"Demo User"}'
+```
+
+```bash
+curl -s -X POST localhost:8080/v1/auth/login -d '{"email":"demo@example.com","password":"correct horse"}'
+```
 
 ## Commands
 
@@ -63,6 +98,8 @@ Run `make` at any time to list every command.
 | `make migrate-version` | Show the applied version and dirty flag |
 | `make migrate-create` | New migration pair: `make migrate-create NAME=add_foo` |
 | `make test` | Tests with the race detector and coverage |
+| `make test-integration` | Database tests against the running stack (needs `make up`) |
+| `make seed` | Create the development accounts (needs `make up`; safe to repeat) |
 | `make lint` | `golangci-lint` (13 linters) |
 | `make fmt` | Format code and tidy `go.mod` |
 | `make build` | Compile to `./bin` without Docker |
@@ -72,8 +109,12 @@ Run `make` at any time to list every command.
 
 ```
 cmd/api/              main package — the server binary
+cmd/seed/             creates the development accounts
+internal/api/         HTTP layer: router, handlers, validation, error envelope
+internal/auth/        password hashing (bcrypt), access tokens (JWT), refresh tokens
 internal/config/      environment config, loaded once into a struct
-internal/store/       Postgres connection pool (and, later, queries)
+internal/domain/      domain types and errors; no HTTP or database imports
+internal/store/       Postgres connection pool and hand-written SQL queries
 migrations/           golang-migrate pairs, applied on container start
 docs/notes/           design notes, one per module
 .github/workflows/    CI pipeline
@@ -81,6 +122,32 @@ docs/notes/           design notes, one per module
 
 `internal/` is enforced by the Go compiler: nothing outside this module can
 import it, so those packages stay free to change without breaking anyone.
+
+## Errors
+
+Every error response has the same body, including unknown routes and panics:
+
+```json
+{"error":{"code":"validation_failed","message":"One or more fields are invalid.","details":{"email":"is not a valid address"}}}
+```
+
+`code` is stable and meant for programs; `message` is for people; `details` is
+always an object, and names each bad field when validation fails.
+
+| Status | `code` | Meaning |
+|---|---|---|
+| 400 | `malformed_request` | The body is not a JSON object |
+| 401 | `invalid_credentials` | Login failed |
+| 401 | `token_expired` | The access token has expired; refresh and retry |
+| 401 | `unauthenticated` | No usable access or refresh token |
+| 403 | `forbidden` | Authenticated, not permitted |
+| 404 | `not_found` | The record does not exist |
+| 404 | `route_not_found` | No such endpoint |
+| 405 | `method_not_allowed` | The endpoint exists under another method |
+| 409 | `duplicate` | A record with the same unique key exists |
+| 409 | `conflict` | Valid, but not in the resource's current state |
+| 422 | `validation_failed` | One or more fields are invalid; see `details` |
+| 500 | `internal_error` | Unexpected; the cause is logged, never returned |
 
 ## Configuration
 
@@ -98,7 +165,7 @@ configuration error: missing required environment variable(s): DATABASE_URL, JWT
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
 | `DATABASE_URL` | yes | — | Postgres connection string |
-| `JWT_SECRET` | yes | — | Token signing key; no default by design |
+| `JWT_SECRET` | yes | — | Token signing key, at least 32 characters; no default by design |
 | `PORT` | no | `8080` | Listen port, validated as 1–65535 |
 | `ENV` | no | `development` | `production` switches Gin to release mode |
 | `DB_MAX_CONNS` | no | `10` | Pool ceiling, 1–500 |
@@ -168,6 +235,16 @@ The reasoning behind every constraint, index and delete action is in
   migration container has exited successfully.
 - **Graceful shutdown.** SIGTERM drains in-flight requests, then closes the
   pool.
+- **Passwords are bcrypt at cost 12**, verified in comparable time whether or
+  not the account exists, so login does not reveal which emails are registered.
+- **Short-lived access tokens, rotating refresh tokens.** Access tokens are
+  15-minute HS256 JWTs with the algorithm pinned on verification. Refresh
+  tokens are random, stored only as SHA-256 hashes, and replaced on every use;
+  presenting a used one revokes all of that user's sessions.
+- **Rotation is race-safe.** The token row is locked with `FOR UPDATE` inside a
+  transaction, so two concurrent refreshes cannot both succeed.
+- **One error shape.** Every failure — validation, unknown route, panic —
+  returns the same JSON envelope, and internal causes are logged, never sent.
 - **CI on every push and PR.** Build, vet, race-detector tests, a `go.mod`
   tidiness gate, and `golangci-lint`.
 

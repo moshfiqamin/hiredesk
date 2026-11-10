@@ -14,12 +14,12 @@ Click the link, read the code, then come back.
 | # | Topic | Code |
 |---|---|---|
 | [1](#1-what-a-connection-pool-is) | What a connection pool is | [`db.go:28`](../../internal/store/db.go#L28) |
-| [2](#2-each-pool-setting-and-how-it-fails) | Each pool setting, and how it fails | [`config.go:75`](../../internal/config/config.go#L75) |
+| [2](#2-each-pool-setting-and-how-it-fails) | Each pool setting, and how it fails | [`config.go:80`](../../internal/config/config.go#L80) |
 | [3](#3-parseconfig-not-pgxpoolnew) | `ParseConfig`, not `pgxpool.New` | [`db.go:32`](../../internal/store/db.go#L32) |
 | [4](#4-why-the-startup-ping-is-mandatory) | Why the startup Ping is mandatory | [`db.go:66`](../../internal/store/db.go#L66) |
-| [5](#5-healthz-versus-readyz) | `/healthz` versus `/readyz` | [`main.go:144`](../../cmd/api/main.go#L144) |
-| [6](#6-what-contextwithtimeout-is-doing) | What `context.WithTimeout` does | [`main.go:151`](../../cmd/api/main.go#L151) |
-| [7](#7-graceful-shutdown-and-why-run-exists) | Graceful shutdown, and why `run` exists | [`main.go:50`](../../cmd/api/main.go#L50) |
+| [5](#5-healthz-versus-readyz) | `/healthz` versus `/readyz` | [`health.go:21`](../../internal/api/health.go#L21) |
+| [6](#6-what-contextwithtimeout-is-doing) | What `context.WithTimeout` does | [`health.go:34`](../../internal/api/health.go#L34) |
+| [7](#7-graceful-shutdown-and-why-run-exists) | Graceful shutdown, and why `run` exists | [`main.go:51`](../../cmd/api/main.go#L51) |
 | [8](#8-migrations-as-a-compose-dependency) | Migrations as a Compose dependency | [`compose:38`](../../docker-compose.yml#L38) |
 | [9](#9-adminer-seeing-the-schema-in-a-browser) | Adminer, in a browser | [`compose:112`](../../docker-compose.yml#L112) |
 
@@ -61,7 +61,7 @@ them open rather than reconnecting.
 
 ## 2. Each pool setting, and how it fails
 
-**📍 Open:** [`internal/config/config.go:75`](../../internal/config/config.go#L75)
+**📍 Open:** [`internal/config/config.go:80`](../../internal/config/config.go#L80)
 
 All four are set explicitly. pgx's own defaults are `MaxConns = max(4, NumCPU)`
 and `MinConns = 0` — a pool whose size depends on which machine the container
@@ -129,9 +129,9 @@ only be honoured to the nearest minute.
 
 ### Validation
 
-[`config.go:264`](../../internal/config/config.go#L264) and
-[`:292`](../../internal/config/config.go#L292) parse these with bounds, and
-[`:178`](../../internal/config/config.go#L178) adds the cross-field check that
+[`config.go:308`](../../internal/config/config.go#L308) and
+[`:336`](../../internal/config/config.go#L336) parse these with bounds, and
+[`:204`](../../internal/config/config.go#L204) adds the cross-field check that
 `DB_MIN_CONNS <= DB_MAX_CONNS` — pgx would accept the inversion and then simply
 never honour `MinConns`, which is a silent misconfiguration rather than an
 error. Durations use Go syntax, so a bare `30` is rejected as ambiguous between
@@ -190,7 +190,7 @@ process's lifetime. This is the easy bug in this function.
 
 ## 5. `/healthz` versus `/readyz`
 
-**📍 Open:** [`cmd/api/main.go:144`](../../cmd/api/main.go#L144)
+**📍 Open:** [`internal/api/health.go:21`](../../internal/api/health.go#L21)
 
 They answer different questions and have different consequences, which is why
 one endpoint cannot serve both.
@@ -237,7 +237,7 @@ unauthenticated, and the driver's error names the host, port and user.
 
 ## 6. What `context.WithTimeout` is doing
 
-**📍 Open:** [`cmd/api/main.go:151`](../../cmd/api/main.go#L151)
+**📍 Open:** [`internal/api/health.go:34`](../../internal/api/health.go#L34)
 
 A `context.Context` carries a deadline and a cancellation signal down a call
 chain. `context.WithTimeout(parent, d)` returns a child context that is
@@ -283,7 +283,7 @@ probe and should finish before the load balancer's own probe timeout.
 
 ## 7. Graceful shutdown, and why `run` exists
 
-**📍 Open:** [`cmd/api/main.go:50`](../../cmd/api/main.go#L50)
+**📍 Open:** [`cmd/api/main.go:51`](../../cmd/api/main.go#L51)
 
 `main` does almost nothing: it loads config and calls `run`. That split exists
 for one reason — **`log.Fatalf` calls `os.Exit`, and `os.Exit` does not run
@@ -294,13 +294,13 @@ exiting.
 
 The shutdown path:
 
-1. [`signal.NotifyContext`](../../cmd/api/main.go#L54) gives a context cancelled
+1. [`signal.NotifyContext`](../../cmd/api/main.go#L55) gives a context cancelled
    on SIGINT (Ctrl-C) or SIGTERM — what `docker stop` and Kubernetes send.
 2. `ListenAndServe` blocks, so it runs in a goroutine and reports failures back
-   over a **buffered** channel ([`:98`](../../cmd/api/main.go#L98)). Buffered
+   over a **buffered** channel ([`:103`](../../cmd/api/main.go#L103)). Buffered
    with room for one value so that goroutine can exit even if nobody is reading
    — an unbuffered channel would leak it.
-3. `ErrServerClosed` is filtered out at [`:105`](../../cmd/api/main.go#L105):
+3. `ErrServerClosed` is filtered out at [`:110`](../../cmd/api/main.go#L110):
    it is what a deliberate `Shutdown` returns, a normal outcome rather than a
    failure.
 4. `srv.Shutdown` stops accepting new connections and waits for in-flight
@@ -308,7 +308,7 @@ The shutdown path:
 5. `defer pool.Close()` then waits for borrowed connections to be returned and
    closes them.
 
-**The shutdown context at [`:124`](../../cmd/api/main.go#L124) is deliberately
+**The shutdown context at [`:128`](../../cmd/api/main.go#L128) is deliberately
 NOT derived from `ctx`.** `ctx` is already cancelled — that is why we are
 shutting down — and a cancelled parent would make `Shutdown` give up
 immediately, defeating the entire grace period. This is the subtle bug the
@@ -327,7 +327,7 @@ shutdown complete
 and the database's count of API connections went from 1 to **0** — the pool
 closed cleanly rather than leaving backends for the server to reap.
 
-`ReadHeaderTimeout` at [`:92`](../../cmd/api/main.go#L92) is unrelated to
+`ReadHeaderTimeout` at [`:97`](../../cmd/api/main.go#L97) is unrelated to
 shutdown but belongs on every `http.Server`: without it a client that opens a
 connection and dribbles header bytes holds it open forever, which is the
 Slowloris attack.

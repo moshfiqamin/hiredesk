@@ -52,6 +52,11 @@ const (
 	minAllowedPoolDuration = time.Second
 )
 
+// minJWTSecretLength is the shortest JWT_SECRET accepted, in bytes. HMAC-SHA256
+// gains nothing from a key longer than its 32-byte output, and loses strength
+// with every byte below it.
+const minJWTSecretLength = 32
+
 // Config holds every setting the API needs. It is built once in main and then
 // passed explicitly, so a function's dependencies are visible in its signature.
 type Config struct {
@@ -127,6 +132,23 @@ func (e *InvalidVarError) Error() string {
 // Unwrap exposes the underlying parse failure to errors.Is and errors.As.
 func (e *InvalidVarError) Unwrap() error { return e.Err }
 
+// WeakSecretError reports a secret that is set but too short to be safe.
+//
+// A separate type from InvalidVarError because that one prints the offending
+// value, and a secret must never reach a log — not even a rejected one.
+type WeakSecretError struct {
+	Name      string
+	Length    int
+	MinLength int
+}
+
+func (e *WeakSecretError) Error() string {
+	return fmt.Sprintf(
+		"%s is too short: %d characters, need at least %d (generate one with: openssl rand -hex 32)",
+		e.Name, e.Length, e.MinLength,
+	)
+}
+
 // Load reads the environment and returns a fully populated *Config.
 //
 // Every missing required variable is collected before returning, so one run
@@ -140,6 +162,10 @@ func Load() (*Config, error) {
 
 	if len(missing) > 0 {
 		return nil, &MissingVarsError{Names: missing}
+	}
+
+	if err := validateJWTSecret(jwtSecret); err != nil {
+		return nil, err
 	}
 
 	port := defaultPort
@@ -241,6 +267,24 @@ func lookupRequired(name string, missing *[]string) string {
 		return ""
 	}
 	return value
+}
+
+// validateJWTSecret refuses a signing key short enough to be guessed.
+//
+// Anyone holding a token can test candidate keys against its signature offline,
+// with no request to this server, so the key's length is the only defence.
+// Length is all that is checked: 32 repeated characters pass, which is why the
+// key should come from a random generator rather than a keyboard.
+func validateJWTSecret(secret string) error {
+	// len counts bytes, the unit HMAC measures a key in.
+	if len(secret) < minJWTSecretLength {
+		return &WeakSecretError{
+			Name:      "JWT_SECRET",
+			Length:    len(secret),
+			MinLength: minJWTSecretLength,
+		}
+	}
+	return nil
 }
 
 // lookupNonEmpty treats a variable that is set but blank as unset, and trims
