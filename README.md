@@ -135,6 +135,7 @@ internal/api/         HTTP layer: router, handlers, validation, error envelope
 internal/auth/        password hashing (bcrypt), access tokens (JWT), refresh tokens
 internal/config/      environment config, loaded once into a struct
 internal/domain/      domain types and errors; no HTTP or database imports
+internal/scoring/     pure scoring engine: rubric validation and four strategies
 internal/store/       Postgres connection pool and hand-written SQL queries
 migrations/           golang-migrate pairs, applied on container start
 test/integration/     tests against a real PostgreSQL started by testcontainers-go
@@ -286,6 +287,12 @@ The reasoning behind every constraint, index and delete action is in
   without a row for it fails the build.
 - **Rotation is race-safe.** The token row is locked with `FOR UPDATE` inside a
   transaction, so two concurrent refreshes cannot both succeed.
+- **A pure scoring engine.** Scoring imports only the standard library and
+  the domain types — no database, HTTP, clock or randomness — so the same
+  answers and rubric always give the same, explainable score. Keywords match
+  whole words only (`go` never matches `google`), answer length counts
+  characters rather than bytes, and a fuzz test checks the matcher's
+  boundaries against generated input.
 - **One error shape.** Every failure — validation, unknown route, panic —
   returns the same JSON envelope, and internal causes are logged, never sent.
 - **CI on every push and PR.** Build, vet, race-detector tests, a `go.mod`
