@@ -265,40 +265,64 @@ func scanCriterion(row pgx.CollectableRow) (domain.Criterion, error) {
 	return c, err
 }
 
-// insertScores stores one score row per entry of breakdown, all produced by
-// version of the rubric, in one statement.
+// scoredApplication is one application and the engine's breakdown for it.
+type scoredApplication struct {
+	ID        string
+	Breakdown []scoring.CriterionScore
+}
+
+// insertScores stores one score row per criterion of every application in
+// scored, all produced by version of the rubric, in one statement, whether
+// that is one application at submission or five hundred in a rescore.
 //
-// The evidence link is the engine's EvidenceAnswerID: the ID of an answer
-// row inserted earlier in the same transaction, or "" when no single answer
-// was the evidence, which NULLIF stores as NULL.
-func insertScores(ctx context.Context, tx pgx.Tx, applicationID string, version int, breakdown []scoring.CriterionScore) error {
-	criterionIDs := make([]string, len(breakdown))
-	earned := make([]float64, len(breakdown))
-	available := make([]float64, len(breakdown))
-	details := make([]string, len(breakdown))
-	evidence := make([]string, len(breakdown))
-	for i, cs := range breakdown {
-		criterionIDs[i] = cs.CriterionID
-		// Rounded here rather than left to numeric(6, 2), so the stored
-		// value is exactly what this code decided, and the column's sum is
-		// the total the breakdown shows.
-		earned[i] = roundCents(cs.Earned)
-		available[i] = roundCents(cs.Available)
-		details[i] = cs.Detail
-		evidence[i] = cs.EvidenceAnswerID
+// The evidence link is the engine's EvidenceAnswerID: the ID of a stored
+// answer row, or "" when no single answer was the evidence, which NULLIF
+// stores as NULL.
+func insertScores(ctx context.Context, tx pgx.Tx, version int, scored []scoredApplication) error {
+	var (
+		applicationIDs, criterionIDs, details, evidence []string
+		earned, available                               []float64
+	)
+	for _, app := range scored {
+		for _, cs := range app.Breakdown {
+			applicationIDs = append(applicationIDs, app.ID)
+			criterionIDs = append(criterionIDs, cs.CriterionID)
+			// Rounded here rather than left to numeric(6, 2), so the stored
+			// value is exactly what this code decided, and the column's sum
+			// is the total the breakdown shows.
+			earned = append(earned, roundCents(cs.Earned))
+			available = append(available, roundCents(cs.Available))
+			details = append(details, cs.Detail)
+			evidence = append(evidence, cs.EvidenceAnswerID)
+		}
+	}
+	if len(criterionIDs) == 0 {
+		return nil
 	}
 
 	const query = `
 		INSERT INTO scores (application_id, criterion_id, earned, available, detail, evidence_answer_id, rubric_version)
-		SELECT $1::text::uuid, t.criterion_id::uuid, t.earned, t.available, t.detail,
-		       NULLIF(t.evidence_answer_id, '')::uuid, $2
-		FROM unnest($3::text[], $4::float8[], $5::float8[], $6::text[], $7::text[])
-			AS t(criterion_id, earned, available, detail, evidence_answer_id)`
+		SELECT t.application_id::uuid, t.criterion_id::uuid, t.earned, t.available, t.detail,
+		       NULLIF(t.evidence_answer_id, '')::uuid, $1
+		FROM unnest($2::text[], $3::text[], $4::float8[], $5::float8[], $6::text[], $7::text[])
+			AS t(application_id, criterion_id, earned, available, detail, evidence_answer_id)`
 
-	if _, err := tx.Exec(ctx, query, applicationID, version, criterionIDs, earned, available, details, evidence); err != nil {
+	if _, err := tx.Exec(ctx, query, version, applicationIDs, criterionIDs, earned, available, details, evidence); err != nil {
 		return translate("insert scores", err)
 	}
 	return nil
+}
+
+// totalsOf sums a breakdown the way the stored rows will sum: each value
+// rounded to cents first, as insertScores stores it.
+func totalsOf(version int, breakdown []scoring.CriterionScore) domain.ScoreTotals {
+	t := domain.ScoreTotals{RubricVersion: version}
+	for _, cs := range breakdown {
+		t.Earned += roundCents(cs.Earned)
+		t.Available += roundCents(cs.Available)
+	}
+	t.Earned, t.Available = roundCents(t.Earned), roundCents(t.Available)
+	return t
 }
 
 // roundCents rounds to two decimal places, half away from zero, as numeric

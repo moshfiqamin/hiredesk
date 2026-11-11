@@ -26,6 +26,8 @@ type ApplicationStore interface {
 	SubmitApplication(ctx context.Context, in domain.NewApplication) (*domain.Application, error)
 	TransitionApplication(ctx context.Context, id, to, actorID string) (*domain.Application, error)
 	ScoreCard(ctx context.Context, id string) (*domain.ScoreCard, error)
+	RescoreApplication(ctx context.Context, id, actorID string) (*domain.RescoreResult, error)
+	RescoreJobPost(ctx context.Context, jobPostID, actorID string) (*domain.JobPostRescore, error)
 }
 
 // ApplicationHandler serves the application endpoints. Every route it serves
@@ -526,4 +528,113 @@ func (h *ApplicationHandler) Score(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, newScoreResponse(card))
+}
+
+// totalsResponse is one application's score summed over one rubric version.
+type totalsResponse struct {
+	RubricVersion  int     `json:"rubric_version"`
+	TotalEarned    float64 `json:"total_earned"`
+	TotalAvailable float64 `json:"total_available"`
+	Percentage     float64 `json:"percentage"`
+}
+
+func newTotalsResponse(t domain.ScoreTotals) totalsResponse {
+	out := totalsResponse{RubricVersion: t.RubricVersion, TotalEarned: t.Earned, TotalAvailable: t.Available}
+	if t.Available > 0 {
+		out.Percentage = roundCents(t.Earned / t.Available * 100)
+	}
+	return out
+}
+
+// rescoreResponse is the body of POST /v1/applications/:id/rescore: the
+// score before and after. The full breakdown is at GET .../score.
+type rescoreResponse struct {
+	ApplicationID string `json:"application_id"`
+
+	// Previous is null when the application had no score before.
+	Previous *totalsResponse `json:"previous"`
+	Current  totalsResponse  `json:"current"`
+	Changed  bool            `json:"changed"`
+}
+
+// rescoreAllResponse is the body of POST /v1/job-posts/:id/rescore-all: a
+// summary, not five hundred breakdowns.
+type rescoreAllResponse struct {
+	JobPostID     string `json:"job_post_id"`
+	RubricVersion int    `json:"rubric_version"`
+
+	// Rescored counts every application to the post; Changed those whose
+	// version or total is different afterwards.
+	Rescored int `json:"rescored"`
+	Changed  int `json:"changed"`
+}
+
+// Rescore handles POST /v1/applications/:id/rescore: an admin replaces the
+// application's scores with a fresh scoring of its stored answers against
+// the post's current rubric. The route must be behind
+// RequireRole(domain.RoleAdmin).
+//
+// A post with no rubric is a 409 no_rubric, and the old scores are kept.
+func (h *ApplicationHandler) Rescore(c *gin.Context) {
+	user, ok := CurrentUser(c)
+	if !ok {
+		Respond(c, errors.New("rescore application: no authenticated user; is the route behind RequireAuth?"))
+		return
+	}
+
+	id, ok := pathUUID(c, "id")
+	if !ok {
+		return
+	}
+
+	result, err := h.apps.RescoreApplication(c.Request.Context(), id, user.ID)
+	if err != nil {
+		Respond(c, fmt.Errorf("rescore application: %w", err))
+		return
+	}
+
+	out := rescoreResponse{
+		ApplicationID: result.ApplicationID,
+		Current:       newTotalsResponse(result.Current),
+		Changed:       result.Changed(),
+	}
+	if result.Previous != nil {
+		previous := newTotalsResponse(*result.Previous)
+		out.Previous = &previous
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// RescoreAll handles POST /v1/job-posts/:id/rescore-all: every application
+// to the post is rescored against its current rubric, in one transaction.
+// The route must be behind RequireRole(domain.RoleAdmin).
+//
+// It runs in the request: the store does it with a fixed number of
+// statements, so five hundred applications take milliseconds, not minutes.
+// See docs/notes/07-4-rescore.md for when that would stop being true.
+func (h *ApplicationHandler) RescoreAll(c *gin.Context) {
+	user, ok := CurrentUser(c)
+	if !ok {
+		Respond(c, errors.New("rescore job post: no authenticated user; is the route behind RequireAuth?"))
+		return
+	}
+
+	postID, ok := pathUUID(c, "id")
+	if !ok {
+		return
+	}
+
+	result, err := h.apps.RescoreJobPost(c.Request.Context(), postID, user.ID)
+	if err != nil {
+		Respond(c, fmt.Errorf("rescore job post: %w", err))
+		return
+	}
+
+	out := rescoreAllResponse{JobPostID: result.JobPostID, RubricVersion: result.RubricVersion, Rescored: len(result.Results)}
+	for _, r := range result.Results {
+		if r.Changed() {
+			out.Changed++
+		}
+	}
+	c.JSON(http.StatusOK, out)
 }

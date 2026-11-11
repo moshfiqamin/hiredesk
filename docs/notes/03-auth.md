@@ -38,7 +38,7 @@ Click the link, read the code, then come back.
 | [19](#19-sentinel-errors-again-and-why-errorsis-exists) | Sentinel errors again, and why `errors.Is` exists | [`domain/errors.go:18`](../../internal/domain/errors.go#L18) |
 | [20](#20-what-w-does-and-why-it-matters-here) | What `%w` does, and why it matters here | [`domain/errors_test.go:33`](../../internal/domain/errors_test.go#L33) |
 | [21](#21-why-the-status-codes-live-in-api-and-not-in-domain) | Why the status codes live in `api`, not `domain` | [`api/errors.go:69`](../../internal/api/errors.go#L69) |
-| [22](#22-unexpected-errors-log-everything-say-nothing) | Unexpected errors: log everything, say nothing | [`api/errors.go:110`](../../internal/api/errors.go#L110) |
+| [22](#22-unexpected-errors-log-everything-say-nothing) | Unexpected errors: log everything, say nothing | [`api/errors.go:111`](../../internal/api/errors.go#L111) |
 | [23](#23-validation-errors-that-name-each-field) | Validation errors that name each field | [`domain/errors.go:80`](../../internal/domain/errors.go#L80) |
 | [24](#24-errors-that-never-reach-a-handler) | Errors that never reach a handler | [`router.go:47`](../../internal/api/router.go#L47) |
 | [25](#25-more-go-idioms-appearing-for-the-first-time) | A nil pointer that is not a nil error, `errors.As`, `TestMain` | [`domain/errors.go:101`](../../internal/domain/errors.go#L101) |
@@ -63,7 +63,7 @@ Click the link, read the code, then come back.
 | [44](#44-the-seed-command) | The seed command | [`cmd/seed/main.go:95`](../../cmd/seed/main.go#L95) |
 | [45](#45-go-idioms-appearing-for-the-first-time-in-the-session-code) | Transactions, nullable columns, arrays and slices, goroutines | [`tokens.go:108`](../../internal/store/tokens.go#L108) |
 | [46](#46-what-middleware-is-and-how-gin-chains-it) | What middleware is, and how Gin chains it | [`router.go:95`](../../internal/api/router.go#L95) |
-| [47](#47-cnext-and-cabort) | `c.Next()` and `c.Abort()` | [`errors.go:168`](../../internal/api/errors.go#L168) |
+| [47](#47-cnext-and-cabort) | `c.Next()` and `c.Abort()` | [`errors.go:169`](../../internal/api/errors.go#L169) |
 | [48](#48-forgetting-abort-what-actually-goes-wrong) | Forgetting `Abort`: what actually goes wrong | [`middleware_test.go:132`](../../internal/api/middleware_test.go#L132) |
 | [49](#49-a-typed-context-key-and-currentuser) | A typed context key, and `CurrentUser` | [`middleware.go:19`](../../internal/api/middleware.go#L19) |
 | [50](#50-why-the-user-is-reloaded-instead-of-trusting-the-tokens-role) | Why the user is reloaded instead of trusting the token's role | [`middleware.go:68`](../../internal/api/middleware.go#L68) |
@@ -75,10 +75,10 @@ Click the link, read the code, then come back.
 | [56](#56-why-the-negative-cases-matter-more-than-the-positive-ones) | Why the negative cases matter more | [`policy_test.go:74`](../../internal/auth/policy_test.go#L74) |
 | [57](#57-counting-the-combinations) | Counting the combinations | [`policy_test.go:154`](../../internal/auth/policy_test.go#L154) |
 | [58](#58-filtering-in-sql-not-in-go) | Filtering in SQL, not in Go | [`applications.go:62`](../../internal/store/applications.go#L62) |
-| [59](#59-two-encodings-of-one-rule-and-the-check-that-they-agree) | Two encodings of one rule, and the check that they agree | [`application_handler.go:276`](../../internal/api/application_handler.go#L276) |
+| [59](#59-two-encodings-of-one-rule-and-the-check-that-they-agree) | Two encodings of one rule, and the check that they agree | [`application_handler.go:278`](../../internal/api/application_handler.go#L278) |
 | [60](#60-403-or-404) | 403 or 404 | [`decisions.md`](../decisions.md) |
-| [61](#61-testcontainers-go-and-why-a-real-postgresql-beats-a-mock) | testcontainers-go, and why a real PostgreSQL beats a mock | [`authz_test.go:88`](../../test/integration/authz_test.go#L88) |
-| [62](#62-testauthorizationmatrix) | `TestAuthorizationMatrix`; generics, spreading a slice, package build tags | [`authz_test.go:301`](../../test/integration/authz_test.go#L301) |
+| [61](#61-testcontainers-go-and-why-a-real-postgresql-beats-a-mock) | testcontainers-go, and why a real PostgreSQL beats a mock | [`authz_test.go:93`](../../test/integration/authz_test.go#L93) |
+| [62](#62-testauthorizationmatrix) | `TestAuthorizationMatrix`; generics, spreading a slice, package build tags | [`authz_test.go:317`](../../test/integration/authz_test.go#L317) |
 
 ---
 
@@ -916,12 +916,12 @@ alone could not tell a client which.
 invents its own: one returns `{"error":"not found"}`, the next
 `{"message":"..."}`, a third plain text. Every client then needs a parser per
 endpoint. Fixing the shape first means handlers never get the chance — they
-call one function, [`Respond`](../../internal/api/errors.go#L110), and it is the
+call one function, [`Respond`](../../internal/api/errors.go#L111), and it is the
 only code in the project that writes an error body.
 
 **`details` is never absent and never `null`.**
 [`errors.go:46`](../../internal/api/errors.go#L46) has no `omitempty`, and
-[`errors.go:164`](../../internal/api/errors.go#L164) swaps a nil map for an
+[`errors.go:165`](../../internal/api/errors.go#L165) swaps a nil map for an
 empty one, because Go encodes a nil map as `null`. A field that is sometimes an
 object, sometimes missing and sometimes `null` is three shapes, and the client
 would have to check before every read.
@@ -984,7 +984,7 @@ quietly stops matching — with no compile error, only a 500 where a 404 was
 expected. That is why the `errorlint` linter in this repository rejects `==` on
 errors outright.
 
-**What breaks without it.** With [`errors.go:92`](../../internal/api/errors.go#L92)
+**What breaks without it.** With [`errors.go:93`](../../internal/api/errors.go#L93)
 changed to `err == m.target`, every bare sentinel still maps correctly and all
 three wrapped rows of the table fail, along with the validation test. Verified
 by making the change and running the tests.
@@ -1106,13 +1106,13 @@ closed. The status is the same and the client's reaction is not.
 
 ## 22. Unexpected errors: log everything, say nothing
 
-**📍 Open:** [`internal/api/errors.go:110`](../../internal/api/errors.go#L110)
+**📍 Open:** [`internal/api/errors.go:111`](../../internal/api/errors.go#L111)
 
 An error that matches no row of the table is one nobody planned for: the
 database is down, a query has a typo, a pointer was nil. `Respond` does two
 things with it, and they go to different audiences:
 
-- **To the log**, at [`errors.go:116`](../../internal/api/errors.go#L116): the
+- **To the log**, at [`errors.go:117`](../../internal/api/errors.go#L117): the
   method, the path, and the complete error chain.
 - **To the client**: status 500, code `internal_error`, and a fixed sentence
   that is the same for every cause.
@@ -1147,7 +1147,7 @@ either way.
 **Known errors are filtered too.** This is the less obvious half. An error that
 *does* match the table still has text nobody vetted — `select job 42: not
 found` is harmless, but the store is free to wrap anything. So
-[`errors.go:122`](../../internal/api/errors.go#L122) never sends `err.Error()` at
+[`errors.go:123`](../../internal/api/errors.go#L123) never sends `err.Error()` at
 all. The client gets the table's fixed message, plus field details that were
 written to be shown (section 23). The test wraps `ErrDuplicate` together with
 the driver message above and asserts none of it appears in the body.
@@ -1186,7 +1186,7 @@ needs no special row. Code that only cares about the category never has to
 know the type exists.
 
 `Respond` is the one caller that wants the fields, and it gets them with
-`errors.As` at [`api/errors.go:131`](../../internal/api/errors.go#L131):
+`errors.As` at [`api/errors.go:132`](../../internal/api/errors.go#L132):
 
 ```json
 {"error":{"code":"validation_failed","message":"One or more fields are invalid.",
@@ -1223,7 +1223,7 @@ handler is involved, and Gin's defaults for all three break the one-shape rule:
 
 That is why the router is not built with `gin.Default()`. `gin.Default()` is
 `gin.New()` plus a logger and a recovery middleware; the two are now listed by
-hand so that [`api.Recovery`](../../internal/api/errors.go#L152) can stand in
+hand so that [`api.Recovery`](../../internal/api/errors.go#L153) can stand in
 for the second. `gin.CustomRecovery` still does the important part — it catches
 the panic, logs the value and a stack trace, and keeps the process alive — and
 only the response body is ours.
@@ -1267,7 +1267,7 @@ to a nil map panics (reading is fine). `Add` creates the map on first use, at
 `bytes.Buffer` in the standard library follow the same design.
 
 **`errors.As` — the counterpart to `errors.Is`.**
-[`api/errors.go:131`](../../internal/api/errors.go#L131)
+[`api/errors.go:132`](../../internal/api/errors.go#L132)
 
 `errors.Is` asks "is a particular *value* in the chain?" `errors.As` asks "is
 anything of this *type* in the chain?" and, if so, copies it into the variable
@@ -2397,7 +2397,7 @@ gets its dependencies without a global variable.
 
 ## 47. `c.Next()` and `c.Abort()`
 
-**📍 Open:** [`internal/api/middleware.go:82`](../../internal/api/middleware.go#L82) and [`internal/api/errors.go:168`](../../internal/api/errors.go#L168)
+**📍 Open:** [`internal/api/middleware.go:82`](../../internal/api/middleware.go#L82) and [`internal/api/errors.go:169`](../../internal/api/errors.go#L169)
 
 Both move Gin's index; neither stops the Go function that calls it.
 
@@ -2423,7 +2423,7 @@ function. `c.AbortWithStatusJSON(status, body)` is `Abort` plus writing the
 body.
 
 In this codebase every error goes through `Respond`, which ends in
-[`write`](../../internal/api/errors.go#L162), which calls
+[`write`](../../internal/api/errors.go#L163), which calls
 `c.AbortWithStatusJSON`. So rejecting a request is always two lines:
 
 ```go
@@ -2490,7 +2490,7 @@ says "carry on".
 **How this codebase guards against it.**
 
 - There is one place an error is written, and it always aborts
-  ([`errors.go:168`](../../internal/api/errors.go#L168)). No middleware calls
+  ([`errors.go:169`](../../internal/api/errors.go#L169)). No middleware calls
   `c.JSON` for a failure.
 - Every middleware test counts how many requests reached the handler and
   checks the handler's output is absent from the body.
@@ -3037,7 +3037,7 @@ connection after row 400) is reported only by `rows.Err()`, and a hand-written
 
 ## 59. Two encodings of one rule, and the check that they agree
 
-**📍 Open:** [`internal/api/application_handler.go:276`](../../internal/api/application_handler.go#L276)
+**📍 Open:** [`internal/api/application_handler.go:278`](../../internal/api/application_handler.go#L278)
 
 The visibility rule now exists twice:
 
@@ -3050,7 +3050,7 @@ a post see its applications" to the policy and forgets the query. The symptom
 is a list showing rows that then 404 when opened, or the reverse.
 
 `TestAuthorizationMatrix` checks the two against each other for every caller
-([`authz_test.go:568`](../../test/integration/authz_test.go#L568)): an
+([`authz_test.go:600`](../../test/integration/authz_test.go#L600)): an
 application is in the list **if and only if** fetching it alone returns 200.
 
 **`Get` needs two facts, fetched in one query.**
@@ -3065,7 +3065,7 @@ handler calls the pure policy. The store gathers facts; the policy decides.
 **📍 Open:** [`docs/decisions.md`](../decisions.md) — decision D1
 
 **A refused view answers 404, identical to a missing record**
-([`application_handler.go:278`](../../internal/api/application_handler.go#L278)).
+([`application_handler.go:280`](../../internal/api/application_handler.go#L280)).
 The full record — when 403 is still right, what was rejected, what it costs —
 is in `docs/decisions.md`. The core argument:
 
@@ -3093,7 +3093,7 @@ view but not change.
 
 ## 61. testcontainers-go, and why a real PostgreSQL beats a mock
 
-**📍 Open:** [`test/integration/authz_test.go:88`](../../test/integration/authz_test.go#L88)
+**📍 Open:** [`test/integration/authz_test.go:93`](../../test/integration/authz_test.go#L93)
 
 **How it works.** testcontainers-go is a Go library that talks to the Docker
 daemon's API — the same API the `docker` command uses. `postgres.Run`:
@@ -3102,10 +3102,10 @@ daemon's API — the same API the `docker` command uses. `postgres.Run`:
    from it, publishing port 5432 on a **random free port** of the host, so
    parallel test runs never collide;
 2. copies the six `*.up.sql` migrations into `/docker-entrypoint-initdb.d`
-   ([`:102`](../../test/integration/authz_test.go#L106)), which the official
+   ([`:107`](../../test/integration/authz_test.go#L111)), which the official
    image runs with `psql`, in order, the first time it initialises — the same
    files, applied the same way, as production;
-3. **waits** ([`:106`](../../test/integration/authz_test.go#L110)) until the
+3. **waits** ([`:111`](../../test/integration/authz_test.go#L115)) until the
    server has logged "ready to accept connections" twice (the image restarts
    once after running init scripts) and the port accepts connections. Without
    a wait strategy, the test would race the database's startup;
@@ -3113,7 +3113,7 @@ daemon's API — the same API the `docker` command uses. `postgres.Run`:
    port filled in.
 
 **Cleanup has two layers.** `testcontainers.CleanupContainer`
-([`:111`](../../test/integration/authz_test.go#L115)) removes the container when
+([`:116`](../../test/integration/authz_test.go#L120)) removes the container when
 the test ends. If the test process is killed before that can run, a small
 companion container called **Ryuk** — started automatically by the library —
 notices the test process's connection drop and removes everything it started.
@@ -3151,7 +3151,7 @@ needs nothing.
 
 ## 62. `TestAuthorizationMatrix`
 
-**📍 Open:** [`test/integration/authz_test.go:301`](../../test/integration/authz_test.go#L301)
+**📍 Open:** [`test/integration/authz_test.go:317`](../../test/integration/authz_test.go#L317)
 
 **The shape.** One row per caller, one column per endpoint, the expected
 status in each cell — readable as a matrix:
@@ -3181,7 +3181,7 @@ per caller who can list) = 54 subtests.
 - a **single fetch** returns the application asked for.
 
 **The matrix cannot fall behind the router.**
-[`assertEveryProtectedRouteIsInTheMatrix`](../../test/integration/authz_test.go#L584)
+[`assertEveryProtectedRouteIsInTheMatrix`](../../test/integration/authz_test.go#L616)
 reads the router's registered routes and fails if any `/v1` route outside
 `/v1/auth` has no column. Adding an endpoint without deciding who may call it
 turns the test red.
@@ -3213,7 +3213,7 @@ provide Docker, which is all testcontainers needs.
 **Go idioms appearing for the first time**
 
 - **A generic type.** `listResponse[T any]`
-  ([`application_handler.go:127`](../../internal/api/application_handler.go#L127))
+  ([`application_handler.go:129`](../../internal/api/application_handler.go#L129))
   is one struct for every list the API will return. `T any` is a *type
   parameter*; `listResponse[applicationResponse]` fills it in.
 - **Spreading a slice into a variadic call.** `s.db.Query(ctx, query, args...)`

@@ -162,7 +162,7 @@ configuration error: missing required environment variable(s): DATABASE_URL, JWT
 
 Everything wrong, in one run.
 
-Note the ordering decision at [line 82](../../internal/config/config.go#L163):
+Note the ordering decision at [line 163](../../internal/config/config.go#L163):
 required variables are reported **before** optional ones are validated. A boot
 with no configuration at all should complain about the configuration, not
 about `PORT`.

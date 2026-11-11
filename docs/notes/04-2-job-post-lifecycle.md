@@ -26,7 +26,7 @@ Click the link, read the code, then come back.
 | [7](#7-why-a-post-cannot-open-without-a-rubric) | Why a post cannot open without a rubric | [`job_post.go:110`](../../internal/domain/job_post.go#L110) |
 | [8](#8-where-job-post-history-lives) | Where job post history lives | [`000007_job_post_events.up.sql:11`](../../migrations/000007_job_post_events.up.sql#L11) |
 | [9](#9-details-becomes-mapstringany) | `details` becomes `map[string]any` | [`errors.go:53`](../../internal/api/errors.go#L53) |
-| [10](#10-go-idioms-appearing-for-the-first-time) | Go idioms appearing for the first time | [`errors.go:130`](../../internal/api/errors.go#L130) |
+| [10](#10-go-idioms-appearing-for-the-first-time) | Go idioms appearing for the first time | [`errors.go:131`](../../internal/api/errors.go#L131) |
 | [11](#11-the-tests) | The tests | [`job_post_lifecycle_test.go:12`](../../internal/domain/job_post_lifecycle_test.go#L12) |
 
 ---
@@ -401,7 +401,7 @@ reported" would always pass.
 
 ## 10. Go idioms appearing for the first time
 
-**📍 Open:** [`internal/api/errors.go:130`](../../internal/api/errors.go#L130)
+**📍 Open:** [`internal/api/errors.go:131`](../../internal/api/errors.go#L131)
 
 **`errors.As` with an interface target.** Module 3 used `errors.As(err,
 &invalid)` where `invalid` is a `*domain.ValidationError`: "find an error of
@@ -454,7 +454,7 @@ so a post with no rubric gets counts of 0 rather than `pgx.ErrNoRows`.
 | [`TestJobPostTransitionsAreAdminOnly`](../../internal/api/job_post_handler_test.go#L964) | 403 / 401, and 400 for a malformed ID, all before the store |
 | [`TestJobPostStoreLifecycle`](../../internal/store/job_post_lifecycle_integration_test.go#L91) | Real SQL: the full lifecycle with one event per move and none per refusal; readiness including rubric versions |
 | [`TestJobPostStoreTransitionConcurrently`](../../internal/store/job_post_lifecycle_integration_test.go#L226) | Section 5's race |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L282) | Three new columns: open a ready draft, open an unready one, close an open post, for every caller |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L298) | Three new columns: open a ready draft, open an unready one, close an open post, for every caller |
 
 ---
 

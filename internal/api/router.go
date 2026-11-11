@@ -135,6 +135,12 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 			// The lifecycle map in domain decides what is legal.
 			admin.PATCH("/applications/:id/status", deps.Applications.UpdateStatus)
 
+			// Rescoring against the current rubric: one application, or every
+			// application to a post. POST, not PUT: each call appends an event,
+			// so repeating it is not a no-op on the timeline.
+			admin.POST("/applications/:id/rescore", deps.Applications.Rescore)
+			admin.POST("/job-posts/:id/rescore-all", deps.Applications.RescoreAll)
+
 			// The application form. Everyone else sees it inside GET
 			// /v1/job-posts/:id; these routes are for building it, and every
 			// write is refused once the post leaves draft.

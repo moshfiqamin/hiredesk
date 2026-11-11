@@ -80,6 +80,7 @@ var mappings = []mapping{
 	{domain.ErrNoVacancies, http.StatusConflict, "no_vacancies", "Every vacancy on this job post already has an offer. Reject or withdraw an existing offer, or raise the number of vacancies, before making another."},
 	{domain.ErrDuplicate, http.StatusConflict, "duplicate", "A resource with these details already exists."},
 	{domain.ErrInvalidTransition, http.StatusConflict, "invalid_transition", "The resource cannot move to that status from its current one."},
+	{domain.ErrNoRubric, http.StatusConflict, "no_rubric", "This job post has no rubric to score against. Add one with PUT /v1/job-posts/:id/rubric first; the existing scores were left unchanged."},
 	{domain.ErrNotReady, http.StatusConflict, "not_ready", "The resource is missing something it needs before it can move to that status."},
 	{domain.ErrFormLocked, http.StatusConflict, "form_locked", "The application form is locked because the job post is no longer a draft. Candidates may already have answered these questions."},
 	{domain.ErrNotAcceptingApplications, http.StatusConflict, "not_accepting_applications", "This job post is not accepting applications."},

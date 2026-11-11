@@ -640,7 +640,7 @@ func scoreApplication(ctx context.Context, tx pgx.Tx, app *domain.Application) (
 		return nil, fmt.Errorf("score against rubric version %d: %w", rubric.Version, err)
 	}
 
-	if err = insertScores(ctx, tx, app.ID, rubric.Version, result.Breakdown); err != nil {
+	if err = insertScores(ctx, tx, rubric.Version, []scoredApplication{{ID: app.ID, Breakdown: result.Breakdown}}); err != nil {
 		return nil, err
 	}
 	return &rubric.Version, nil

@@ -44,3 +44,41 @@ type ScoreEvidence struct {
 	// from, and is not meant to be sent to a client whole.
 	AnswerText string
 }
+
+// EventApplicationRescored is the application_events type recorded when an
+// application's scores are replaced by a rescore.
+const EventApplicationRescored = "application.rescored"
+
+// ErrNoRubric means scoring was asked for against a job post that has no
+// rubric, so there is nothing to score with.
+var ErrNoRubric = errors.New("job post has no rubric")
+
+// ScoreTotals is an application's score summed over one rubric version.
+type ScoreTotals struct {
+	RubricVersion int
+	Earned        float64
+	Available     float64
+}
+
+// RescoreResult is what a rescore changed for one application.
+type RescoreResult struct {
+	ApplicationID string
+
+	// Previous is nil when the application had no score before.
+	Previous *ScoreTotals
+	Current  ScoreTotals
+}
+
+// Changed reports whether the rescore gave a different version or total.
+func (r RescoreResult) Changed() bool {
+	return r.Previous == nil || *r.Previous != r.Current
+}
+
+// JobPostRescore is the outcome of rescoring every application to a post.
+type JobPostRescore struct {
+	JobPostID     string
+	RubricVersion int
+
+	// Results has one entry per application, in application ID order.
+	Results []RescoreResult
+}

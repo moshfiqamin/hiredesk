@@ -55,6 +55,35 @@ type fakeApplications struct {
 	// card gets domain.ErrNotScored. scoreCalls records every ID asked for.
 	scoreCards map[string]*domain.ScoreCard
 	scoreCalls []string
+
+	// rescoreResult and rescoreAllResult are what the rescore calls return,
+	// rescoreErr their error; lastRescore is {id, actorID} of the latest.
+	rescoreResult    *domain.RescoreResult
+	rescoreAllResult *domain.JobPostRescore
+	rescoreErr       error
+	lastRescore      *[2]string
+}
+
+func (f *fakeApplications) RescoreApplication(_ context.Context, id, actorID string) (*domain.RescoreResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.lastRescore = &[2]string{id, actorID}
+	if f.rescoreErr != nil {
+		return nil, f.rescoreErr
+	}
+	return f.rescoreResult, nil
+}
+
+func (f *fakeApplications) RescoreJobPost(_ context.Context, jobPostID, actorID string) (*domain.JobPostRescore, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.lastRescore = &[2]string{jobPostID, actorID}
+	if f.rescoreErr != nil {
+		return nil, f.rescoreErr
+	}
+	return f.rescoreAllResult, nil
 }
 
 func newFakeApplications() *fakeApplications {

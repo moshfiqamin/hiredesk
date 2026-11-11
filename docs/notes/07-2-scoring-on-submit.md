@@ -23,7 +23,7 @@ Part 1 is [07-1-rubric-endpoints.md](07-1-rubric-endpoints.md).
 | [3](#3-why-a-scoring-failure-fails-the-submission) | Why a scoring failure fails the submission | [`applications.go:638`](../../internal/store/applications.go#L638) |
 | [4](#4-tracing-evidence_answer_id) | **Tracing `evidence_answer_id`** | [`engine.go:312`](../../internal/scoring/engine.go#L312) |
 | [5](#5-why-the-engine-takes-domain-types) | **Why the engine takes domain types** | [`applications.go:619`](../../internal/store/applications.go#L619) |
-| [6](#6-storing-the-numbers) | Storing the numbers | [`rubric.go:274`](../../internal/store/rubric.go#L274) |
+| [6](#6-storing-the-numbers) | Storing the numbers | [`rubric.go:281`](../../internal/store/rubric.go#L281) |
 | [7](#7-in-the-request-or-in-a-background-job) | **In the request, or in a background job?** | — |
 | [8](#8-verification) | Verification | — |
 
@@ -150,12 +150,12 @@ the adapter owns the evidence link, so no strategy can forget it.
 `EvidenceAnswerID: o.evidenceAnswerID` into the `CriterionScore`
 ([line 265](../../internal/scoring/engine.go#L265)).
 
-**5. The store turns it into a column.** `insertScores` puts each
-`cs.EvidenceAnswerID` into a `[]string`
-([`rubric.go:288`](../../internal/store/rubric.go#L288)), sent as a
+**5. The store turns it into a column.** `insertScores` appends each
+`cs.EvidenceAnswerID` to a `[]string`
+([`rubric.go:296`](../../internal/store/rubric.go#L296)), sent as a
 `text[]`, and the SQL turns each element back into a uuid with
 `NULLIF(t.evidence_answer_id, '')::uuid`
-([line 294](../../internal/store/rubric.go#L294)).
+([line 306](../../internal/store/rubric.go#L306)).
 
 **6. The foreign key checks it.** `scores.evidence_answer_id REFERENCES
 application_answers (id)`. The answer row was inserted earlier *in the same
@@ -213,14 +213,16 @@ the engine (it calls `Score`); the engine knows nothing about the store.
 
 ## 6. Storing the numbers
 
-**📍 Open:** [`internal/store/rubric.go:274`](../../internal/store/rubric.go#L274)
+**📍 Open:** [`internal/store/rubric.go:281`](../../internal/store/rubric.go#L281)
 
-One statement for all scores, with `unnest` over five parallel arrays. Two
+One statement for all scores, with `unnest` over parallel arrays — one
+application at submission, or five hundred in a rescore
+([07-4](07-4-rescore.md)). Two
 details:
 
 **Rounded in Go.** A criterion matching 1 of 3 keywords at weight 10 earns
 `3.3333333333333335` in float64. `numeric(6, 2)` would round that on insert anyway, but
-`roundCents` ([line 306](../../internal/store/rubric.go#L306)) does it
+`roundCents` ([line 330](../../internal/store/rubric.go#L330)) does it
 first, so the value stored is exactly the value this code decided, and the
 column's sum is the total the breakdown shows.
 
