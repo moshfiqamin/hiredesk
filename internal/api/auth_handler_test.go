@@ -154,6 +154,7 @@ func newTestServer(t *testing.T) *testServer {
 		Applications: NewApplicationHandler(s.apps),
 		JobPosts:     NewJobPostHandler(s.posts),
 		Questions:    NewQuestionHandler(s.posts),
+		Listings:     NewJobListingHandler(s.posts),
 		Tokens:       s.tokens,
 		Users:        s.users,
 		DB:           okPinger{},

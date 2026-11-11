@@ -178,6 +178,7 @@ func newRouter(t *testing.T, pool *pgxpool.Pool, tokens *auth.TokenManager) *gin
 		Applications: api.NewApplicationHandler(store.NewApplicationStore(pool)),
 		JobPosts:     api.NewJobPostHandler(store.NewJobPostStore(pool)),
 		Questions:    api.NewQuestionHandler(store.NewQuestionStore(pool)),
+		Listings:     api.NewJobListingHandler(store.NewJobPostStore(pool)),
 		Tokens:       tokens,
 		Users:        users,
 		DB:           pool,
@@ -201,8 +202,12 @@ type endpoint struct {
 
 	// conflictCode is the error code a 409 from this endpoint must carry.
 	conflictCode string
-	isList       bool
-	cellFor      func(callerRow) int
+
+	// public marks an endpoint whose 200 must be byte-for-byte what an
+	// anonymous caller gets: who is asking must change nothing.
+	public  bool
+	isList  bool
+	cellFor func(callerRow) int
 }
 
 // callerRow is one row of the matrix: who is calling, and the status each
@@ -227,6 +232,9 @@ type callerRow struct {
 	// The application form: list, add, add to an open post (locked), edit,
 	// reorder and delete.
 	qList, qCreate, qCreateLocked, qUpdate, qReorder, qDelete int
+
+	// The public listing, which every caller gets, identically.
+	listing int
 
 	// listed is exactly which applications GET /v1/applications must return,
 	// for callers that get a 200.
@@ -261,13 +269,15 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postOpen: unau, postDraft: unau, postMissing: unau, postMalformed: unau,
 			postCreate: unau, postPatch: unau, postPatchMalformed: unau,
 			postOpenReady: unau, postOpenUnready: unau, postClose: unau,
-			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau},
+			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau,
+			listing: ok},
 		{caller: "ghost (token for a deleted user)", userID: ghostID, role: domain.RoleAdmin,
 			me: unau, list: unau, getA: unau, getB: unau, getMissing: unau, getMalformed: unau,
 			postOpen: unau, postDraft: unau, postMissing: unau, postMalformed: unau,
 			postCreate: unau, postPatch: unau, postPatchMalformed: unau,
 			postOpenReady: unau, postOpenUnready: unau, postClose: unau,
-			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau},
+			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau,
+			listing: ok},
 
 		{caller: "admin", userID: adminID, role: domain.RoleAdmin,
 			me: ok, list: ok, getA: ok, getB: ok, getMissing: nf, getMalformed: nf,
@@ -275,35 +285,40 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postCreate: made, postPatch: ok, postPatchMalformed: bad,
 			postOpenReady: ok, postOpenUnready: conf, postClose: ok,
 			qList: ok, qCreate: made, qCreateLocked: conf, qUpdate: ok, qReorder: ok, qDelete: gone,
-			listed: []string{appA, appB}},
+			listing: ok,
+			listed:  []string{appA, appB}},
 		{caller: "interviewer assigned to A", userID: interviewerID, role: domain.RoleInterviewer,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
-			listed: []string{appA}},
+			listing: ok,
+			listed:  []string{appA}},
 		{caller: "interviewer assigned to nothing", userID: outsideInterviewerID, role: domain.RoleInterviewer,
 			me: ok, list: ok, getA: nf, getB: nf, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
-			listed: []string{}},
+			listing: ok,
+			listed:  []string{}},
 		{caller: "candidate who owns A", userID: candidateID, role: domain.RoleCandidate,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
-			listed: []string{appA}},
+			listing: ok,
+			listed:  []string{appA}},
 		{caller: "candidate who owns B", userID: otherCandidateID, role: domain.RoleCandidate,
 			me: ok, list: ok, getA: nf, getB: ok, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
-			listed: []string{appB}},
+			listing: ok,
+			listed:  []string{appB}},
 
 		// The token claims admin; the database says candidate. The database
 		// wins on every endpoint, including the list's choice of query.
@@ -313,7 +328,8 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
-			listed: []string{appA}},
+			listing: ok,
+			listed:  []string{appA}},
 	}
 
 	endpoints := []endpoint{
@@ -353,6 +369,12 @@ func TestAuthorizationMatrix(t *testing.T) {
 			conflictCode: "not_ready", cellFor: func(r callerRow) int { return r.postOpenUnready }},
 		{name: "POST close an open post", method: http.MethodPost, route: "/v1/job-posts/:id/close", path: "/v1/job-posts/" + closablePostID + "/close",
 			postID: closablePostID, cellFor: func(r callerRow) int { return r.postClose }},
+
+		// Each response is compared with an anonymous request made at the
+		// same moment, so the admin's cells opening and closing posts do not
+		// disturb it.
+		{name: "GET public listing", method: http.MethodGet, route: "/v1/job-posts", path: "/v1/job-posts?limit=100",
+			public: true, cellFor: func(r callerRow) int { return r.listing }},
 
 		// The form endpoints run in this order for the admin: the reorder
 		// must name all three questions, so it comes before the delete.
@@ -437,6 +459,19 @@ func TestAuthorizationMatrix(t *testing.T) {
 					// docs/decisions.md D1: not yours and not there look the same.
 					if rec.Body.String() != absent.Body.String() {
 						t.Errorf("refusal differs from absence:\n got:    %s\n absent: %s", rec.Body, absent.Body)
+					}
+
+				case ep.public:
+					anonymous := send(ep.method, ep.path, "", "")
+					if rec.Body.String() != anonymous.Body.String() {
+						t.Errorf("differs from the anonymous response:\n got:       %s\n anonymous: %s", rec.Body, anonymous.Body)
+					}
+					// Drafts no cell ever opens. readyDraftID is left out: the
+					// admin's row opens it, after which it belongs here.
+					for _, hidden := range []string{draftPostID, formPostID} {
+						if strings.Contains(rec.Body.String(), hidden) {
+							t.Errorf("the public listing shows draft %s", hidden)
+						}
 					}
 
 				case ep.isList:

@@ -33,6 +33,12 @@ type fakeJobPosts struct {
 	lastActor         string
 	lastQuestionPatch domain.QuestionPatch
 
+	// lastLimit and lastAfter are what the most recent ListOpenJobPosts call
+	// received; listings supplies tags and remaining vacancies per post ID.
+	lastLimit int
+	lastAfter *domain.ListingPosition
+	listings  map[string]domain.JobListing
+
 	// lastPatch is the patch the most recent UpdateJobPost call received, and
 	// calls counts every call to any method.
 	lastPatch domain.JobPostPatch

@@ -78,12 +78,14 @@ func run(cfg *config.Config) error {
 	// place that shows what the server is made of.
 	tokens := auth.NewTokenManager(cfg.JWTSecret)
 	users := store.NewUserStore(pool)
+	jobPosts := store.NewJobPostStore(pool)
 
 	router, err := api.NewRouter(api.Deps{
 		Auth:         api.NewAuthHandler(users, store.NewTokenStore(pool), tokens),
 		Applications: api.NewApplicationHandler(store.NewApplicationStore(pool)),
-		JobPosts:     api.NewJobPostHandler(store.NewJobPostStore(pool)),
+		JobPosts:     api.NewJobPostHandler(jobPosts),
 		Questions:    api.NewQuestionHandler(store.NewQuestionStore(pool)),
+		Listings:     api.NewJobListingHandler(jobPosts),
 		Tokens:       tokens,
 		Users:        users,
 		DB:           pool,

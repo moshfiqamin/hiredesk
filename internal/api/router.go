@@ -18,6 +18,7 @@ type Deps struct {
 	Applications *ApplicationHandler
 	JobPosts     *JobPostHandler
 	Questions    *QuestionHandler
+	Listings     *JobListingHandler
 
 	// Tokens verifies the access token on every protected route, and Users
 	// loads the user it names.
@@ -37,8 +38,8 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 	// Checked here, at startup, because a nil Users would otherwise surface as
 	// a panic on the first authenticated request.
 	if deps.Auth == nil || deps.Applications == nil || deps.JobPosts == nil || deps.Questions == nil ||
-		deps.Tokens == nil || deps.Users == nil || deps.DB == nil {
-		return nil, errors.New("build router: Auth, Applications, JobPosts, Questions, Tokens, Users and DB are all required")
+		deps.Listings == nil || deps.Tokens == nil || deps.Users == nil || deps.DB == nil {
+		return nil, errors.New("build router: Auth, Applications, JobPosts, Questions, Listings, Tokens, Users and DB are all required")
 	}
 
 	// gin.Default() with one substitution: its recovery middleware answers a
@@ -81,6 +82,12 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 		authRoutes.POST("/refresh", deps.Auth.Refresh)
 		authRoutes.POST("/logout", deps.Auth.Logout)
 	}
+
+	// The one public read: open job posts, for anyone, signed in or not. It is
+	// on v1 itself, not the protected group, so no Authorization header is
+	// read at all. A visitor with an expired or forged token gets the same
+	// page as one with none.
+	v1.GET("/job-posts", deps.Listings.List)
 
 	// Everything registered on this group runs RequireAuth first, so a handler
 	// here can rely on CurrentUser. A route limited to some roles adds
