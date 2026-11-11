@@ -23,11 +23,11 @@ full reasoning lives here.
 | [9](#9-the-multi-stage-dockerfile) | The multi-stage Dockerfile | [`Dockerfile:4`](../../Dockerfile#L4) |
 | [10](#10-cgo_enabled0-and-static-linking) | `CGO_ENABLED=0` and static linking | [`Dockerfile:20`](../../Dockerfile#L20) |
 | [11](#11-docker-layer-cache-ordering) | Docker layer cache ordering | [`Dockerfile:12`](../../Dockerfile#L12) |
-| [12](#12-what-non-root-actually-buys-you) | What non-root actually buys you | [`Dockerfile:42`](../../Dockerfile#L42) |
+| [12](#12-what-non-root-actually-buys-you) | What non-root actually buys you | [`Dockerfile:50`](../../Dockerfile#L50) |
 | [13](#13-depends_on-condition-service_healthy) | `condition: service_healthy` | [`compose:46`](../../docker-compose.yml#L46) |
 | [14](#14-named-volumes) | Named volumes | [`compose:24`](../../docker-compose.yml#L24) |
 | [15](#15-container-to-container-dns) | Container-to-container DNS | [`compose:52`](../../docker-compose.yml#L52) |
-| [16](#16-makefile-mechanics) | Makefile mechanics | [`Makefile:148`](../../Makefile#L148) |
+| [16](#16-makefile-mechanics) | Makefile mechanics | [`Makefile:153`](../../Makefile#L153) |
 | [17](#17-what-ci-is-actually-for) | What CI is actually for | [`ci.yml`](../../.github/workflows/ci.yml) |
 | [18](#18-the-race-detector) | The race detector | [`ci.yml:50`](../../.github/workflows/ci.yml#L50) |
 | [19](#19-the-linters) | The linters | [`.golangci.yml:18`](../../.golangci.yml#L18) |
@@ -317,7 +317,7 @@ flags discarded errors anyway.
 
 ## 9. The multi-stage Dockerfile
 
-**📍 Open:** [`Dockerfile:4`](../../Dockerfile#L4) and [`Dockerfile:35`](../../Dockerfile#L35)
+**📍 Open:** [`Dockerfile:4`](../../Dockerfile#L4) and [`Dockerfile:43`](../../Dockerfile#L43)
 
 Two `FROM` lines means two images. The first holds the Go toolchain and is
 **discarded**; the second starts empty and receives only what
@@ -434,7 +434,7 @@ recompile for nothing.
 
 ## 12. What non-root actually buys you
 
-**📍 Open:** [`Dockerfile:42`](../../Dockerfile#L42)
+**📍 Open:** [`Dockerfile:50`](../../Dockerfile#L50)
 
 ```dockerfile
 RUN adduser -D -H -s /sbin/nologin -u 10001 appuser
@@ -586,7 +586,7 @@ permission mismatches because the container's `postgres` user is not your macOS
 UID. Named volumes live on a native filesystem inside the Linux VM.
 
 **To wipe deliberately:** `make reset`
-([`Makefile:156`](../../Makefile#L156)). You will need it after changing
+([`Makefile:161`](../../Makefile#L161)). You will need it after changing
 `POSTGRES_USER`, `POSTGRES_PASSWORD` or `POSTGRES_DB`, since those are read
 **only** while initialising an empty data directory — editing them in `.env`
 appears to do nothing until the volume is destroyed.
@@ -641,7 +641,7 @@ moment a directory named `test` existed, because Make would consider the target
 up to date.
 
 **3. Targets are files, with dependencies.**
-[`Makefile:148`](../../Makefile#L148):
+[`Makefile:153`](../../Makefile#L153):
 
 ```make
 up: .env

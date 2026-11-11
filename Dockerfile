@@ -31,6 +31,14 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
         -o /out/hiredesk-seed \
         ./cmd/seed
 
+# The search-document repair. Unlike the seeder it is meant for production,
+# so it must be in the image that production runs.
+RUN CGO_ENABLED=0 GOOS=linux go build \
+        -trimpath \
+        -ldflags="-s -w" \
+        -o /out/hiredesk-reindex \
+        ./cmd/reindex
+
 # ---- Runtime stage: receives only the binary -------------------------------
 FROM alpine:3.22
 
@@ -43,6 +51,7 @@ RUN adduser -D -H -s /sbin/nologin -u 10001 appuser
 
 COPY --from=builder --chown=appuser:appuser /out/hiredesk-api /usr/local/bin/hiredesk-api
 COPY --from=builder --chown=appuser:appuser /out/hiredesk-seed /usr/local/bin/hiredesk-seed
+COPY --from=builder --chown=appuser:appuser /out/hiredesk-reindex /usr/local/bin/hiredesk-reindex
 
 # After the COPYs, since an unprivileged user cannot write to /usr/local/bin.
 USER appuser

@@ -31,7 +31,7 @@ MIGRATE     := $(COMPOSE) run --rm migrate -path=/migrations -database="$(MIGRAT
 .DEFAULT_GOAL := help
 
 .PHONY: help up down logs build docker-build test test-integration lint fmt psql seed env reset ps \
-        migrate-up migrate-down migrate-create migrate-version adminer seed-bulk
+        migrate-up migrate-down migrate-create migrate-version adminer seed-bulk reindex-search
 
 help: ## Show this help
 	@echo "HireDesk — available commands:"
@@ -141,6 +141,11 @@ seed: ## Create the development accounts (needs `make up`; safe to run twice)
 # Each run adds another post. For measuring GET /v1/job-posts/:id/ranking.
 seed-bulk: ## Create a post with 500 scored applications (needs `make up`)
 	$(COMPOSE) exec api /usr/local/bin/hiredesk-seed -bulk 500
+
+# Rewrites only the documents that disagree with their answers, in one
+# statement, so it is safe to run on a live database and to repeat.
+reindex-search: ## Rebuild every application's search document from its answers
+	$(COMPOSE) exec api /usr/local/bin/hiredesk-reindex
 
 env: .env ## Create .env from .env.example with a generated JWT_SECRET
 

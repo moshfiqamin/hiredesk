@@ -30,6 +30,7 @@ type ApplicationStore interface {
 	RescoreApplication(ctx context.Context, id, actorID string) (*domain.RescoreResult, error)
 	RescoreJobPost(ctx context.Context, jobPostID, actorID string) (*domain.JobPostRescore, error)
 	RankApplications(ctx context.Context, jobPostID string, limit int) ([]domain.RankedApplication, error)
+	SearchApplications(ctx context.Context, jobPostID, query string, limit, offset int) ([]domain.SearchResult, int, error)
 }
 
 // ApplicationHandler serves the application endpoints. Every route it serves
@@ -705,6 +706,129 @@ func (h *ApplicationHandler) Ranking(c *gin.Context) {
 			entry.Percentage = &percentage
 		}
 		out.Data = append(out.Data, entry)
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// searchEntry is one match in GET /v1/job-posts/:id/applications/search.
+// The score fields are null for an application with no stored score.
+type searchEntry struct {
+	ApplicationID string    `json:"application_id"`
+	CandidateID   string    `json:"candidate_id"`
+	CandidateName string    `json:"candidate_name"`
+	Status        string    `json:"status"`
+	SubmittedAt   time.Time `json:"submitted_at"`
+
+	// Relevance orders the results. It is comparable only within one query,
+	// so it is shown for transparency rather than as a score out of anything.
+	Relevance float64 `json:"relevance"`
+
+	TotalEarned    *float64 `json:"total_earned"`
+	TotalAvailable *float64 `json:"total_available"`
+	Percentage     *float64 `json:"percentage"`
+	RubricVersion  *int     `json:"rubric_version"`
+}
+
+// searchResponse is the body of GET /v1/job-posts/:id/applications/search.
+type searchResponse struct {
+	JobPostID string `json:"job_post_id"`
+
+	// Query is q as searched, after trimming.
+	Query string `json:"query"`
+
+	Total  int `json:"total"`
+	Limit  int `json:"limit"`
+	Offset int `json:"offset"`
+
+	// NextOffset is the offset of the following page, or null on the last.
+	NextOffset *int `json:"next_offset"`
+
+	Data []searchEntry `json:"data"`
+}
+
+// Search handles GET /v1/job-posts/:id/applications/search?q=&limit=&offset=:
+// full-text search over the answers of every application to the post, most
+// relevant first, each with its score. The route must be behind
+// RequireRole(domain.RoleAdmin).
+//
+// q is plain words, not a query language: every word must appear, after
+// stemming, and nothing in it is an operator. A q that is blank, not UTF-8,
+// contains a NUL, or is longer than domain.MaxSearchQueryChars is a 422; a q
+// of only punctuation or stop words is a 200 with no results.
+//
+// Paging is by offset, not cursor: relevance is computed per query, so there
+// is no stored sort key for a cursor to carry. limit defaults to
+// domain.DefaultSearchLimit and is capped at domain.MaxSearchLimit; offset
+// may not exceed domain.MaxSearchOffset.
+func (h *ApplicationHandler) Search(c *gin.Context) {
+	postID, ok := pathUUID(c, "id")
+	if !ok {
+		return
+	}
+
+	// Every parameter is checked, and every problem reported in one 422.
+	var invalid domain.ValidationError
+
+	// c.Query has already percent-decoded the value, so "%FF" arrives here
+	// as the byte 0xFF and "%00" as a NUL, which is what the checks look for.
+	query, problem := domain.NormalizeSearchQuery(c.Query("q"))
+	if problem != "" {
+		invalid.Add("q", problem)
+	}
+
+	limit := domain.DefaultSearchLimit
+	if raw, present := c.GetQuery("limit"); present {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			invalid.Add("limit", "must be a whole number of at least 1; at most "+strconv.Itoa(domain.MaxSearchLimit)+" are returned")
+		} else {
+			limit = min(n, domain.MaxSearchLimit)
+		}
+	}
+
+	// Refused rather than capped, unlike limit: quietly lowering an offset
+	// would return a different page from the one asked for.
+	offset := 0
+	if raw, present := c.GetQuery("offset"); present {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 || n > domain.MaxSearchOffset {
+			invalid.Add("offset", "must be a whole number from 0 to "+strconv.Itoa(domain.MaxSearchOffset))
+		} else {
+			offset = n
+		}
+	}
+
+	if err := invalid.Err(); err != nil {
+		Respond(c, err)
+		return
+	}
+
+	results, total, err := h.apps.SearchApplications(c.Request.Context(), postID, query, limit, offset)
+	if err != nil {
+		Respond(c, fmt.Errorf("search applications: %w", err))
+		return
+	}
+
+	out := searchResponse{
+		JobPostID: postID, Query: query, Total: total, Limit: limit, Offset: offset,
+		Data: make([]searchEntry, 0, len(results)),
+	}
+	for _, r := range results {
+		entry := searchEntry{
+			ApplicationID: r.ApplicationID, CandidateID: r.CandidateID, CandidateName: r.CandidateName,
+			Status: r.Status, SubmittedAt: r.SubmittedAt.UTC(), Relevance: r.Relevance,
+		}
+		if t := r.Totals; t != nil {
+			// Copies, so each pointer refers to this entry's own values.
+			earned, available, version := t.Earned, t.Available, t.RubricVersion
+			entry.TotalEarned, entry.TotalAvailable, entry.RubricVersion = &earned, &available, &version
+			percentage := newTotalsResponse(*t).Percentage
+			entry.Percentage = &percentage
+		}
+		out.Data = append(out.Data, entry)
+	}
+	if next := offset + len(results); next < total {
+		out.NextOffset = &next
 	}
 	c.JSON(http.StatusOK, out)
 }

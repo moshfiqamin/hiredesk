@@ -498,9 +498,9 @@ func scanScoreEntry(row pgx.CollectableRow) (domain.ScoreEntry, error) {
 }
 
 // SubmitApplication validates in against the job post's form and stores it:
-// the application, every answer, one score per criterion of the post's
-// current rubric, and an application.submitted event naming the candidate as
-// the actor. Either all of it is written or none is.
+// the application with its search document, every answer, one score per
+// criterion of the post's current rubric, and an application.submitted event
+// naming the candidate as the actor. Either all of it is written or none is.
 //
 // A post with no rubric gets an unscored application rather than a refusal;
 // see scoreApplication.
@@ -555,14 +555,19 @@ func (s *ApplicationStore) SubmitApplication(ctx context.Context, in domain.NewA
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
+	// Built from the validated answers before the row exists, so it goes in
+	// with the INSERT: one write, and search_vector computed once. Setting it
+	// in a later UPDATE would write the row twice and parse the text twice.
+	searchDocument := domain.SearchDocument(form, clean.Answers)
+
 	// The alias lets applicationColumns, written for SELECTs with "a.", serve
 	// in RETURNING as well.
 	const insertApplication = `
-		INSERT INTO applications AS a (job_post_id, candidate_id, cv_url)
-		VALUES ($1::text::uuid, $2::text::uuid, $3)
+		INSERT INTO applications AS a (job_post_id, candidate_id, cv_url, search_document)
+		VALUES ($1::text::uuid, $2::text::uuid, $3, $4)
 		RETURNING ` + applicationColumns
 
-	app, err := scanApplication(tx.QueryRow(ctx, insertApplication, clean.JobPostID, clean.CandidateID, clean.CVURL))
+	app, err := scanApplication(tx.QueryRow(ctx, insertApplication, clean.JobPostID, clean.CandidateID, clean.CVURL, searchDocument))
 	if err != nil {
 		// The only guard against a second application, and the only one that
 		// holds when two arrive at once: the unique index refuses whichever

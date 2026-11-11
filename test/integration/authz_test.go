@@ -286,8 +286,8 @@ type callerRow struct {
 	// admins only, refused by RequireRole for everyone else.
 	rescoreB, rescoreAll int
 
-	// The ranking of postID: admins only.
-	ranking int
+	// The ranking of postID, and a search of its applications: admins only.
+	ranking, search int
 
 	// listed is exactly which applications GET /v1/applications must return,
 	// for callers that get a 200.
@@ -325,7 +325,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau,
 			listing: ok, submit: unau, statusChange: unau,
 			rubricGet: unau, rubricPut: unau, scoreA: unau,
-			rescoreB: unau, rescoreAll: unau, ranking: unau},
+			rescoreB: unau, rescoreAll: unau, ranking: unau, search: unau},
 		{caller: "ghost (token for a deleted user)", userID: ghostID, role: domain.RoleAdmin,
 			me: unau, list: unau, getA: unau, getB: unau, getMissing: unau, getMalformed: unau,
 			postOpen: unau, postDraft: unau, postMissing: unau, postMalformed: unau,
@@ -334,7 +334,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau,
 			listing: ok, submit: unau, statusChange: unau,
 			rubricGet: unau, rubricPut: unau, scoreA: unau,
-			rescoreB: unau, rescoreAll: unau, ranking: unau},
+			rescoreB: unau, rescoreAll: unau, ranking: unau, search: unau},
 
 		{caller: "admin", userID: adminID, role: domain.RoleAdmin,
 			me: ok, list: ok, getA: ok, getB: ok, getMissing: nf, getMalformed: nf,
@@ -344,7 +344,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: ok, qCreate: made, qCreateLocked: conf, qUpdate: ok, qReorder: ok, qDelete: gone,
 			listing: ok, submit: forb, statusChange: ok,
 			rubricGet: ok, rubricPut: ok, scoreA: ok,
-			rescoreB: ok, rescoreAll: ok, ranking: ok,
+			rescoreB: ok, rescoreAll: ok, ranking: ok, search: ok,
 			listed: []string{appA, appB}},
 		{caller: "interviewer assigned to A", userID: interviewerID, role: domain.RoleInterviewer,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
@@ -354,7 +354,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listing: ok, submit: forb, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: ok,
-			rescoreB: forb, rescoreAll: forb, ranking: forb,
+			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb,
 			listed: []string{appA}},
 		{caller: "interviewer assigned to nothing", userID: outsideInterviewerID, role: domain.RoleInterviewer,
 			me: ok, list: ok, getA: nf, getB: nf, getMissing: nf, getMalformed: nf,
@@ -364,7 +364,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listing: ok, submit: forb, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: nf,
-			rescoreB: forb, rescoreAll: forb, ranking: forb,
+			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb,
 			listed: []string{}},
 		{caller: "candidate who owns A", userID: candidateID, role: domain.RoleCandidate,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
@@ -374,7 +374,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listing: ok, submit: conf, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: forb,
-			rescoreB: forb, rescoreAll: forb, ranking: forb,
+			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb,
 			listed: []string{appA}},
 		{caller: "candidate who owns B", userID: otherCandidateID, role: domain.RoleCandidate,
 			me: ok, list: ok, getA: nf, getB: ok, getMissing: nf, getMalformed: nf,
@@ -384,7 +384,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listing: ok, submit: conf, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: nf,
-			rescoreB: forb, rescoreAll: forb, ranking: forb,
+			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb,
 			listed: []string{appB}},
 
 		// The token claims admin; the database says candidate. The database
@@ -397,7 +397,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listing: ok, submit: conf, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: forb,
-			rescoreB: forb, rescoreAll: forb, ranking: forb,
+			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb,
 			listed: []string{appA}},
 	}
 
@@ -483,6 +483,8 @@ func TestAuthorizationMatrix(t *testing.T) {
 
 		{name: "GET ranking", method: http.MethodGet, route: "/v1/job-posts/:id/ranking", path: "/v1/job-posts/" + postID + "/ranking",
 			cellFor: func(r callerRow) int { return r.ranking }},
+		{name: "GET search", method: http.MethodGet, route: "/v1/job-posts/:id/applications/search", path: "/v1/job-posts/" + postID + "/applications/search?q=go",
+			cellFor: func(r callerRow) int { return r.search }},
 
 		// Shortlists B, which no other cell depends on the status of.
 		{name: "PATCH application status", method: http.MethodPatch, route: "/v1/applications/:id/status", path: "/v1/applications/" + appB + "/status",

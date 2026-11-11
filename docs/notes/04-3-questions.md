@@ -16,7 +16,7 @@ Click the link, read the code, then come back.
 
 | # | Topic | Code |
 |---|---|---|
-| [1](#1-the-endpoints) | The endpoints | [`router.go:150`](../../internal/api/router.go#L150) |
+| [1](#1-the-endpoints) | The endpoints | [`router.go:156`](../../internal/api/router.go#L156) |
 | [2](#2-the-form-locks-when-the-post-opens) | The form locks when the post opens | [`question.go:46`](../../internal/domain/question.go#L46) |
 | [3](#3-why-the-lock-is-a-domain-decision) | Why the lock is a domain decision | [`question.go:46`](../../internal/domain/question.go#L46) |
 | [4](#4-making-the-lock-hold-under-concurrency) | Making the lock hold under concurrency | [`questions.go:293`](../../internal/store/questions.go#L293) |
@@ -32,7 +32,7 @@ Click the link, read the code, then come back.
 
 ## 1. The endpoints
 
-**📍 Open:** [`internal/api/router.go:150`](../../internal/api/router.go#L150)
+**📍 Open:** [`internal/api/router.go:156`](../../internal/api/router.go#L156)
 
 | Route | Does | Answers |
 |---|---|---|

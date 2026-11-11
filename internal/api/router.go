@@ -144,6 +144,12 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 			// Every applicant to a post, best score first.
 			admin.GET("/job-posts/:id/ranking", deps.Applications.Ranking)
 
+			// Full-text search over the answers to one post. GET with q in the
+			// query string, so a search is bookmarkable and safe to retry.
+			// Gin keeps a route tree per method, so this sits beside POST
+			// /job-posts/:id/applications without conflict.
+			admin.GET("/job-posts/:id/applications/search", deps.Applications.Search)
+
 			// The application form. Everyone else sees it inside GET
 			// /v1/job-posts/:id; these routes are for building it, and every
 			// write is refused once the post leaves draft.

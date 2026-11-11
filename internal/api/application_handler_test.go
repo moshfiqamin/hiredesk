@@ -67,6 +67,32 @@ type fakeApplications struct {
 	// was given.
 	ranking       []domain.RankedApplication
 	lastRankLimit int
+
+	// searchResults and searchTotal are what SearchApplications returns;
+	// lastSearch is the query, limit and offset it was given, nil until then.
+	searchResults []domain.SearchResult
+	searchTotal   int
+	lastSearch    *searchCall
+}
+
+// searchCall is one SearchApplications call, as the fake received it.
+type searchCall struct {
+	query         string
+	limit, offset int
+}
+
+func (f *fakeApplications) SearchApplications(_ context.Context, jobPostID, query string, limit, offset int) ([]domain.SearchResult, int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.lastSearch = &searchCall{query: query, limit: limit, offset: offset}
+	if f.failWith != nil {
+		return nil, 0, f.failWith
+	}
+	if jobPostID == "bbbbbbbb-0000-4000-8000-00000000ffff" {
+		return nil, 0, domain.ErrNotFound
+	}
+	return f.searchResults, f.searchTotal, nil
 }
 
 func (f *fakeApplications) RankApplications(_ context.Context, jobPostID string, limit int) ([]domain.RankedApplication, error) {

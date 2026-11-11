@@ -18,11 +18,11 @@ Part 1 is [07-1-rubric-endpoints.md](07-1-rubric-endpoints.md).
 
 | # | Topic | Code |
 |---|---|---|
-| [1](#1-a-post-with-no-rubric-the-decision) | A post with no rubric: the decision | [`applications.go:632`](../../internal/store/applications.go#L632) |
-| [2](#2-the-hook) | The hook | [`applications.go:583`](../../internal/store/applications.go#L583) |
-| [3](#3-why-a-scoring-failure-fails-the-submission) | Why a scoring failure fails the submission | [`applications.go:638`](../../internal/store/applications.go#L638) |
+| [1](#1-a-post-with-no-rubric-the-decision) | A post with no rubric: the decision | [`applications.go:637`](../../internal/store/applications.go#L637) |
+| [2](#2-the-hook) | The hook | [`applications.go:588`](../../internal/store/applications.go#L588) |
+| [3](#3-why-a-scoring-failure-fails-the-submission) | Why a scoring failure fails the submission | [`applications.go:643`](../../internal/store/applications.go#L643) |
 | [4](#4-tracing-evidence_answer_id) | **Tracing `evidence_answer_id`** | [`engine.go:312`](../../internal/scoring/engine.go#L312) |
-| [5](#5-why-the-engine-takes-domain-types) | **Why the engine takes domain types** | [`applications.go:619`](../../internal/store/applications.go#L619) |
+| [5](#5-why-the-engine-takes-domain-types) | **Why the engine takes domain types** | [`applications.go:624`](../../internal/store/applications.go#L624) |
 | [6](#6-storing-the-numbers) | Storing the numbers | [`rubric.go:281`](../../internal/store/rubric.go#L281) |
 | [7](#7-in-the-request-or-in-a-background-job) | **In the request, or in a background job?** | — |
 | [8](#8-verification) | Verification | — |
@@ -31,7 +31,7 @@ Part 1 is [07-1-rubric-endpoints.md](07-1-rubric-endpoints.md).
 
 ## 1. A post with no rubric: the decision
 
-**📍 Open:** [`internal/store/applications.go:632`](../../internal/store/applications.go#L632)
+**📍 Open:** [`internal/store/applications.go:637`](../../internal/store/applications.go#L637)
 
 **Decision: accept the application, store no scores, and record that it was
 not scored.** The `application.submitted` event carries
@@ -70,7 +70,7 @@ error, and it rolls back.
 
 ## 2. The hook
 
-**📍 Open:** [`internal/store/applications.go:583`](../../internal/store/applications.go#L583)
+**📍 Open:** [`internal/store/applications.go:588`](../../internal/store/applications.go#L588)
 
 One line in `SubmitApplication`, between the answers and the event:
 
@@ -99,7 +99,7 @@ judged the application, even after the scores are rescored.
 
 ## 3. Why a scoring failure fails the submission
 
-**📍 Open:** [`internal/store/applications.go:638`](../../internal/store/applications.go#L638)
+**📍 Open:** [`internal/store/applications.go:643`](../../internal/store/applications.go#L643)
 
 `Score` returns an error only for a rubric it cannot apply: an unknown kind
 or an unusable config. Neither can arrive through `PUT /rubric`
@@ -132,7 +132,7 @@ goes back into PostgreSQL. Follow one answer, the candidate's reply to
 
 **1. The database creates the ID.** `insertAnswers` inserts the answers and
 returns them with `RETURNING id::text, …`
-([`applications.go:669`](../../internal/store/applications.go#L669)). Each
+([`applications.go:674`](../../internal/store/applications.go#L674)). Each
 `domain.Answer` now has `ID = "a188f925-…"`, `QuestionID = "<describe>"`.
 These go into `app.Answers` ([line 578](../../internal/store/applications.go#L578)).
 
@@ -183,7 +183,7 @@ engine, not for this endpoint (see "What I just built" for the options).
 
 ## 5. Why the engine takes domain types
 
-**📍 Open:** [`internal/store/applications.go:619`](../../internal/store/applications.go#L619)
+**📍 Open:** [`internal/store/applications.go:624`](../../internal/store/applications.go#L624)
 
 `scoring.Score(answers []domain.Answer, criteria []domain.Criterion)`. The
 store converts rows to domain values — `scanCriterion` for criteria,

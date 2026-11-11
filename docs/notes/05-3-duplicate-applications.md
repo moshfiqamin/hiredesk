@@ -18,7 +18,7 @@ Click the link, read the code, then come back.
 |---|---|---|
 | [1](#1-the-race-a-check-then-insert-would-have) | The race a check-then-insert would have | — |
 | [2](#2-why-the-constraint-is-the-only-reliable-guard) | Why the constraint is the only reliable guard | [`000004_applications.up.sql:39`](../../migrations/000004_applications.up.sql#L39) |
-| [3](#3-from-sqlstate-23505-to-a-409) | From SQLSTATE 23505 to a 409 | [`applications.go:571`](../../internal/store/applications.go#L571) |
+| [3](#3-from-sqlstate-23505-to-a-409) | From SQLSTATE 23505 to a 409 | [`applications.go:576`](../../internal/store/applications.go#L576) |
 | [4](#4-why-a-500-here-would-be-a-bug) | Why a 500 here would be a bug | [`errors.go:79`](../../internal/api/errors.go#L79) |
 | [5](#5-goroutines) | Goroutines | [`concurrency_test.go:57`](../../test/integration/concurrency_test.go#L57) |
 | [6](#6-syncwaitgroup-and-the-start-gate) | `sync.WaitGroup` and the start gate | [`concurrency_test.go:50`](../../test/integration/concurrency_test.go#L50) |
@@ -142,7 +142,7 @@ well.
 
 ## 3. From SQLSTATE 23505 to a 409
 
-**📍 Open:** [`internal/store/applications.go:571`](../../internal/store/applications.go#L571)
+**📍 Open:** [`internal/store/applications.go:576`](../../internal/store/applications.go#L576)
 
 ```go
 var pgErr *pgconn.PgError
