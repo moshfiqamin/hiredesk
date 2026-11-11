@@ -61,6 +61,24 @@ jobs:
           retention-days: 7
         if: always()
 
+  # The authorization matrix against a real PostgreSQL. testcontainers-go
+  # starts the database through the runner's Docker daemon, which GitHub's
+  # Ubuntu runners provide, so no service container is declared here.
+  authorization-matrix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: TestAuthorizationMatrix
+        run: go test -race -count=1 -tags integration -run TestAuthorizationMatrix ./test/integration/
+
   # A separate job so lint and tests run in parallel and one failure does not
   # hide the other's result.
   lint:

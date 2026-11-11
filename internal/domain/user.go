@@ -10,6 +10,15 @@ const (
 	RoleCandidate   = "candidate"
 )
 
+// IsRole reports whether role is one of the roles above.
+func IsRole(role string) bool {
+	switch role {
+	case RoleAdmin, RoleInterviewer, RoleCandidate:
+		return true
+	}
+	return false
+}
+
 // User is one row of the users table, complete.
 //
 // It has no json tags on purpose: it is never written to a response. The api

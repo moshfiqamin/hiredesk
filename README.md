@@ -52,6 +52,8 @@ Run `make` at any time to list every command.
 | `POST` | `/v1/auth/refresh` | Body: `refresh_token`. Returns a new access token and a **new** refresh token; the one presented stops working. Presenting a token a second time ends every session of that user. |
 | `POST` | `/v1/auth/logout` | Body: `refresh_token`. Revokes it. Always 204. |
 | `GET` | `/v1/me` | The current user. Requires `Authorization: Bearer <access token>`. |
+| `GET` | `/v1/applications` | The applications the caller may see: all of them for an admin, their own for a candidate, assigned ones for an interviewer. Body: `{"data":[…]}`. |
+| `GET` | `/v1/applications/:id` | One application. An application the caller may not see is a 404, identical to one that does not exist — see [`docs/decisions.md`](docs/decisions.md). |
 
 Create the development accounts, then try it:
 
@@ -98,7 +100,7 @@ curl -s -X POST localhost:8080/v1/auth/login -d '{"email":"demo@example.com","pa
 | `make migrate-version` | Show the applied version and dirty flag |
 | `make migrate-create` | New migration pair: `make migrate-create NAME=add_foo` |
 | `make test` | Tests with the race detector and coverage |
-| `make test-integration` | Database tests against the running stack (needs `make up`) |
+| `make test-integration` | Database tests against the running stack, and the authorization matrix in its own PostgreSQL container (needs `make up` and Docker) |
 | `make seed` | Create the development accounts (needs `make up`; safe to repeat) |
 | `make lint` | `golangci-lint` (13 linters) |
 | `make fmt` | Format code and tidy `go.mod` |
@@ -116,7 +118,9 @@ internal/config/      environment config, loaded once into a struct
 internal/domain/      domain types and errors; no HTTP or database imports
 internal/store/       Postgres connection pool and hand-written SQL queries
 migrations/           golang-migrate pairs, applied on container start
+test/integration/     tests against a real PostgreSQL started by testcontainers-go
 docs/notes/           design notes, one per module
+docs/decisions.md     decision records
 .github/workflows/    CI pipeline
 ```
 
@@ -242,12 +246,21 @@ The reasoning behind every constraint, index and delete action is in
   15-minute HS256 JWTs with the algorithm pinned on verification. Refresh
   tokens are random, stored only as SHA-256 hashes, and replaced on every use;
   presenting a used one revokes all of that user's sessions.
+- **Roles come from the database, not the token.** Every authenticated
+  request reloads the user, so a demotion or a deleted account takes effect on
+  the next request rather than when the token expires.
+- **Authorization is filtered in SQL.** Each role gets its own query, so rows
+  a caller may not see never leave the database. A record the caller may not
+  see is a 404, indistinguishable from one that does not exist.
+- **An authorization matrix runs in CI.** Every caller against every protected
+  endpoint, on a real PostgreSQL started by testcontainers-go; adding a route
+  without a row for it fails the build.
 - **Rotation is race-safe.** The token row is locked with `FOR UPDATE` inside a
   transaction, so two concurrent refreshes cannot both succeed.
 - **One error shape.** Every failure — validation, unknown route, panic —
   returns the same JSON envelope, and internal causes are logged, never sent.
 - **CI on every push and PR.** Build, vet, race-detector tests, a `go.mod`
-  tidiness gate, and `golangci-lint`.
+  tidiness gate, `golangci-lint`, and the authorization matrix.
 
 Design decisions and the reasoning behind them are written up per module in
 [`docs/notes/`](docs/notes/).

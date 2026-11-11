@@ -2,8 +2,11 @@
 
 This note covers password hashing (sections 1–10), access tokens (sections
 11–17), the error format every endpoint shares (sections 18–25), registration
-and login (sections 26–35), and refresh tokens, logout, the current-user
-endpoint and the seed command (sections 36–45).
+and login (sections 26–35), refresh tokens, logout, the current-user endpoint
+and the seed command (sections 36–45), the authentication and role
+middleware (sections 46–52), resource-level authorization policy (sections
+53–57), and applying it: per-role SQL, 403 versus 404, and the authorization
+matrix against a real PostgreSQL (sections 58–62).
 
 **How to read this.** Every section names the exact file and line to open.
 Click the link, read the code, then come back.
@@ -37,7 +40,7 @@ Click the link, read the code, then come back.
 | [21](#21-why-the-status-codes-live-in-api-and-not-in-domain) | Why the status codes live in `api`, not `domain` | [`api/errors.go:57`](../../internal/api/errors.go#L57) |
 | [22](#22-unexpected-errors-log-everything-say-nothing) | Unexpected errors: log everything, say nothing | [`api/errors.go:89`](../../internal/api/errors.go#L89) |
 | [23](#23-validation-errors-that-name-each-field) | Validation errors that name each field | [`domain/errors.go:52`](../../internal/domain/errors.go#L52) |
-| [24](#24-errors-that-never-reach-a-handler) | Errors that never reach a handler | [`router.go:32`](../../internal/api/router.go#L32) |
+| [24](#24-errors-that-never-reach-a-handler) | Errors that never reach a handler | [`router.go:41`](../../internal/api/router.go#L41) |
 | [25](#25-more-go-idioms-appearing-for-the-first-time) | A nil pointer that is not a nil error, `errors.As`, `TestMain` | [`domain/errors.go:73`](../../internal/domain/errors.go#L73) |
 | [26](#26-one-request-three-layers) | One request, three layers | [`auth_handler.go:23`](../../internal/api/auth_handler.go#L23) |
 | [27](#27-hand-written-sql-with-pgx) | Hand-written SQL with pgx | [`users.go:47`](../../internal/store/users.go#L47) |
@@ -47,7 +50,7 @@ Click the link, read the code, then come back.
 | [31](#31-why-the-response-is-its-own-struct) | Why the response is its own struct | [`auth_handler.go:92`](../../internal/api/auth_handler.go#L92) |
 | [32](#32-registration) | Registration | [`auth_handler.go:142`](../../internal/api/auth_handler.go#L142) |
 | [33](#33-login-and-user-enumeration) | Login, and user enumeration | [`auth_handler.go:192`](../../internal/api/auth_handler.go#L192) |
-| [34](#34-the-router-and-v1) | The router, and `/v1` | [`router.go:55`](../../internal/api/router.go#L55) |
+| [34](#34-the-router-and-v1) | The router, and `/v1` | [`router.go:64`](../../internal/api/router.go#L64) |
 | [35](#35-go-idioms-appearing-for-the-first-time-in-the-handlers) | Interfaces, build tags, functions that return functions | [`health.go:14`](../../internal/api/health.go#L14) |
 | [36](#36-two-tokens-two-jobs) | Two tokens, two jobs | [`refresh.go:15`](../../internal/auth/refresh.go#L15) |
 | [37](#37-why-mathrand-is-dangerous-for-tokens) | Why `math/rand` is dangerous for tokens | [`refresh.go:33`](../../internal/auth/refresh.go#L33) |
@@ -56,9 +59,26 @@ Click the link, read the code, then come back.
 | [40](#40-a-reused-token-ends-every-session) | A reused token ends every session | [`auth_handler.go:281`](../../internal/api/auth_handler.go#L281) |
 | [41](#41-two-requests-one-token-the-row-lock) | Two requests, one token: the row lock | [`tokens.go:128`](../../internal/store/tokens.go#L128) |
 | [42](#42-logout) | Logout | [`auth_handler.go:331`](../../internal/api/auth_handler.go#L331) |
-| [43](#43-the-auth-middleware-and-v1me) | The auth middleware, and `/v1/me` | [`middleware.go:24`](../../internal/api/middleware.go#L24) |
+| [43](#43-the-auth-middleware-and-v1me) | The auth middleware, and `/v1/me` | [`middleware.go:42`](../../internal/api/middleware.go#L42) |
 | [44](#44-the-seed-command) | The seed command | [`cmd/seed/main.go:95`](../../cmd/seed/main.go#L95) |
 | [45](#45-go-idioms-appearing-for-the-first-time-in-the-session-code) | Transactions, nullable columns, arrays and slices, goroutines | [`tokens.go:108`](../../internal/store/tokens.go#L108) |
+| [46](#46-what-middleware-is-and-how-gin-chains-it) | What middleware is, and how Gin chains it | [`router.go:83`](../../internal/api/router.go#L83) |
+| [47](#47-cnext-and-cabort) | `c.Next()` and `c.Abort()` | [`errors.go:145`](../../internal/api/errors.go#L145) |
+| [48](#48-forgetting-abort-what-actually-goes-wrong) | Forgetting `Abort`: what actually goes wrong | [`middleware_test.go:132`](../../internal/api/middleware_test.go#L132) |
+| [49](#49-a-typed-context-key-and-currentuser) | A typed context key, and `CurrentUser` | [`middleware.go:19`](../../internal/api/middleware.go#L19) |
+| [50](#50-why-the-user-is-reloaded-instead-of-trusting-the-tokens-role) | Why the user is reloaded instead of trusting the token's role | [`middleware.go:68`](../../internal/api/middleware.go#L68) |
+| [51](#51-requirerole) | `RequireRole` | [`middleware.go:94`](../../internal/api/middleware.go#L94) |
+| [52](#52-testing-middleware-with-httptest-and-the-go-idioms-new-here) | Testing middleware with `httptest`; variadics, `slices`, atomics, `recover` | [`middleware_test.go:82`](../../internal/api/middleware_test.go#L82) |
+| [53](#53-resource-level-policy-and-what-makes-a-function-pure) | Resource-level policy, and what makes a function pure | [`policy.go:5`](../../internal/auth/policy.go#L5) |
+| [54](#54-why-a-plain-function-and-not-middleware) | Why a plain function and not middleware | [`policy.go:22`](../../internal/auth/policy.go#L22) |
+| [55](#55-the-rules-and-the-decisions-behind-the-two-that-were-not-specified) | The rules, and the two that were not specified | [`policy.go:42`](../../internal/auth/policy.go#L42) |
+| [56](#56-why-the-negative-cases-matter-more-than-the-positive-ones) | Why the negative cases matter more | [`policy_test.go:74`](../../internal/auth/policy_test.go#L74) |
+| [57](#57-counting-the-combinations) | Counting the combinations | [`policy_test.go:154`](../../internal/auth/policy_test.go#L154) |
+| [58](#58-filtering-in-sql-not-in-go) | Filtering in SQL, not in Go | [`applications.go:46`](../../internal/store/applications.go#L46) |
+| [59](#59-two-encodings-of-one-rule-and-the-check-that-they-agree) | Two encodings of one rule, and the check that they agree | [`application_handler.go:113`](../../internal/api/application_handler.go#L113) |
+| [60](#60-403-or-404) | 403 or 404 | [`decisions.md`](../decisions.md) |
+| [61](#61-testcontainers-go-and-why-a-real-postgresql-beats-a-mock) | testcontainers-go, and why a real PostgreSQL beats a mock | [`authz_test.go:60`](../../test/integration/authz_test.go#L60) |
+| [62](#62-testauthorizationmatrix) | `TestAuthorizationMatrix`; generics, spreading a slice, package build tags | [`authz_test.go:199`](../../test/integration/authz_test.go#L199) |
 
 ---
 
@@ -1190,7 +1210,7 @@ lists of problems per field. Nothing needs them yet, and a client can rely on
 
 ## 24. Errors that never reach a handler
 
-**📍 Open:** [`internal/api/router.go:32`](../../internal/api/router.go#L32)
+**📍 Open:** [`internal/api/router.go:41`](../../internal/api/router.go#L41)
 
 `Respond` only runs when a handler calls it. Three failures happen where no
 handler is involved, and Gin's defaults for all three break the one-shape rule:
@@ -1208,7 +1228,7 @@ for the second. `gin.CustomRecovery` still does the important part — it catche
 the panic, logs the value and a stack trace, and keeps the process alive — and
 only the response body is ours.
 
-`HandleMethodNotAllowed` at [`router.go:37`](../../internal/api/router.go#L37) is off in
+`HandleMethodNotAllowed` at [`router.go:46`](../../internal/api/router.go#L46) is off in
 Gin by default. Left off, `DELETE /healthz` is reported as "no such endpoint",
 which is untrue and sends a client looking for a typo in the URL.
 
@@ -1308,7 +1328,7 @@ against a real Postgres in
 [`users_integration_test.go`](../../internal/store/users_integration_test.go#L113).
 
 **Everything is assembled in one place.**
-[`main.go:81`](../../cmd/api/main.go#L81) builds the pool, the store, the token
+[`main.go:82`](../../cmd/api/main.go#L82) builds the pool, the store, the token
 manager and the handler, and hands them down. Nothing below `main` reads
 configuration or opens a connection.
 
@@ -1554,7 +1574,7 @@ decoder reads whatever a client sends.
 
 **📍 Open:** [`internal/api/auth_handler.go:92`](../../internal/api/auth_handler.go#L92)
 
-`domain.User` ([`user.go:17`](../../internal/domain/user.go#L17)) has seven
+`domain.User` ([`user.go:26`](../../internal/domain/user.go#L26)) has seven
 fields including `PasswordHash`. `userResponse` has five and no hash. The
 handler copies from one to the other in `newUserResponse`.
 
@@ -1711,7 +1731,7 @@ proxy keeps a copy of the token.
 
 ## 34. The router, and `/v1`
 
-**📍 Open:** [`internal/api/router.go:55`](../../internal/api/router.go#L55)
+**📍 Open:** [`internal/api/router.go:64`](../../internal/api/router.go#L64)
 
 `router.Group("/v1")` returns an object with the same `GET`/`POST` methods as
 the engine, which prefixes every path registered on it. Groups nest, so
@@ -1728,14 +1748,13 @@ meant to avoid.
 and load balancers, whose configuration names the path. They are not part of
 the API's contract and do not change when it does.
 
-**A group is also where shared middleware goes.** The next step adds
-`v1.Group("/jobs", requireAuth)` and every route in it is protected by one
-line.
+**A group is also where shared middleware goes.** `RequireAuth` is attached
+to one, so every route in it is protected by one line (section 46).
 
 **The routes moved out of `main`.** `NewRouter` takes a
-[`Deps`](../../internal/api/router.go#L14) struct and returns a finished
+[`Deps`](../../internal/api/router.go#L15) struct and returns a finished
 engine, so a test can build the same router the server runs —
-[`TestRoutes`](../../internal/api/router_test.go#L20) does, and checks that
+[`TestRoutes`](../../internal/api/router_test.go#L22) does, and checks that
 `/auth/register` without the version is a 404.
 
 **Rejected: versioning by header** (`Accept: application/vnd.hiredesk.v1+json`).
@@ -1771,7 +1790,7 @@ well. So `readyz(db, timeout)` is called once at startup and *returns* the
 handler; the returned function keeps `db` and `timeout` alive for as long as
 it exists. That is a closure, already met as the injected clock in section 17.
 
-**Method values.** [`router.go:61`](../../internal/api/router.go#L61)
+**Method values.** [`router.go:70`](../../internal/api/router.go#L70)
 
 `deps.Auth.Register` with no parentheses is not a call. It is a function value
 with the receiver already bound — a `func(*gin.Context)` that remembers which
@@ -2178,15 +2197,18 @@ fifteen minutes.
 
 ## 43. The auth middleware, and `/v1/me`
 
-**📍 Open:** [`internal/api/middleware.go:24`](../../internal/api/middleware.go#L24)
+**📍 Open:** [`internal/api/middleware.go:42`](../../internal/api/middleware.go#L42)
+
+*Rewritten as `RequireAuth` later in this module; sections 46–52 cover the
+current version. What follows still holds.*
 
 **Middleware** is a function that runs before a handler and can stop the
-request. `requireAuth` reads `Authorization: Bearer <token>`, verifies the
+request. `RequireAuth` reads `Authorization: Bearer <token>`, verifies the
 token with the `TokenManager` from section 11, and either answers 401 or
-leaves the verified claims on the request for the handler.
+leaves the authenticated user on the request for the handler.
 
 It is attached to a **group**
-([`router.go:73`](../../internal/api/router.go#L73)), not to a route. Every
+([`router.go:83`](../../internal/api/router.go#L83)), not to a route. Every
 route registered on `protected` is guarded, so protecting the next endpoint is
 adding a line inside the braces, and forgetting to protect it is impossible.
 
@@ -2207,22 +2229,16 @@ RFC 6750 requires it; it tells a client which scheme the server expects.
 a 401 — it is not a JWT. And an access token sent to `/v1/auth/refresh` gets a
 401 — it is not 32 bytes of base64url. Both are in the test tables.
 
-**`/v1/me` reads the database**
-([`auth_handler.go:354`](../../internal/api/auth_handler.go#L354)) rather than
-answering from the claims. The token says who the caller was when it was
-issued. Reading the row makes the answer current and means a user deleted
-since then gets a 401, not a profile
+**The database is read on every guarded request**
+([`middleware.go:68`](../../internal/api/middleware.go#L68)), not only by
+`/v1/me`. The token says who the caller was when it was issued. Reading the
+row makes the answer current and means a user deleted since then gets a 401,
+not a profile
 ([`TestMeForADeletedUser`](../../internal/api/session_test.go#L599)).
+Section 50 has the full argument.
 
-**How the claims travel.** `c.Set` stores a value on the request under a string
-key, and `c.Get` returns it as `any`.
-[`claimsFrom`](../../internal/api/middleware.go#L63) turns that back into
-`*auth.Claims` with a type assertion (section 45), so handlers never touch the
-key.
-
-**Not built yet: roles.** `requireAuth` proves *who*. Nothing yet checks *what
-they may do*; that is a second, small middleware reading `claims.Role`, and it
-arrives with the first endpoint that needs it.
+**How the user travels** to the handler — a typed key and `CurrentUser` — is
+section 49. Roles are section 51.
 
 ---
 
@@ -2310,11 +2326,11 @@ say which is which. A caller who swapped them would store the token and hand
 out the hash.
 
 **A type assertion with `ok`.**
-[`middleware.go:63`](../../internal/api/middleware.go#L63)
+[`middleware.go:137`](../../internal/api/middleware.go#L137)
 
-`value.(*auth.Claims)` converts an `any` back to a concrete type. The
+`value.(*domain.User)` converts an `any` back to a concrete type. The
 one-result form panics if the type is wrong; the two-result form,
-`claims, ok := …`, reports it. `errcheck` in this repository rejects the
+`user, ok := …`, reports it. `errcheck` in this repository rejects the
 one-result form.
 
 **`switch` with no value.**
@@ -2335,6 +2351,877 @@ counters they all write to.
 
 **`for range n`.** `for range 1000` runs the body a thousand times, with no
 loop variable needed.
+
+---
+
+## 46. What middleware is, and how Gin chains it
+
+**📍 Open:** [`internal/api/router.go:83`](../../internal/api/router.go#L83)
+
+A Gin route is not one function. It is a **list** of `gin.HandlerFunc`, and
+each one has the same signature, `func(c *gin.Context)`. "Middleware" is
+just the name for the entries in front of the last one: they get to look at
+the request first, and they may stop it.
+
+The list is built from three places, outermost first:
+
+| Registered with | Applies to | Here |
+|---|---|---|
+| `router.Use(…)` | every route on the engine | `gin.Logger()`, `Recovery()` ([`router.go:42`](../../internal/api/router.go#L42)) |
+| `v1.Group("", …)` | every route registered on that group | `RequireAuth` ([`router.go:83`](../../internal/api/router.go#L83)) |
+| the route itself | that route only | `deps.Auth.Me` |
+
+So a request for `GET /v1/me` runs this list:
+
+```
+[0] gin.Logger   [1] Recovery   [2] RequireAuth   [3] Me
+```
+
+Gin keeps an **index** into the list on the `gin.Context`. It starts at the
+first entry and, each time a function returns, moves to the next. That is the
+whole mechanism: there is no special "middleware" type, and nothing in Go
+itself is involved. A handler and a middleware differ only in where they sit.
+
+**Why a group and not each route.** Attaching `RequireAuth` to the group means
+every route registered inside it is guarded. Protecting a new endpoint is
+adding a line inside the braces, and forgetting to protect one is impossible
+unless it is registered outside them.
+
+**Why `RequireAuth` returns a function.** `RequireAuth(tokens, users)` is
+called **once**, when the router is built, and returns the
+`gin.HandlerFunc` that runs on every request. The returned function closes over
+`tokens` and `users` (a *closure*, first seen in section 35), so each request
+gets its dependencies without a global variable.
+
+---
+
+## 47. `c.Next()` and `c.Abort()`
+
+**📍 Open:** [`internal/api/middleware.go:82`](../../internal/api/middleware.go#L82) and [`internal/api/errors.go:145`](../../internal/api/errors.go#L145)
+
+Both move Gin's index; neither stops the Go function that calls it.
+
+**`c.Next()`** runs the *rest* of the list immediately, and returns to the
+caller when it has finished. Code after `c.Next()` therefore runs **after**
+the handler. This is how `gin.Logger` measures latency:
+
+```go
+start := time.Now()
+c.Next()                         // the handler runs inside this call
+log(time.Since(start), c.Writer.Status())
+```
+
+A middleware that only needs to act *before* the handler does not call it.
+Returning normally is enough, because Gin's loop moves to the next entry
+anyway. `RequireAuth` and `RequireRole` both work that way, which is why
+neither contains `c.Next()`.
+
+**`c.Abort()`** sets the index past the end of the list (to `abortIndex`, 63),
+so when the current function returns Gin's loop finds nothing left to run.
+It does **not** write a response, and it does **not** return from the current
+function. `c.AbortWithStatusJSON(status, body)` is `Abort` plus writing the
+body.
+
+In this codebase every error goes through `Respond`, which ends in
+[`write`](../../internal/api/errors.go#L139), which calls
+`c.AbortWithStatusJSON`. So rejecting a request is always two lines:
+
+```go
+rejectBearer(c, domain.ErrUnauthenticated) // writes the 401 and aborts the chain
+return                                     // leaves this function
+```
+
+Each line does a job the other cannot:
+
+| | Stops later handlers | Stops the rest of *this* function |
+|---|---|---|
+| `c.Abort()` | yes | **no** |
+| `return` | **no** | yes |
+
+Forget `return` and the middleware carries on: here, it would go on to parse
+a token that is not there. Forget the abort and the next section happens.
+
+---
+
+## 48. Forgetting `Abort`: what actually goes wrong
+
+**📍 Open:** [`internal/api/middleware_test.go:132`](../../internal/api/middleware_test.go#L132)
+
+This is the bug the two-line pattern prevents. A middleware that writes an
+error with `c.JSON` and returns, without aborting:
+
+```go
+func buggyAuth(c *gin.Context) {
+	if c.GetHeader("Authorization") == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
+		return // leaves buggyAuth; Gin then runs the next handler
+	}
+}
+```
+
+In front of a handler that deletes something, and called with no token at
+all, it produced this (run once as a throwaway test, then deleted):
+
+**Output — not a command:**
+
+```
+[GIN-debug] [WARNING] Headers were already written. Wanted to override status code 401 with 200
+status=401
+body={"error":"unauthenticated"}{"deleted":42}
+handler side effects=1
+```
+
+Three separate failures in one request:
+
+1. **The handler ran.** The delete happened, for a caller with no credentials.
+   This is the one that matters: authentication that only *reports* failure
+   is not authentication.
+2. **The status lies.** The 401 was written first, and HTTP sends the status
+   line before the body, so the handler's 200 could not replace it. Gin's
+   warning is the only sign. Access logs, metrics and the client all record a
+   refused request — for an action that took place.
+3. **The body is two JSON documents back to back**, which is not valid JSON.
+   A client parsing it fails, so the mistake looks like a client bug.
+
+**Why it is common.** `return` *looks* final, and `c.JSON` *looks* like
+answering the request. Neither is: a middleware returning normally is how it
+says "carry on".
+
+**How this codebase guards against it.**
+
+- There is one place an error is written, and it always aborts
+  ([`errors.go:145`](../../internal/api/errors.go#L145)). No middleware calls
+  `c.JSON` for a failure.
+- Every middleware test counts how many requests reached the handler and
+  checks the handler's output is absent from the body.
+
+**The guard was tested by breaking it.** With `AbortWithStatusJSON` in
+`write` changed to `c.JSON`, the new tests failed exactly as above:
+
+**Output — not a command:**
+
+```
+middleware_test.go:122: handler ran 1 time(s); it must never run without a valid credential
+middleware_test.go:272: body is not the envelope: invalid character 'h' after top-level value
+    {"error":{"code":"forbidden","message":"You do not have permission to do that.","details":{}}}handler ran
+```
+
+The change was reverted with `git checkout` and the tests pass again.
+
+---
+
+## 49. A typed context key, and `CurrentUser`
+
+**📍 Open:** [`internal/api/middleware.go:19`](../../internal/api/middleware.go#L19) and [`internal/api/middleware.go:129`](../../internal/api/middleware.go#L129)
+
+`c.Set(key, value)` stores a value for the rest of this request, and
+`c.Get(key)` reads it back. In Gin 1.11 the store is a `map[any]any`, so the
+key can be any comparable value.
+
+**What a map key really is.** When the key is an interface value, Go compares
+**both the dynamic type and the value**. So these are two different keys,
+even though they print the same:
+
+```go
+type contextKey string
+const currentUserKey contextKey = "currentUser"
+
+c.Set(currentUserKey, user)   // key: (api.contextKey, "currentUser")
+c.Set("currentUser", other)   // key: (string, "currentUser")
+```
+
+`contextKey` is a **defined type**: a new type whose *underlying* type is
+`string`. It has the same representation as a string but is not
+interchangeable with one, so a `string` never equals a `contextKey`.
+
+**Why that matters.**
+
+- **No collisions.** Any package in the process — including a third-party
+  middleware — can call `c.Set("currentUser", …)` or `c.Set("user", …)`. With
+  a plain string key, the last writer wins, silently. `contextKey` is
+  unexported, so no other package can even construct a value of it.
+- **No forgery.** For the same reason, nothing outside `api` can plant a
+  user for `CurrentUser` to return. A test proves it: a user stored under
+  the plain string `"currentUser"` is not found
+  ([`middleware_test.go:363`](../../internal/api/middleware_test.go#L363)).
+- **Typos stop compiling.** A misspelt *constant* name is a compile error. A
+  misspelt string literal is a `Get` that quietly returns nothing.
+
+The previous version used `const claimsKey = "auth.claims"`, a plain string.
+It worked, but only because nothing else happened to use that text.
+
+The same rule applies to `context.Context`: `context.WithValue` with a string
+key is flagged by `staticcheck` (SA1029) for exactly this reason.
+
+**Rejected alternative: `type contextKey struct{}`.** Also collision-proof,
+and takes no memory. A string-based type was chosen because the key stays
+readable when `c.Keys` is printed while debugging.
+
+**Why a helper at all.** `c.Get` returns `any`, so every caller would need a
+type assertion and a decision about what to do when it fails.
+`CurrentUser` does that once:
+
+- the two-value assertion `value.(*domain.User)`
+  ([`middleware.go:137`](../../internal/api/middleware.go#L137)) reports a
+  wrong type through `ok` instead of panicking;
+- it returns `(domain.User, bool)`, so a handler on an unguarded route gets
+  `false` and must handle it, rather than a nil pointer to dereference;
+- it returns a **copy** ([`middleware.go:141`](../../internal/api/middleware.go#L141)).
+  `*user` dereferences the pointer, and returning a struct by value copies
+  every field. A handler that changes its copy cannot change what
+  `RequireRole`, or anything later, sees.
+
+`Me` is now three lines: read `CurrentUser`, respond
+([`auth_handler.go:354`](../../internal/api/auth_handler.go#L354)).
+
+---
+
+## 50. Why the user is reloaded instead of trusting the token's role
+
+**📍 Open:** [`internal/api/middleware.go:68`](../../internal/api/middleware.go#L68)
+
+The access token carries a `role` claim, and its signature is valid. It is
+still not used for authorisation.
+
+**What the signature proves, and what it does not.** It proves this server
+issued the token, and that nobody changed it since (section 13). It says
+nothing about whether it is *still true*. A token is a **snapshot** taken at
+login, and it stays valid for fifteen minutes whatever happens in between.
+
+Within those fifteen minutes, an admin might:
+
+| Change in the database | Trusting the claim | Reloading the row |
+|---|---|---|
+| demote an interviewer to candidate | still an interviewer until `exp` | candidate on the next request |
+| delete an account | still authenticated until `exp` | 401 on the next request |
+| promote a candidate | must log in again to see it | effective on the next request |
+
+All three were run against the Compose stack with one access token held
+throughout:
+
+**Output — not a command:**
+
+```
+me as interviewer                        → role "interviewer", 200
+UPDATE users SET role='candidate' …       → role "candidate",   200  (same token)
+DELETE FROM users …                       → unauthenticated,    401  (same token)
+```
+
+**What it costs.** One primary-key lookup per authenticated request. `users.id`
+is the primary key, so it is an index read of one row, on a pool that is
+already open. That is cheap compared with the cost of acting on a stale role.
+
+**Alternatives rejected.**
+
+- **Trust the claim, shorten the token.** Narrows the window but never
+  closes it, and makes clients refresh constantly.
+- **A denylist of revoked tokens.** Needs a lookup on every request anyway,
+  plus a place to keep the list.
+- **A `token_version` column, copied into the token.** Bump it on any change
+  and reject tokens with an old number. Also a lookup per request, plus a
+  migration — and it only refuses; it does not give the handler the current
+  user.
+
+**The role is still in the token.** Nothing reads it for decisions. It is
+harmless, but it is also unnecessary; see *Still open*.
+
+**A failed lookup is a 500, not a 401.** The request asked for 401 "on any
+failure". A database that cannot be reached says nothing about the
+credential, which may be perfectly valid. A 401 tells a well-behaved client
+its tokens are bad, so it discards them and sends the user back to the login
+form — during an outage, when login will fail too. A 500 says "try again".
+Only a lookup that *succeeds* and finds no user is a 401
+([`middleware.go:69`](../../internal/api/middleware.go#L69)).
+
+---
+
+## 51. `RequireRole`
+
+**📍 Open:** [`internal/api/middleware.go:94`](../../internal/api/middleware.go#L94)
+
+`RequireRole(roles ...string)` lets a request through if `CurrentUser` holds
+one of the roles, and answers 403 otherwise. It reads the user `RequireAuth`
+stored, so **order matters**:
+
+```go
+staff := protected.Group("", RequireRole(domain.RoleAdmin, domain.RoleInterviewer))
+```
+
+`protected` already runs `RequireAuth`, so the chain is
+`… RequireAuth → RequireRole → handler`.
+
+**401 versus 403.** 401 means "I do not know who you are" and carries a
+`WWW-Authenticate` challenge: logging in might help. 403 means "I know who you
+are, and the answer is no": logging in again would not help, so no challenge
+is sent ([`middleware_test.go:226`](../../internal/api/middleware_test.go#L226)).
+
+**Registered in the wrong order** — `RequireRole` without `RequireAuth` in
+front — `CurrentUser` finds nothing. That is a mistake in this server, not the
+client's, so it is a 500, and the log says which middleware is missing
+([`middleware.go:110`](../../internal/api/middleware.go#L110)).
+
+**It panics on a mistake in the route table.**
+[`middleware.go:96`](../../internal/api/middleware.go#L96)
+
+`RequireRole()` with no roles, or with a misspelling like `"admn"`, would
+refuse every request — silently, and only noticed when someone tries the
+endpoint. These are programming errors fixed by editing code, not runtime
+conditions, so `RequireRole` panics. It runs while `NewRouter` builds the
+routes, so the server fails at startup and the first test that builds the
+router fails too. The standard library does the same in
+`regexp.MustCompile`. Returning an error was rejected: every route
+registration would need error handling for a condition that is always a bug.
+
+**`slices.Clone`** ([`middleware.go:106`](../../internal/api/middleware.go#L106))
+copies the roles. Called as `RequireRole(roles...)`, the function receives
+the caller's own slice, not a copy, and a later `roles[0] = …` would change
+which roles the route accepts. A test does exactly that
+([`middleware_test.go:329`](../../internal/api/middleware_test.go#L329)).
+
+**`slices.Contains`** ([`middleware.go:117`](../../internal/api/middleware.go#L117))
+is a linear scan. With at most three roles, it is faster than building a map.
+
+**`domain.IsRole`** ([`user.go:14`](../../internal/domain/user.go#L14)) lists
+the valid roles in one place, beside the constants. It lives in `domain`
+because the set of roles is a rule of the hiring pipeline, not of HTTP.
+
+**Not wired to a route yet.** No endpoint needs a role today; job posts will
+be the first. The tests use their own small engine.
+
+---
+
+## 52. Testing middleware with `httptest`, and the Go idioms new here
+
+**📍 Open:** [`internal/api/middleware_test.go:82`](../../internal/api/middleware_test.go#L82)
+
+**The test the brief asked for** —
+`TestRequireAuthNeverRunsTheHandlerWithoutAValidCredential` — builds an
+engine with `RequireAuth` in front of a handler that counts its calls, sends
+six bad requests through `httptest`, and checks for each:
+
+- the counter is still **0**;
+- the status is 401, and the body is the envelope with the right `code`;
+- the handler's output is **absent** from the body (section 48's double body);
+- a `WWW-Authenticate: Bearer` challenge is present.
+
+The six cases: no header, `Basic` scheme, `Bearer ` with nothing after it,
+garbage, an expired token, and a valid token for a user who does not exist.
+
+`httptest.NewRecorder` is an `http.ResponseWriter` that keeps what was written,
+and `engine.ServeHTTP` runs the whole chain in the test's goroutine. No port
+is opened.
+
+**`gin.CreateTestContext`**
+([`middleware_test.go:351`](../../internal/api/middleware_test.go#L351)) builds a
+bare `*gin.Context` for testing `CurrentUser` directly, without a route.
+
+**Go idioms appearing for the first time**
+
+- **Variadic parameters.** `roles ...string` accepts any number of strings,
+  and inside the function `roles` is a `[]string`. A caller with a slice
+  already passes it with `RequireRole(roles...)` — which hands over the
+  slice itself, hence `slices.Clone` above.
+- **The `slices` package.** Generic helpers over any slice type, in the
+  standard library since Go 1.21: `Clone`, `Contains`, `Sort`, `Index`.
+- **Defined types**, `type contextKey string` (section 49).
+- **`atomic.Int32` and `atomic.Pointer[T]`**
+  ([`middleware_test.go:24`](../../internal/api/middleware_test.go#L24)). Counters
+  safe to update from several goroutines. `ServeHTTP` runs synchronously, so a
+  plain `int` would pass today; the atomic type keeps the helper safe if a
+  test ever sends requests concurrently. `Pointer[T]` is a **generic** type:
+  `T` is filled in at the use site, here `domain.User`.
+- **`recover()` in a test**
+  ([`middleware_test.go:320`](../../internal/api/middleware_test.go#L320)). A
+  deferred function that calls `recover` stops a panic and returns its value,
+  or `nil` if there was no panic. That is how the test asserts that
+  `RequireRole` panics.
+
+---
+
+## 53. Resource-level policy, and what makes a function pure
+
+**📍 Open:** [`internal/auth/policy.go:5`](../../internal/auth/policy.go#L5)
+
+`RequireRole` answers "what *kind* of user is this?". Most questions in a
+hiring pipeline are about **one user and one record**: may *this* candidate
+see *this* application? `policy.go` answers those, as three functions with
+one shape:
+
+```go
+func CanViewApplication(u domain.User, app domain.Application, assigned bool) bool
+func CanReviewApplication(u domain.User, app domain.Application, assigned bool) bool
+func CanChangeApplicationStatus(u domain.User, app domain.Application, assigned bool) bool
+```
+
+**A function is pure when both of these hold:**
+
+1. **Same arguments, same answer, every time.** Nothing else feeds in: no
+   clock, no database, no environment variable, no global, no random number,
+   no request.
+2. **It changes nothing.** No writes, no logging, no modifying its arguments.
+
+`policy.go` imports exactly one package, `domain`, for the types. That import
+list is the proof: there is nothing in scope that could reach the outside
+world. Note also that the arguments are passed **by value** — a `domain.User`,
+not a `*domain.User` — so the function receives copies and could not change the
+caller's structs even by mistake.
+
+**Why it matters for authorization in particular.**
+
+- **The whole rule is visible in one place.** A reviewer, an auditor, or you in
+  six months, reads twenty lines and knows exactly who can do what. There is no
+  hidden input that changes the answer on a Tuesday.
+- **It can be tested exhaustively.** With no database to set up, every
+  combination runs in microseconds: 36 cases × 3 functions, plus the
+  invariants, in well under a millisecond. Impure code gets tested on the few
+  cases someone bothered to set up.
+- **A failure is a wrong rule, never a flaky dependency.** If a test fails,
+  the policy is wrong. It cannot be a timeout, a missing row or a stale cache.
+- **The decision is separate from gathering the facts.** Loading the user,
+  the application and the assignment is the caller's job, and can fail
+  (database down). The decision itself cannot fail, so it returns a plain
+  `bool`, not `(bool, error)`.
+
+**Why `assigned` is a parameter.** Whether an interviewer is assigned lives
+in `interviewer_assignments`. Looking it up inside the policy would make the
+policy impure. Instead the caller looks it up and passes the answer in — a
+technique sometimes called *functional core, imperative shell*: the shell does
+I/O, the core decides.
+
+---
+
+## 54. Why a plain function and not middleware
+
+**📍 Open:** [`internal/api/middleware.go:94`](../../internal/api/middleware.go#L94) for contrast
+
+Middleware runs **before** the handler, and at that point it has:
+
+- the request: method, path, headers, the `:id` in the URL;
+- the user `RequireAuth` loaded.
+
+What it does **not** have is the **resource**. `GET /v1/applications/:id`
+gives middleware a string ID. Whose application that is, and whether an
+interviewer is assigned to it, are in the database, and loading them is what
+the handler is about to do anyway.
+
+So middleware can enforce "you must be an admin to reach this route" — a rule
+about the user alone. It cannot enforce "you must own this application"
+without either:
+
+- **loading the application itself**, and then the handler loads it again, or
+  reaches into the context for it: two components now share hidden state, and
+  every route needs its own loader; or
+- **guessing from the URL**, which is how authorization bugs happen.
+
+The policy is called by the handler, after it has loaded what it needs:
+
+```go
+app, err := h.apps.GetApplication(ctx, id)
+assigned, err := h.assignments.IsAssigned(ctx, app.ID, user.ID)
+if !auth.CanViewApplication(user, *app, assigned) { … }
+```
+
+Being a plain function also means it is **reusable outside HTTP**: a list
+endpoint can filter rows with it, a background job can check it, an admin CLI
+can call it. Middleware is tied to Gin.
+
+The two layers work together, not instead of each other. `RequireRole` is a
+cheap coarse filter at the door; the policy is the precise check once the
+record is in hand.
+
+---
+
+## 55. The rules, and the decisions behind the two that were not specified
+
+**📍 Open:** [`internal/auth/policy.go:42`](../../internal/auth/policy.go#L42)
+
+`CanViewApplication` follows the brief exactly. The brief named the other two
+and gave them the same shape, but not their rules. These were chosen:
+
+| | admin | interviewer | candidate | any other role |
+|---|---|---|---|---|
+| **View** | always | if assigned | if they own it | never |
+| **Review** | **never** | if assigned **and** not their own | never | never |
+| **Change status** | always | never | never | never |
+
+- **Admins do not review.** An admin decides the outcome; the marks they read
+  to decide come from someone else. If an admin could mark and decide, the
+  review step would be a formality.
+- **No self-review.** An interviewer can also be a candidate — `candidate_id`
+  references any user. One assigned to their own application may view it,
+  per the brief's rule, but may not mark it.
+- **Interviewers do not change status.** They recommend through a review.
+- **Candidates never act**, even on their own application. "Change status" on
+  your own application means awarding yourself an offer.
+
+If any of these is not what you intend, each is a one-line change to the
+function and a few cells of the table.
+
+**Three defences that run through all three functions:**
+
+- **Deny by default.** Each `switch` lists the roles that may act; everything
+  else lands in `default: return false`
+  ([`policy.go:30`](../../internal/auth/policy.go#L30)). A new role added to the
+  database gets nothing until someone writes a rule for it. The opposite
+  shape — `if role == candidate { return false }` — would hand every unknown
+  role everything.
+- **Exact role comparison.** `"Admin"` is not `"admin"`. The database stores
+  lowercase and its `CHECK` enforces it; a case-insensitive match would only
+  widen the door.
+- **Empty IDs never match** ([`policy.go:71`](../../internal/auth/policy.go#L71)).
+  A zero-value `User` and a zero-value `Application` both have ID `""`, and
+  `"" == ""` is true. Without the guard, a handler that forgot to load the user
+  would grant a candidate ownership of an application that failed to load.
+
+**`CanChangeApplicationStatus` ignores two of its arguments**
+([`policy.go:59`](../../internal/auth/policy.go#L59)). The blank identifier `_`
+as a parameter name says so, and stops the linter asking why they are unused.
+They stay so all three functions are called the same way, and so a later rule
+— "not once an offer has been accepted" — needs no change at any call site.
+
+---
+
+## 56. Why the negative cases matter more than the positive ones
+
+**📍 Open:** [`internal/auth/policy_test.go:74`](../../internal/auth/policy_test.go#L74)
+
+**The two kinds of failure are not symmetric.**
+
+- A policy that wrongly says **no** is noticed within the hour: a real user
+  hits a 403 and reports it.
+- A policy that wrongly says **yes** is noticed by nobody. The user it lets in
+  is not going to file a bug. It surfaces in a breach report, months later.
+
+So the tests that matter most are the ones that assert `false`, because
+nothing else in the system will catch those mistakes. In this table,
+**89 of the 108 expectations are `false`**.
+
+**Measured, not argued.** Each rule in `policy.go` was broken in turn — ten
+plausible mistakes — and the suite run against each. Then the same ten were
+run against a throwaway copy of the test that checked **only** the `true`
+expectations (19 of 108), as a happy-path suite would:
+
+| Mistake introduced | Full table | Happy paths only |
+|---|---|---|
+| Drop the empty-ID guard in `owns` | caught | caught |
+| `&&` becomes `\|\|` in `owns` | caught | caught |
+| Candidate may view any application | caught | **survived** |
+| Interviewer may view without assignment | caught | **survived** |
+| Unknown roles may view (fail open) | caught | **survived** |
+| Interviewer may review their own application | caught | **survived** |
+| Review ignores assignment | caught | **survived** |
+| Admin may review | caught | **survived** |
+| Status change: deny candidates instead of allow admins | caught | **survived** |
+| Case-insensitive role comparison | caught | **survived** |
+
+The happy-path suite caught **2 of 10**, and those two only because `owns` is
+also used in a *negative* position (`!owns` in review), so widening it took a
+grant away. Every mistake that *adds* access survived. That is the shape of
+real authorization bugs: they add access.
+
+One mistake — self-review — was caught by **exactly one** assertion: the row
+`interviewer / owner / assigned`. Remove that row and nothing would notice.
+That is why the table is complete rather than "representative".
+
+---
+
+## 57. Counting the combinations
+
+**📍 Open:** [`internal/auth/policy_test.go:154`](../../internal/auth/policy_test.go#L154)
+
+**What the code can tell apart.** The rules branch on three inputs:
+
+| Input | Classes the code distinguishes | Values tested |
+|---|---|---|
+| role | admin, interviewer, candidate, *anything else* | 6: the three, plus `""`, `"Admin"`, `"superuser"` for *anything else* |
+| ownership | owns it; someone else's; both IDs empty (the guard) | 3 |
+| assigned | true, false | 2 |
+
+- **Minimum to touch every class:** 4 × 3 × 2 = **24** combinations per
+  function, **72** expectations in all.
+- **What the table has:** 6 × 3 × 2 = **36** rows, each checked against all
+  three functions = **108** expectations (19 true, 89 false).
+
+**Does the test cover all of them? Yes — and a test proves it, rather than a
+count by eye.** `TestPolicyTableIsComplete` builds the full cross product of
+the three value lists and fails if any combination is missing from
+`policyTable`, appears twice, or if the row count differs. Adding a role to
+`testRoles` without writing its six rows fails the build.
+
+**What "all" does not include**, honestly:
+
+- **Every possible string.** `role` is a `string`, so there are infinitely
+  many values. They are covered by *equivalence class*: every value that is
+  not one of the three roles takes the same `default` branch, and three
+  different kinds of wrong are tested. Full coverage of a string is not
+  achievable; full coverage of the branches is.
+- **Fields the rules ignore.** `Status`, `JobPostID` and the rest do not appear
+  in any rule. `TestPolicyInvariants` re-runs all 36 combinations under each of
+  the five statuses and fails if any answer changes, so the day a rule starts
+  depending on status, the test says the table needs a status dimension.
+- **Whether the caller computes `assigned` correctly.** A pure function trusts
+  its inputs. If a handler passes `true` for the wrong user, the policy cannot
+  know. That is tested where the lookup lives, once it exists.
+
+**Invariants checked across every combination**
+([`policy_test.go:204`](../../internal/auth/policy_test.go#L204)):
+
+- nobody may review or change what they may not view;
+- nobody may both review and change status.
+
+---
+
+## 58. Filtering in SQL, not in Go
+
+**📍 Open:** [`internal/store/applications.go:46`](../../internal/store/applications.go#L46)
+
+`ListApplications` runs a **different query for each role**:
+
+| Role | Query | Index that serves it |
+|---|---|---|
+| admin | every row | — |
+| candidate | `WHERE a.candidate_id = $1` ([`:64`](../../internal/store/applications.go#L64)) | `applications_candidate_id_idx` |
+| interviewer | `JOIN interviewer_assignments … WHERE ia.interviewer_id = $1` ([`:76`](../../internal/store/applications.go#L76)) | `interviewer_assignments_interviewer_id_idx` |
+| anything else | no query: `ErrForbidden` ([`:81`](../../internal/store/applications.go#L81)) | — |
+
+The rejected design is the one that looks simpler:
+
+```go
+all, _ := store.AllApplications(ctx)        // SELECT * FROM applications
+for _, a := range all {
+	if auth.CanViewApplication(user, a, isAssigned(a)) {
+		visible = append(visible, a)
+	}
+}
+```
+
+**The performance half.** Every request reads, transfers and decodes every
+application in the system, to return a handful. With 50,000 applications a
+candidate who has three waits for 50,000 rows. Worse for interviewers:
+`isAssigned` is one query **per row** — the *N+1 query* problem. The SQL
+version reads only the matching rows, through an index.
+
+**The security half — the specific bug it invites.** The fetch-everything
+version is only safe if **every** code path that touches `all` remembers to
+filter. The data is unfiltered by default, and the filter is something added
+afterwards. That fails in predictable ways:
+
+1. **Pagination applied before the filter.** Someone adds `LIMIT 20` to the
+   query for speed. The database returns the first 20 applications *in the
+   system*, Go filters them, and a candidate gets 0 rows on page 1 and their
+   own on page 37. Then someone adds a `total` field from `COUNT(*)` — which
+   tells every candidate how many applications the whole company has received.
+2. **The second endpoint forgets.** A CSV export, a count, a search, a
+   "recent activity" widget: each reuses `AllApplications`, and the one whose
+   author forgot the loop ships everyone's CVs.
+3. **The unfiltered slice escapes.** It gets logged when debugging, put in an
+   error message, or cached under a key without the user in it.
+
+Each of these is a bug where the **default is "everything"** and safety
+depends on remembering. With the filter in SQL the default flips: the rows a
+caller may not see **never leave the database**, so no later mistake in Go can
+leak them. There is nothing to forget, because there is nothing to filter.
+
+**It denies by default too.** A role with no `case` gets no query at all. The
+tempting alternative — admin query as the fallback, with `WHERE` clauses added
+for the roles that need restricting — would hand an unknown role every row.
+That exact mistake was introduced as a test (section 62) and caught.
+
+**`pgx.CollectRows`** ([`:97`](../../internal/store/applications.go#L97)) reads
+every row through a function, closes the result set, and returns `rows.Err()`.
+That last one matters: an error part-way through a result (a dropped
+connection after row 400) is reported only by `rows.Err()`, and a hand-written
+`for rows.Next()` loop that forgets it returns a silently truncated list.
+
+---
+
+## 59. Two encodings of one rule, and the check that they agree
+
+**📍 Open:** [`internal/api/application_handler.go:113`](../../internal/api/application_handler.go#L113)
+
+The visibility rule now exists twice:
+
+- **for many rows**, as the three SQL queries above;
+- **for one row**, as `auth.CanViewApplication` (section 53), called by `Get`.
+
+That duplication is the price of filtering in SQL: a pure Go function cannot
+become a `WHERE` clause. Two encodings can **drift** — someone adds "admins of
+a post see its applications" to the policy and forgets the query. The symptom
+is a list showing rows that then 404 when opened, or the reverse.
+
+`TestAuthorizationMatrix` checks the two against each other for every caller
+([`authz_test.go:307`](../../test/integration/authz_test.go#L307)): an
+application is in the list **if and only if** fetching it alone returns 200.
+
+**`Get` needs two facts, fetched in one query.**
+[`applications.go:132`](../../internal/store/applications.go#L132) returns the
+row and, via `EXISTS (…)`, whether the caller is assigned to it. Then the
+handler calls the pure policy. The store gathers facts; the policy decides.
+
+---
+
+## 60. 403 or 404
+
+**📍 Open:** [`docs/decisions.md`](../decisions.md) — decision D1
+
+**A refused view answers 404, identical to a missing record**
+([`application_handler.go:115`](../../internal/api/application_handler.go#L115)).
+The full record — when 403 is still right, what was rejected, what it costs —
+is in `docs/decisions.md`. The core argument:
+
+| | 403 Forbidden | 404 Not Found |
+|---|---|---|
+| Tells the caller | "this exists, and it is not yours" | "nothing here for you" |
+| Lets any account holder discover which IDs are real | **yes** | no |
+| Helps a legitimate developer debug | yes | less |
+
+**404 leaks less**, and it only works if it is applied *everywhere* and
+*exactly*: if refusals and misses differed in any way — status, body, a header,
+or the time taken — the difference would be the leak. So:
+
+- the body comes from the same `Respond(c, domain.ErrNotFound)` call in both
+  paths, with no wrapped message (the client never sees one anyway, section 22);
+- a malformed ID is also a 404 with the same body;
+- the store fetches row and assignment in **one** query, so a refusal does not
+  take a measurably different time from a miss.
+
+**403 is still right** when the caller already knows the thing exists: a route
+limited by `RequireRole` (routes are public), or an action on a record they can
+view but not change.
+
+---
+
+## 61. testcontainers-go, and why a real PostgreSQL beats a mock
+
+**📍 Open:** [`test/integration/authz_test.go:60`](../../test/integration/authz_test.go#L60)
+
+**How it works.** testcontainers-go is a Go library that talks to the Docker
+daemon's API — the same API the `docker` command uses. `postgres.Run`:
+
+1. pulls `postgres:16-alpine` if it is not present, and creates a container
+   from it, publishing port 5432 on a **random free port** of the host, so
+   parallel test runs never collide;
+2. copies the six `*.up.sql` migrations into `/docker-entrypoint-initdb.d`
+   ([`:78`](../../test/integration/authz_test.go#L78)), which the official
+   image runs with `psql`, in order, the first time it initialises — the same
+   files, applied the same way, as production;
+3. **waits** ([`:82`](../../test/integration/authz_test.go#L82)) until the
+   server has logged "ready to accept connections" twice (the image restarts
+   once after running init scripts) and the port accepts connections. Without
+   a wait strategy, the test would race the database's startup;
+4. returns a handle whose `ConnectionString` gives the DSN with the random
+   port filled in.
+
+**Cleanup has two layers.** `testcontainers.CleanupContainer`
+([`:87`](../../test/integration/authz_test.go#L87)) removes the container when
+the test ends. If the test process is killed before that can run, a small
+companion container called **Ryuk** — started automatically by the library —
+notices the test process's connection drop and removes everything it started.
+No container outlives the run.
+
+**Why not a mock.** A mock `ApplicationStore` returns whatever the test tells
+it to. But in this change, **the SQL is the authorization**. The things that
+could be wrong are things only PostgreSQL can answer:
+
+- does `WHERE a.candidate_id = $1` really restrict to one candidate?
+- does the inner `JOIN` drop unassigned applications, and can it produce
+  duplicates? (`LEFT JOIN` would leak; the test caught that.)
+- does `'not-a-uuid'::uuid` raise 22P02, and is that mapped to 404?
+- does `EXISTS` see the assignment?
+- do the migrations even apply on a clean database?
+
+A mock of the store would have to re-implement the filtering in Go to be
+useful — which is precisely the design section 58 rejects, now living in the
+test, where it can be right while the SQL is wrong. The handler unit tests in
+`application_handler_test.go` *do* use a fake store, but only to test the
+handler's own logic: what it passes the store, and how it maps errors.
+
+**Why a container and not the Compose database.** The store tests in
+`internal/store` use the running stack, so they must tolerate whatever else is
+in it (the admin check there says "contains", not "equals"). The matrix needs
+to know *exactly* which rows exist, to assert an exact list. A container of its
+own starts empty, every time.
+
+**The costs.** Docker must be running, and the test takes about 7 seconds the
+first time (seconds after, with the image cached). It sits behind the
+`integration` build tag, like the store tests, so `make test` stays fast and
+needs nothing.
+
+---
+
+## 62. `TestAuthorizationMatrix`
+
+**📍 Open:** [`test/integration/authz_test.go:199`](../../test/integration/authz_test.go#L199)
+
+**The shape.** One row per caller, one column per endpoint, the expected
+status in each cell — readable as a matrix:
+
+| caller | `/v1/me` | list | get A | get B | get missing | get malformed |
+|---|---|---|---|---|---|---|
+| anonymous | 401 | 401 | 401 | 401 | 401 | 401 |
+| token for a deleted user | 401 | 401 | 401 | 401 | 401 | 401 |
+| admin | 200 | 200 · A, B | 200 | 200 | 404 | 404 |
+| interviewer assigned to A | 200 | 200 · A | 200 | 404 | 404 | 404 |
+| interviewer assigned to nothing | 200 | 200 · none | 404 | 404 | 404 | 404 |
+| candidate who owns A | 200 | 200 · A | 200 | 404 | 404 | 404 |
+| candidate who owns B | 200 | 200 · B | 404 | 200 | 404 | 404 |
+| candidate with a forged admin claim | 200 | 200 · A | 200 | 404 | 404 | 404 |
+
+8 callers × 6 endpoints = **48 cells**, plus **6** list-agreement checks (one
+per caller who can list) = 54 subtests.
+
+**What each cell asserts, beyond the status:**
+
+- a **401** carries the `unauthenticated` code;
+- a **404** is **byte-for-byte** the body this same caller gets for an ID that
+  does not exist — decision D1, tested on every refusal;
+- a **list** contains **exactly** the expected IDs, no more, no fewer, none
+  twice. Asserting the status alone would be worthless here: a list that leaks
+  every application still returns 200;
+- a **single fetch** returns the application asked for.
+
+**The matrix cannot fall behind the router.**
+[`assertEveryProtectedRouteIsInTheMatrix`](../../test/integration/authz_test.go#L323)
+reads the router's registered routes and fails if any `/v1` route outside
+`/v1/auth` has no column. Adding an endpoint without deciding who may call it
+turns the test red.
+
+**Tested by breaking it.** Each mistake below was introduced, the test run,
+and the change reverted:
+
+| Mistake | Caught by |
+|---|---|
+| Candidate query loses its `WHERE` | matrix: 3 cells, lists too long |
+| Interviewer `JOIN` becomes `LEFT JOIN` | matrix: 2 cells, lists too long |
+| Refusal answers 403 instead of 404 | matrix: 6 cells |
+| Policy check removed from `Get` | matrix: 11 cells |
+| Refusal answers a different error (409) | matrix: 6 cells |
+| A new protected route not added to the matrix | the route-completeness check |
+| Unknown role falls through to the admin query | **not by the matrix** — see below |
+
+The last one survived the matrix, and that is correct: `users_role_check` stops
+an unknown role from ever being stored, so no HTTP request can carry one.
+The branch is still worth defending, so
+[`TestListApplicationsRefusesUnknownRoles`](../../internal/store/applications_integration_test.go#L152)
+calls the store directly with `""`, `"Admin"` and `"superuser"`; with the
+mistake reintroduced it fails, returning both applications to each.
+
+**Also run in CI.** A new `authorization-matrix` job in
+`.github/workflows/ci.yml` runs it on every push. GitHub's Ubuntu runners
+provide Docker, which is all testcontainers needs.
+
+**Go idioms appearing for the first time**
+
+- **A generic type.** `listResponse[T any]`
+  ([`application_handler.go:60`](../../internal/api/application_handler.go#L60))
+  is one struct for every list the API will return. `T any` is a *type
+  parameter*; `listResponse[applicationResponse]` fills it in.
+- **Spreading a slice into a variadic call.** `s.db.Query(ctx, query, args...)`
+  passes a `[]any` as the separate arguments `Query` expects — empty for the
+  admin query.
+- **A build tag on a whole package.** Every file in `test/integration` starts
+  `//go:build integration`, so without the tag the package does not exist as
+  far as `go test ./...` is concerned.
 
 ---
 
@@ -2487,7 +3374,41 @@ loop variable needed.
 | `make up POSTGRES_PORT=5433`, then `make test-integration POSTGRES_PORT=5433` | pass |
 | Rows the tests left in the Compose database | none — the 4 seeded users, 0 live tokens |
 | Image size, summed from `docker history` / compressed | **42.6 MB** / 15.5 MB — up from 22.4 MB / 9.2 MB at module 0: the api binary is now 22.7 MB and the seeder adds 9.4 MB |
-| Every `#L` link in these notes (306) | resolves to an existing line; every target in a file this module added or changed was read against its section |
+| **Middleware and roles** (sections 46–52) | |
+| `go test -race -count=1 ./...` | all pass; `api` **89.6%**, `domain` **93.8%**; `RequireAuth`, `RequireRole`, `CurrentUser` each **100%** |
+| Six bad credentials through `RequireAuth` | handler reached **0** times each; 401 envelope; Bearer challenge; handler output absent |
+| Token says admin, row says candidate | `CurrentUser` is a candidate; an admin-only route answers 403 |
+| Role changed in the database between two requests with one token | 200, then 403 |
+| Database failing during the lookup | 500, cause logged and absent from the body; handler not reached |
+| `RequireRole`: 6 role and route combinations | allowed → 200 and handler reached once; refused → 403 `forbidden`, no challenge, handler not reached |
+| `RequireRole` without `RequireAuth` | 500, log names the missing middleware |
+| `RequireRole()`, `RequireRole("admn")`, `RequireRole(admin, "superuser")` | all panic |
+| `CurrentUser`: unguarded route / same text under a plain string key / wrong type / caller edits its copy | false / false / false / stored user unchanged |
+| `write` changed to `c.JSON` (no abort), temporarily | the new tests **fail**: handler ran, body is two JSON documents |
+| Forgotten-abort demo (throwaway test, deleted) | status 401, body `{"error":…}{"deleted":42}`, handler side effect ran once, Gin warns *Headers were already written* |
+| **Compose stack**, rebuilt with the middleware | |
+| `/v1/me` as interviewer, then `UPDATE users SET role='candidate'`, same token | role `interviewer` 200, then role `candidate` 200 |
+| `DELETE` the user, same token | 401 `unauthenticated` |
+| No token | 401 with `WWW-Authenticate: Bearer realm="hiredesk"` |
+| Postgres stopped, valid token | 500 `internal_error`; log: `require auth: load user: get user by id: …` |
+| `golangci-lint`, with and without the integration tag | **0 issues** |
+| **Authorization policy** (sections 53–57) | |
+| `TestPolicy`: 36 combinations × 3 functions | 108 expectations, 19 true and 89 false, all pass |
+| `TestPolicyTableIsComplete` | 36 rows = 6 roles × 3 ownerships × 2 assignments; none missing or repeated |
+| `TestPolicyInvariants` under 5 statuses | no review or status change without view; never both review and change; no answer depends on status |
+| Zero-value user and application | nothing granted |
+| Coverage of `policy.go` | **100%** of all four functions; `auth` package **95.1%** |
+| Ten deliberate mistakes in `policy.go`, one at a time | all **10 caught**; restored with `cp`, identical to the original |
+| The same ten against a positive-only copy of the test (throwaway, deleted) | **2 of 10** caught |
+| **Applying the policy** (sections 58–62) | |
+| `TestAuthorizationMatrix`, real PostgreSQL 16 via testcontainers-go v0.44.0 | 54 subtests pass: 48 cells + 6 list-agreement checks; ~7 s cold, ~3 s warm |
+| Six mistakes in the store, handler and router (section 62) | all caught by the matrix |
+| Unknown role falling through to the admin query | survives the matrix (unreachable over HTTP); caught by `TestListApplicationsRefusesUnknownRoles` |
+| Store integration tests on the Compose database | list per role exact; admin list contains both; unknown roles `ErrForbidden`; `GetApplication` assigned flag; missing, malformed and empty IDs `ErrNotFound` |
+| Handler unit tests (fake store) | 9 role/record cases; refusal and absence identical in status, body and headers; list passes the database's user, not the token's; empty list is `{"data":[]}`; store failure is a logged 500 |
+| `make test-integration` | `internal/store` and `test/integration` both pass |
+| Compose stack, two applications inserted by hand | candidate1 lists `[a1]`; admin `[a1, a2]`; unassigned interviewer `[]`, then `[a2]` once assigned; candidate1 → own 200, other's 404, missing 404; rows removed afterwards |
+| Every `#L` link in these notes | resolves to an existing line; every target in a file this change touched was read against its section |
 
 ## Still open
 
@@ -2499,7 +3420,10 @@ loop variable needed.
   unaffected, because they never leave the Compose network.
 - **The seeder ships in the runtime image**, which costs 9.4 MB. A separate
   build target or Compose profile would keep it out of a production image.
-- **Access tokens outlive revocation** by up to fifteen minutes (section 40).
+- **Access tokens outlive refresh-token revocation** by up to fifteen
+  minutes (section 40). Deleting the user or changing their role takes effect
+  at once, because `RequireAuth` reads the row (section 50); logging out does
+  not end an access token already issued.
 - **No absolute session lifetime.** A thief who steals a token from an
   abandoned session and keeps refreshing is never challenged, because the
   owner never returns to trigger the replay.
@@ -2510,14 +3434,37 @@ loop variable needed.
   `HttpOnly` cookie is safer, since page scripts cannot read it.
 - **Revoked and expired rows are never deleted.** The table grows by one row
   per login and per refresh.
-- **No role checks.** `requireAuth` proves who the caller is, not what they
-  may do.
+- **`CanReviewApplication` and `CanChangeApplicationStatus` are not called
+  yet.** No review or status endpoint exists. `CanViewApplication` is applied
+  in `GET /v1/applications/:id`.
+- **The application list is unbounded.** No pagination or limit yet. When one
+  is added, the `LIMIT` must go in each per-role query, after its `WHERE` —
+  never on an unfiltered query (section 58).
+- **The visibility rule is written twice**, as SQL and as
+  `CanViewApplication`. The matrix checks they agree for the seeded data; a
+  divergence that only shows with other data would not be caught.
+- **A refusal is not logged as one.** The access log shows a 404 and the path,
+  the same as a miss. Support cannot tell "not yours" from "not there"
+  without a deliberate log line, which would need to stay out of the response.
+- **`TestAuthorizationMatrix` covers read endpoints only**, because those are
+  the only protected ones. The route-completeness check forces a column for
+  each new one.
+- **`assigned` is trusted.** The policy cannot check that the caller looked up
+  the assignment for the right user and application.
+- **`RequireRole` guards no route yet.** It exists and is tested; job posts
+  will be the first endpoints to use it.
+- **The token still carries a `role` claim** that nothing reads for
+  decisions. Removing it would make the token smaller and remove a value that
+  looks authoritative and is not.
+- **One database read per authenticated request.** Cheap now; a short cache
+  would trade a little staleness for fewer reads if it ever matters.
 - **Registering does not log the user in**; it returns no tokens.
 - **Nothing revokes sessions on a password change**, because there is no
   password-change endpoint yet.
 - **Token reuse is only logged.** Nobody is alerted and the user is not told.
-- **CI does not run the integration tests.** The workflow has no Postgres
-  service, so the hand-written SQL is checked only when someone runs
+- **CI runs only part of the integration tests.** The authorization matrix
+  runs in its own container on every push; the store tests in
+  `internal/store` still need the Compose stack and run only with
   `make test-integration`.
 - **The migration comment on `users.email` is out of date.** It says the
   address is stored as typed; registration now stores it lowercased.
@@ -2536,13 +3483,15 @@ loop variable needed.
 - **No rate limit on login** — see section 2.
 - **No re-hash on login** when a stored hash's cost is below `Cost`.
 - **No `jti` denylist**, so a single token cannot be revoked before `exp`.
-- **`role` is an unchecked string.** `NewAccessToken` rejects empty but not
-  `"superuser"`; the database's `users_role_check` is the only guard.
+- **`role` is an unchecked string in `NewAccessToken`.** It rejects empty but
+  not `"superuser"`. It no longer matters for access, since roles are read
+  from the database, where `users_role_check` guards them.
 - **No secret rotation.** Changing `JWT_SECRET` invalidates every token at
   once. Rotating without that needs a key ID (`kid`) in the header.
 - **`internal/config` is at 59.8%.** Only the `JWT_SECRET` paths are tested.
 
 ## Next
 
-Role checks on top of `requireAuth`, and the first endpoints that are about
-hiring: job posts.
+Job posts, with `RequireRole` limiting who may create and edit them; then
+submitting an application, and the review and status endpoints that
+`CanReviewApplication` and `CanChangeApplicationStatus` were written for.

@@ -73,12 +73,14 @@ docker-build: ## Rebuild the Docker image without starting anything
 test: ## Run all tests with the race detector and coverage
 	go test -race -cover ./...
 
-# The store tests that run real SQL. They sit behind a build tag so that plain
-# `make test` needs no database. The URL points at the published port on
-# localhost, because these run on the host, not inside the Compose network.
-test-integration: .env ## Run the database tests against the running stack (needs `make up`)
+# The tests that run real SQL. They sit behind a build tag so that plain
+# `make test` needs no database. The store tests use the running stack, so
+# their URL points at the published port on localhost. The authorization
+# matrix in test/integration starts its own PostgreSQL container instead, and
+# ignores DATABASE_URL.
+test-integration: .env ## Run the database tests (needs `make up`, and Docker for the authorization matrix)
 	DATABASE_URL="postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$${POSTGRES_PORT:-5432}/$(POSTGRES_DB)?sslmode=disable" \
-		go test -race -count=1 -tags integration ./internal/store/...
+		go test -race -count=1 -tags integration ./internal/store/... ./test/...
 
 lint: ## Run golangci-lint
 	@command -v golangci-lint >/dev/null 2>&1 \

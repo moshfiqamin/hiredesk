@@ -349,31 +349,19 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// Me handles GET /v1/me. It returns the user the access token belongs to, and
-// must be registered behind requireAuth.
+// Me handles GET /v1/me. It returns the authenticated user, and must be
+// registered behind RequireAuth.
 func (h *AuthHandler) Me(c *gin.Context) {
-	claims, ok := claimsFrom(c)
+	user, ok := CurrentUser(c)
 	if !ok {
-		// Only reachable if the route was registered without requireAuth,
+		// Only reachable if the route was registered without RequireAuth,
 		// which is a bug here and not something the client did.
-		Respond(c, errors.New("me: no claims on the request; is the route behind requireAuth?"))
+		Respond(c, errors.New("me: no authenticated user on the request; is the route behind RequireAuth?"))
 		return
 	}
 
-	// The token proves who the caller was when it was issued. The row is read
-	// so the response is current, and so a user deleted since then is refused
-	// rather than answered from a token that outlived them.
-	user, err := h.users.GetUserByID(c.Request.Context(), claims.Subject)
-	if errors.Is(err, domain.ErrNotFound) {
-		rejectBearer(c, domain.ErrUnauthenticated)
-		return
-	}
-	if err != nil {
-		Respond(c, fmt.Errorf("me: %w", err))
-		return
-	}
-
-	c.JSON(http.StatusOK, newUserResponse(user))
+	// RequireAuth read the row on this request, so this is current.
+	c.JSON(http.StatusOK, newUserResponse(&user))
 }
 
 // respondWithTokens signs an access token for user and sends it with

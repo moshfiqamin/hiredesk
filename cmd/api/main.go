@@ -77,12 +77,15 @@ func run(cfg *config.Config) error {
 	// Every dependency is constructed here and handed down, so this is the one
 	// place that shows what the server is made of.
 	tokens := auth.NewTokenManager(cfg.JWTSecret)
+	users := store.NewUserStore(pool)
 
 	router, err := api.NewRouter(api.Deps{
-		Auth:        api.NewAuthHandler(store.NewUserStore(pool), store.NewTokenStore(pool), tokens),
-		Tokens:      tokens,
-		DB:          pool,
-		PingTimeout: cfg.DBPingTimeout,
+		Auth:         api.NewAuthHandler(users, store.NewTokenStore(pool), tokens),
+		Applications: api.NewApplicationHandler(store.NewApplicationStore(pool)),
+		Tokens:       tokens,
+		Users:        users,
+		DB:           pool,
+		PingTimeout:  cfg.DBPingTimeout,
 	})
 	if err != nil {
 		return fmt.Errorf("build router: %w", err)

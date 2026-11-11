@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,10 +13,13 @@ import (
 // Deps is everything the router needs from outside this package. main builds
 // it once; nothing in here reaches for configuration or opens a connection.
 type Deps struct {
-	Auth *AuthHandler
+	Auth         *AuthHandler
+	Applications *ApplicationHandler
 
-	// Tokens verifies the access token on every protected route.
+	// Tokens verifies the access token on every protected route, and Users
+	// loads the user it names.
 	Tokens *auth.TokenManager
+	Users  UserGetter
 
 	// DB is pinged by /readyz, for at most PingTimeout.
 	DB          Pinger
@@ -27,6 +31,12 @@ type Deps struct {
 // Call gin.SetMode before this if the mode is to change: the engine reads it
 // while it is being built.
 func NewRouter(deps Deps) (*gin.Engine, error) {
+	// Checked here, at startup, because a nil Users would otherwise surface as
+	// a panic on the first authenticated request.
+	if deps.Auth == nil || deps.Applications == nil || deps.Tokens == nil || deps.Users == nil || deps.DB == nil {
+		return nil, errors.New("build router: Auth, Applications, Tokens, Users and DB are all required")
+	}
+
 	// gin.Default() with one substitution: its recovery middleware answers a
 	// panic with an empty body, and Recovery answers with the envelope.
 	router := gin.New()
@@ -61,18 +71,24 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 		authRoutes.POST("/register", deps.Auth.Register)
 		authRoutes.POST("/login", deps.Auth.Login)
 
-		// Neither of these is behind requireAuth. Refresh exists for the
+		// Neither of these is behind RequireAuth. Refresh exists for the
 		// moment the access token has expired, and logout must work then too.
 		// The refresh token in the body is the credential.
 		authRoutes.POST("/refresh", deps.Auth.Refresh)
 		authRoutes.POST("/logout", deps.Auth.Logout)
 	}
 
-	// Everything registered on this group runs requireAuth first, so a handler
-	// here can rely on verified claims being present.
-	protected := v1.Group("", requireAuth(deps.Tokens))
+	// Everything registered on this group runs RequireAuth first, so a handler
+	// here can rely on CurrentUser. A route limited to some roles adds
+	// RequireRole after it, either on a nested group or on the route itself.
+	protected := v1.Group("", RequireAuth(deps.Tokens, deps.Users))
 	{
 		protected.GET("/me", deps.Auth.Me)
+
+		// No RequireRole: every role may call these. What each caller gets is
+		// decided per row, by the store's query and auth.CanViewApplication.
+		protected.GET("/applications", deps.Applications.List)
+		protected.GET("/applications/:id", deps.Applications.Get)
 	}
 
 	return router, nil

@@ -108,6 +108,7 @@ type testServer struct {
 	engine  *gin.Engine
 	users   *fakeUsers
 	refresh *fakeRefreshTokens
+	apps    *fakeApplications
 	tokens  *auth.TokenManager
 
 	// clock is what the handler and the fake token store both read as "now".
@@ -145,7 +146,15 @@ func newTestServer(t *testing.T) *testServer {
 		return bcrypt.CompareHashAndPassword([]byte(hash), []byte(plain)) == nil
 	}
 
-	engine, err := NewRouter(Deps{Auth: handler, Tokens: s.tokens, DB: okPinger{}, PingTimeout: time.Second})
+	s.apps = newFakeApplications()
+	engine, err := NewRouter(Deps{
+		Auth:         handler,
+		Applications: NewApplicationHandler(s.apps),
+		Tokens:       s.tokens,
+		Users:        s.users,
+		DB:           okPinger{},
+		PingTimeout:  time.Second,
+	})
 	if err != nil {
 		t.Fatalf("NewRouter() unexpected error: %v", err)
 	}

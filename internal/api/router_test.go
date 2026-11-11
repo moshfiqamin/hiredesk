@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/moshfiqamin/hiredesk/internal/auth"
 )
 
 // downPinger is a database that cannot be reached.
@@ -66,10 +68,14 @@ func TestRoutes(t *testing.T) {
 func TestReadyzReportsAnUnreachableDatabase(t *testing.T) {
 	logged := captureLog(t)
 
+	users := newFakeUsers()
 	engine, err := NewRouter(Deps{
-		Auth:        NewAuthHandler(newFakeUsers(), nil, nil),
-		DB:          downPinger{},
-		PingTimeout: time.Second,
+		Auth:         NewAuthHandler(users, nil, nil),
+		Applications: NewApplicationHandler(newFakeApplications()),
+		Tokens:       auth.NewTokenManager(testJWTSecret),
+		Users:        users,
+		DB:           downPinger{},
+		PingTimeout:  time.Second,
 	})
 	if err != nil {
 		t.Fatalf("NewRouter() unexpected error: %v", err)
