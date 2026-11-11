@@ -62,6 +62,25 @@ type fakeApplications struct {
 	rescoreAllResult *domain.JobPostRescore
 	rescoreErr       error
 	lastRescore      *[2]string
+
+	// ranking is what RankApplications returns; lastRankLimit the limit it
+	// was given.
+	ranking       []domain.RankedApplication
+	lastRankLimit int
+}
+
+func (f *fakeApplications) RankApplications(_ context.Context, jobPostID string, limit int) ([]domain.RankedApplication, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.lastRankLimit = limit
+	if f.failWith != nil {
+		return nil, f.failWith
+	}
+	if jobPostID == "bbbbbbbb-0000-4000-8000-00000000ffff" {
+		return nil, domain.ErrNotFound
+	}
+	return f.ranking, nil
 }
 
 func (f *fakeApplications) RescoreApplication(_ context.Context, id, actorID string) (*domain.RescoreResult, error) {

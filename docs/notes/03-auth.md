@@ -60,7 +60,7 @@ Click the link, read the code, then come back.
 | [41](#41-two-requests-one-token-the-row-lock) | Two requests, one token: the row lock | [`tokens.go:128`](../../internal/store/tokens.go#L128) |
 | [42](#42-logout) | Logout | [`auth_handler.go:331`](../../internal/api/auth_handler.go#L331) |
 | [43](#43-the-auth-middleware-and-v1me) | The auth middleware, and `/v1/me` | [`middleware.go:42`](../../internal/api/middleware.go#L42) |
-| [44](#44-the-seed-command) | The seed command | [`cmd/seed/main.go:95`](../../cmd/seed/main.go#L95) |
+| [44](#44-the-seed-command) | The seed command | [`cmd/seed/main.go:106`](../../cmd/seed/main.go#L106) |
 | [45](#45-go-idioms-appearing-for-the-first-time-in-the-session-code) | Transactions, nullable columns, arrays and slices, goroutines | [`tokens.go:108`](../../internal/store/tokens.go#L108) |
 | [46](#46-what-middleware-is-and-how-gin-chains-it) | What middleware is, and how Gin chains it | [`router.go:95`](../../internal/api/router.go#L95) |
 | [47](#47-cnext-and-cabort) | `c.Next()` and `c.Abort()` | [`errors.go:169`](../../internal/api/errors.go#L169) |
@@ -75,10 +75,10 @@ Click the link, read the code, then come back.
 | [56](#56-why-the-negative-cases-matter-more-than-the-positive-ones) | Why the negative cases matter more | [`policy_test.go:74`](../../internal/auth/policy_test.go#L74) |
 | [57](#57-counting-the-combinations) | Counting the combinations | [`policy_test.go:154`](../../internal/auth/policy_test.go#L154) |
 | [58](#58-filtering-in-sql-not-in-go) | Filtering in SQL, not in Go | [`applications.go:62`](../../internal/store/applications.go#L62) |
-| [59](#59-two-encodings-of-one-rule-and-the-check-that-they-agree) | Two encodings of one rule, and the check that they agree | [`application_handler.go:278`](../../internal/api/application_handler.go#L278) |
+| [59](#59-two-encodings-of-one-rule-and-the-check-that-they-agree) | Two encodings of one rule, and the check that they agree | [`application_handler.go:280`](../../internal/api/application_handler.go#L280) |
 | [60](#60-403-or-404) | 403 or 404 | [`decisions.md`](../decisions.md) |
 | [61](#61-testcontainers-go-and-why-a-real-postgresql-beats-a-mock) | testcontainers-go, and why a real PostgreSQL beats a mock | [`authz_test.go:93`](../../test/integration/authz_test.go#L93) |
-| [62](#62-testauthorizationmatrix) | `TestAuthorizationMatrix`; generics, spreading a slice, package build tags | [`authz_test.go:317`](../../test/integration/authz_test.go#L317) |
+| [62](#62-testauthorizationmatrix) | `TestAuthorizationMatrix`; generics, spreading a slice, package build tags | [`authz_test.go:320`](../../test/integration/authz_test.go#L320) |
 
 ---
 
@@ -2244,7 +2244,7 @@ section 49. Roles are section 51.
 
 ## 44. The seed command
 
-**📍 Open:** [`cmd/seed/main.go:95`](../../cmd/seed/main.go#L95)
+**📍 Open:** [`cmd/seed/main.go:106`](../../cmd/seed/main.go#L106)
 
 `make seed` creates four accounts so the API can be used without registering:
 
@@ -2263,14 +2263,14 @@ Each account is looked up first and skipped if present. That lookup is only an
 optimisation, to avoid a third of a second of bcrypt per account. What actually
 makes a second run safe is the unique index: if two runs race, the loser's
 insert fails with `ErrDuplicate` and is treated as "already there"
-([`main.go:122`](../../cmd/seed/main.go#L122)). Same reasoning as registration
+([`main.go:133`](../../cmd/seed/main.go#L133)). Same reasoning as registration
 in section 32.
 
 **An existing account is never changed.** If you alter the admin's password
 and run the seed again, your password stays.
 
 **It refuses to run in production**
-([`main.go:65`](../../cmd/seed/main.go#L65)). These passwords are in a public
+([`main.go:72`](../../cmd/seed/main.go#L72)). These passwords are in a public
 repository. The project rule is that secrets are never committed; these are
 committed precisely because they are *not* secrets, and the guard is what keeps
 that true. `.test` is a top-level domain reserved so that it can never be
@@ -3037,7 +3037,7 @@ connection after row 400) is reported only by `rows.Err()`, and a hand-written
 
 ## 59. Two encodings of one rule, and the check that they agree
 
-**📍 Open:** [`internal/api/application_handler.go:278`](../../internal/api/application_handler.go#L278)
+**📍 Open:** [`internal/api/application_handler.go:280`](../../internal/api/application_handler.go#L280)
 
 The visibility rule now exists twice:
 
@@ -3050,7 +3050,7 @@ a post see its applications" to the policy and forgets the query. The symptom
 is a list showing rows that then 404 when opened, or the reverse.
 
 `TestAuthorizationMatrix` checks the two against each other for every caller
-([`authz_test.go:600`](../../test/integration/authz_test.go#L600)): an
+([`authz_test.go:606`](../../test/integration/authz_test.go#L606)): an
 application is in the list **if and only if** fetching it alone returns 200.
 
 **`Get` needs two facts, fetched in one query.**
@@ -3065,7 +3065,7 @@ handler calls the pure policy. The store gathers facts; the policy decides.
 **📍 Open:** [`docs/decisions.md`](../decisions.md) — decision D1
 
 **A refused view answers 404, identical to a missing record**
-([`application_handler.go:280`](../../internal/api/application_handler.go#L280)).
+([`application_handler.go:282`](../../internal/api/application_handler.go#L282)).
 The full record — when 403 is still right, what was rejected, what it costs —
 is in `docs/decisions.md`. The core argument:
 
@@ -3151,7 +3151,7 @@ needs nothing.
 
 ## 62. `TestAuthorizationMatrix`
 
-**📍 Open:** [`test/integration/authz_test.go:317`](../../test/integration/authz_test.go#L317)
+**📍 Open:** [`test/integration/authz_test.go:320`](../../test/integration/authz_test.go#L320)
 
 **The shape.** One row per caller, one column per endpoint, the expected
 status in each cell — readable as a matrix:
@@ -3181,7 +3181,7 @@ per caller who can list) = 54 subtests.
 - a **single fetch** returns the application asked for.
 
 **The matrix cannot fall behind the router.**
-[`assertEveryProtectedRouteIsInTheMatrix`](../../test/integration/authz_test.go#L616)
+[`assertEveryProtectedRouteIsInTheMatrix`](../../test/integration/authz_test.go#L622)
 reads the router's registered routes and fails if any `/v1` route outside
 `/v1/auth` has no column. Adding an endpoint without deciding who may call it
 turns the test red.
@@ -3213,7 +3213,7 @@ provide Docker, which is all testcontainers needs.
 **Go idioms appearing for the first time**
 
 - **A generic type.** `listResponse[T any]`
-  ([`application_handler.go:129`](../../internal/api/application_handler.go#L129))
+  ([`application_handler.go:131`](../../internal/api/application_handler.go#L131))
   is one struct for every list the API will return. `T any` is a *type
   parameter*; `listResponse[applicationResponse]` fills it in.
 - **Spreading a slice into a variadic call.** `s.db.Query(ctx, query, args...)`

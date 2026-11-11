@@ -454,7 +454,7 @@ so a post with no rubric gets counts of 0 rather than `pgx.ErrNoRows`.
 | [`TestJobPostTransitionsAreAdminOnly`](../../internal/api/job_post_handler_test.go#L964) | 403 / 401, and 400 for a malformed ID, all before the store |
 | [`TestJobPostStoreLifecycle`](../../internal/store/job_post_lifecycle_integration_test.go#L91) | Real SQL: the full lifecycle with one event per move and none per refusal; readiness including rubric versions |
 | [`TestJobPostStoreTransitionConcurrently`](../../internal/store/job_post_lifecycle_integration_test.go#L226) | Section 5's race |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L298) | Three new columns: open a ready draft, open an unready one, close an open post, for every caller |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L301) | Three new columns: open a ready draft, open an unready one, close an open post, for every caller |
 
 ---
 

@@ -563,7 +563,7 @@ what stops minor units being mistaken for whole ones.
 | [`TestParseMoney`](../../internal/domain/money_test.go#L8) | What is and is not an amount |
 | [`TestJobPostStoreUpdateConcurrently`](../../internal/store/job_posts_integration_test.go#L331) | Section 8's race, against PostgreSQL |
 | [`TestJobPostStoreUpdate`](../../internal/store/job_posts_integration_test.go#L217) | Partial updates in real SQL; a refused patch writes nothing, including its valid fields |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L298) | Seven new columns: every caller against every job post route |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L301) | Seven new columns: every caller against every job post route |
 
 The handler tests use a fake store that records the patch it was given, so
 they can assert on *nil versus non-nil* directly rather than inferring it

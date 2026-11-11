@@ -3,11 +3,15 @@
 //
 // It is safe to run repeatedly: an account that already exists is left
 // exactly as it is.
+//
+// With -bulk N it also creates one open job post with N scored applications,
+// for measuring the ranking; see bulk.go.
 package main
 
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -55,6 +59,9 @@ func main() {
 }
 
 func run() error {
+	bulk := flag.Int("bulk", 0, "also create one open job post with this many scored applications")
+	flag.Parse()
+
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("configuration: %w", err)
@@ -84,6 +91,10 @@ func run() error {
 	}
 
 	fmt.Printf("\n%d created, %d already present\n", created, len(accounts)-created)
+
+	if *bulk > 0 {
+		return seedBulk(ctx, pool, *bulk, log.New(os.Stdout, "", 0))
+	}
 	return nil
 }
 

@@ -109,6 +109,7 @@ score keeps pointing at the exact criteria that produced it.
 | `GET` | `/v1/job-posts/:id/rubric` | **Admin only.** The current version of the post's scoring rubric: `version` (`null` before the first) and `criteria` in order, each with `label`, `kind`, `weight`, `question_id` and `config`. |
 | `PUT` | `/v1/job-posts/:id/rubric` | **Admin only, any status.** Body: `criteria`, the whole rubric; it becomes the next version, and earlier versions are kept for the scores that use them. Kinds: `keyword_match` `{"keywords":[…]}`, `experience_years` `{"min":0,"target":2}`, `answer_depth` `{"min_chars":50,"target_chars":400}`, `boolean_all` `{"question_ids":[…]}`. Weights must sum to 100. Every problem comes back in one 422 keyed like `criteria[2].config`. Nothing is rescored: the response's `applications_to_rescore` says how many applications still carry an older score. |
 | `POST` | `/v1/job-posts/:id/rescore-all` | **Admin only.** Rescore every application to the post against its current rubric, atomically, in a fixed number of statements (500 applications take about 50 ms). Returns `rubric_version`, `rescored` and `changed`. |
+| `GET` | `/v1/job-posts/:id/ranking` | **Admin only.** Every applicant to the post, best total first, unscored applicants last with `null` totals: `rank`, `application_id`, `candidate_name`, `status`, `total_earned`, `total_available`, `percentage`, `rubric_version`. `?limit=` defaults to 50, capped at 500. |
 | `GET` | `/v1/job-posts/:id/questions` | **Admin only.** The post's application form in order, whatever its status. Everyone else gets the form inside `GET /v1/job-posts/:id`. |
 | `POST` | `/v1/job-posts/:id/questions` | **Admin only, draft only.** Add a question. Body: `prompt`, `kind` (`text`, `number`, `boolean`, `choice`), `choices` (required for `choice`, absent otherwise), `min_length` (text only), `required` (default true), `position` (default: after the last). |
 | `PATCH` | `/v1/job-posts/:id/questions/:questionID` | **Admin only, draft only.** Partial update. Send `"choices":[]` to clear choices when changing the kind. |
@@ -169,6 +170,7 @@ curl -s -X POST localhost:8080/v1/auth/login -d '{"email":"demo@example.com","pa
 | `make test` | Tests with the race detector and coverage |
 | `make test-integration` | Database tests against the running stack, and the authorization matrix in its own PostgreSQL container (needs `make up` and Docker) |
 | `make seed` | Create the development accounts (needs `make up`; safe to repeat) |
+| `make seed-bulk` | Create one open post with 500 scored applications, for measuring the ranking (needs `make up`) |
 | `make lint` | `golangci-lint` (13 linters) |
 | `make fmt` | Format code and tidy `go.mod` |
 | `make build` | Compile to `./bin` without Docker |

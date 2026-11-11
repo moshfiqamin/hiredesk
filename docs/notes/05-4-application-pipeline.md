@@ -23,7 +23,7 @@ Click the link, read the code, then come back.
 | [4](#4-the-snapshot-bug-and-how-the-test-found-it) | The snapshot bug, and how the test found it | [`pipeline_test.go:193`](../../test/integration/pipeline_test.go#L193) |
 | [5](#5-filters-without-string-concatenating-values) | Filters without string-concatenating values | [`applications.go:177`](../../internal/store/applications.go#L177) |
 | [6](#6-the-total-count-and-what-it-costs) | The total count, and what it costs | [`applications.go:106`](../../internal/store/applications.go#L106) |
-| [7](#7-the-detail-endpoint) | The detail endpoint | [`application_handler.go:261`](../../internal/api/application_handler.go#L261) |
+| [7](#7-the-detail-endpoint) | The detail endpoint | [`application_handler.go:263`](../../internal/api/application_handler.go#L263) |
 | [8](#8-the-tests) | The tests | [`pipeline_test.go:116`](../../test/integration/pipeline_test.go#L116) |
 
 ---
@@ -322,7 +322,7 @@ estimated count later is a change in the store, not to the API's shape.
 
 ## 7. The detail endpoint
 
-**📍 Open:** [`internal/api/application_handler.go:261`](../../internal/api/application_handler.go#L261)
+**📍 Open:** [`internal/api/application_handler.go:263`](../../internal/api/application_handler.go#L263)
 
 `GET /v1/applications/:id` now returns `answers` (in form order) and
 `events` (oldest first) beside the application. The order of work is the
@@ -333,7 +333,7 @@ point:
 2. `auth.CanViewApplication` decides. A refusal is the same 404 as a missing
    record (D1).
 3. **Only then** `ApplicationHistory` loads answers and events
-   ([`application_handler.go:287`](../../internal/api/application_handler.go#L287)).
+   ([`application_handler.go:289`](../../internal/api/application_handler.go#L289)).
 
 Loading the history before the check would make a refused request do more
 work than a missing one, and the difference in response time would tell an

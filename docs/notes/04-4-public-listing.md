@@ -488,7 +488,7 @@ handler must tell apart: absent is the default, an empty value is an error.
 | [`TestListOpenJobPostsRemainingVacancies`](../../internal/store/job_listing_integration_test.go#L163) | Only offers count; never below zero |
 | [`TestListOpenJobPostsSkillTags`](../../internal/store/job_listing_integration_test.go#L216) | Normalising, current version only, malformed config ignored |
 | [`TestListOpenJobPostsIsStableWhileDataChanges`](../../internal/store/job_listing_integration_test.go#L274) | Section 7, with the `OFFSET` answers alongside |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L298) | Every caller gets the anonymous response, with no drafts in it |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L301) | Every caller gets the anonymous response, with no drafts in it |
 
 The store tests share a database with every other test, and the listing is
 global. Each test therefore places its posts in its own year far in the future

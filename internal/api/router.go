@@ -141,6 +141,9 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 			admin.POST("/applications/:id/rescore", deps.Applications.Rescore)
 			admin.POST("/job-posts/:id/rescore-all", deps.Applications.RescoreAll)
 
+			// Every applicant to a post, best score first.
+			admin.GET("/job-posts/:id/ranking", deps.Applications.Ranking)
+
 			// The application form. Everyone else sees it inside GET
 			// /v1/job-posts/:id; these routes are for building it, and every
 			// write is refused once the post leaves draft.

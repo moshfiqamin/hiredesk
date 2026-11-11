@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,6 +29,7 @@ type ApplicationStore interface {
 	ScoreCard(ctx context.Context, id string) (*domain.ScoreCard, error)
 	RescoreApplication(ctx context.Context, id, actorID string) (*domain.RescoreResult, error)
 	RescoreJobPost(ctx context.Context, jobPostID, actorID string) (*domain.JobPostRescore, error)
+	RankApplications(ctx context.Context, jobPostID string, limit int) ([]domain.RankedApplication, error)
 }
 
 // ApplicationHandler serves the application endpoints. Every route it serves
@@ -635,6 +637,74 @@ func (h *ApplicationHandler) RescoreAll(c *gin.Context) {
 		if r.Changed() {
 			out.Changed++
 		}
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// rankingEntry is one applicant in GET /v1/job-posts/:id/ranking. The score
+// fields are null for an application with no stored score.
+type rankingEntry struct {
+	Rank          int       `json:"rank"`
+	ApplicationID string    `json:"application_id"`
+	CandidateID   string    `json:"candidate_id"`
+	CandidateName string    `json:"candidate_name"`
+	Status        string    `json:"status"`
+	SubmittedAt   time.Time `json:"submitted_at"`
+
+	TotalEarned    *float64 `json:"total_earned"`
+	TotalAvailable *float64 `json:"total_available"`
+	Percentage     *float64 `json:"percentage"`
+	RubricVersion  *int     `json:"rubric_version"`
+}
+
+// rankingResponse is the body of GET /v1/job-posts/:id/ranking.
+type rankingResponse struct {
+	JobPostID string         `json:"job_post_id"`
+	Data      []rankingEntry `json:"data"`
+}
+
+// Ranking handles GET /v1/job-posts/:id/ranking?limit=: every applicant to
+// the post, best total first, unscored last. The route must be behind
+// RequireRole(domain.RoleAdmin). limit defaults to domain.DefaultRankingLimit
+// and is capped at domain.MaxRankingLimit.
+func (h *ApplicationHandler) Ranking(c *gin.Context) {
+	postID, ok := pathUUID(c, "id")
+	if !ok {
+		return
+	}
+
+	limit := domain.DefaultRankingLimit
+	if raw, present := c.GetQuery("limit"); present {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			var invalid domain.ValidationError
+			invalid.Add("limit", "must be a whole number of at least 1; at most "+strconv.Itoa(domain.MaxRankingLimit)+" are returned")
+			Respond(c, invalid.Err())
+			return
+		}
+		limit = min(n, domain.MaxRankingLimit)
+	}
+
+	ranked, err := h.apps.RankApplications(c.Request.Context(), postID, limit)
+	if err != nil {
+		Respond(c, fmt.Errorf("rank applications: %w", err))
+		return
+	}
+
+	out := rankingResponse{JobPostID: postID, Data: make([]rankingEntry, 0, len(ranked))}
+	for _, r := range ranked {
+		entry := rankingEntry{
+			Rank: r.Rank, ApplicationID: r.ApplicationID, CandidateID: r.CandidateID,
+			CandidateName: r.CandidateName, Status: r.Status, SubmittedAt: r.SubmittedAt.UTC(),
+		}
+		if t := r.Totals; t != nil {
+			// Copies, so each pointer refers to this entry's own values.
+			earned, available, version := t.Earned, t.Available, t.RubricVersion
+			entry.TotalEarned, entry.TotalAvailable, entry.RubricVersion = &earned, &available, &version
+			percentage := newTotalsResponse(*t).Percentage
+			entry.Percentage = &percentage
+		}
+		out.Data = append(out.Data, entry)
 	}
 	c.JSON(http.StatusOK, out)
 }
