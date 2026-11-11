@@ -16,7 +16,7 @@ Click the link, read the code, then come back.
 
 | # | Topic | Code |
 |---|---|---|
-| [1](#1-a-route-with-no-authentication) | A route with no authentication | [`router.go:91`](../../internal/api/router.go#L91) |
+| [1](#1-a-route-with-no-authentication) | A route with no authentication | [`router.go:92`](../../internal/api/router.go#L92) |
 | [2](#2-what-a-listing-shows) | What a listing shows | [`job_listing_handler.go:38`](../../internal/api/job_listing_handler.go#L38) |
 | [3](#3-remaining-vacancies-and-skill-tags-in-sql) | Remaining vacancies and skill tags, in SQL | [`job_listing.go:52`](../../internal/store/job_listing.go#L52) |
 | [4](#4-what-offset-10000-physically-does) | What `OFFSET 10000` physically does | [`000009_job_posts_open_listing_idx.up.sql:16`](../../migrations/000009_job_posts_open_listing_idx.up.sql#L16) |
@@ -32,7 +32,7 @@ Click the link, read the code, then come back.
 
 ## 1. A route with no authentication
 
-**📍 Open:** [`internal/api/router.go:91`](../../internal/api/router.go#L91)
+**📍 Open:** [`internal/api/router.go:92`](../../internal/api/router.go#L92)
 
 ```go
 v1.GET("/job-posts", deps.Listings.List)

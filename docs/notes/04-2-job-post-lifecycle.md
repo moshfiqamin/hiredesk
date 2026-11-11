@@ -20,13 +20,13 @@ Click the link, read the code, then come back.
 | [1](#1-what-a-state-machine-is) | What a state machine is | [`job_post.go:26`](../../internal/domain/job_post.go#L26) |
 | [2](#2-why-a-map-beats-a-chain-of-if-statements) | Why a map beats a chain of `if` statements | [`job_post.go:35`](../../internal/domain/job_post.go#L35) |
 | [3](#3-the-rest-of-the-lifecycle-api) | The rest of the lifecycle API | [`job_post.go:43`](../../internal/domain/job_post.go#L43) |
-| [4](#4-one-route-per-transition) | One route per transition | [`router.go:129`](../../internal/api/router.go#L129) |
+| [4](#4-one-route-per-transition) | One route per transition | [`router.go:142`](../../internal/api/router.go#L142) |
 | [5](#5-check-and-write-under-one-lock) | Check and write under one lock | [`job_posts.go:205`](../../internal/store/job_posts.go#L205) |
-| [6](#6-why-409-and-not-400-or-422) | Why 409, and not 400 or 422 | [`errors.go:82`](../../internal/api/errors.go#L82) |
+| [6](#6-why-409-and-not-400-or-422) | Why 409, and not 400 or 422 | [`errors.go:84`](../../internal/api/errors.go#L84) |
 | [7](#7-why-a-post-cannot-open-without-a-rubric) | Why a post cannot open without a rubric | [`job_post.go:110`](../../internal/domain/job_post.go#L110) |
 | [8](#8-where-job-post-history-lives) | Where job post history lives | [`000007_job_post_events.up.sql:11`](../../migrations/000007_job_post_events.up.sql#L11) |
 | [9](#9-details-becomes-mapstringany) | `details` becomes `map[string]any` | [`errors.go:53`](../../internal/api/errors.go#L53) |
-| [10](#10-go-idioms-appearing-for-the-first-time) | Go idioms appearing for the first time | [`errors.go:131`](../../internal/api/errors.go#L131) |
+| [10](#10-go-idioms-appearing-for-the-first-time) | Go idioms appearing for the first time | [`errors.go:133`](../../internal/api/errors.go#L133) |
 | [11](#11-the-tests) | The tests | [`job_post_lifecycle_test.go:12`](../../internal/domain/job_post_lifecycle_test.go#L12) |
 
 ---
@@ -167,7 +167,7 @@ did not happen, or need a special case to skip it.
 
 ## 4. One route per transition
 
-**📍 Open:** [`internal/api/router.go:129`](../../internal/api/router.go#L129)
+**📍 Open:** [`internal/api/router.go:142`](../../internal/api/router.go#L142)
 
 ```
 POST /v1/job-posts/:id/open
@@ -249,7 +249,7 @@ and calls them while holding the lock. That is the module 3 pattern of
 
 ## 6. Why 409, and not 400 or 422
 
-**📍 Open:** [`internal/api/errors.go:82`](../../internal/api/errors.go#L82)
+**📍 Open:** [`internal/api/errors.go:84`](../../internal/api/errors.go#L84)
 
 Each status answers a different question about *who must change what* before
 the request can succeed:
@@ -401,7 +401,7 @@ reported" would always pass.
 
 ## 10. Go idioms appearing for the first time
 
-**📍 Open:** [`internal/api/errors.go:131`](../../internal/api/errors.go#L131)
+**📍 Open:** [`internal/api/errors.go:133`](../../internal/api/errors.go#L133)
 
 **`errors.As` with an interface target.** Module 3 used `errors.As(err,
 &invalid)` where `invalid` is a `*domain.ValidationError`: "find an error of

@@ -94,12 +94,12 @@ func (f *pipelineFixture) status(t *testing.T, appID string) string {
 // order, read through ApplicationHistory.
 func (f *pipelineFixture) statusEvents(t *testing.T, appID string) []string {
 	t.Helper()
-	_, events, err := f.apps.ApplicationHistory(f.ctx, appID)
+	history, err := f.apps.ApplicationHistory(f.ctx, appID, adminView)
 	if err != nil {
 		t.Fatalf("history: %v", err)
 	}
 	var out []string
-	for _, e := range events {
+	for _, e := range history.Events {
 		if e.Type != domain.EventApplicationStatusChanged {
 			continue
 		}
@@ -364,6 +364,10 @@ func TestListApplicationsFilteredAndPaged(t *testing.T) {
 	})
 }
 
+// adminView sees every review and event, for tests that read history
+// directly through the store.
+var adminView = domain.ApplicationView{ViewerID: pipeAdminID, Reviews: domain.ReviewsAll}
+
 // History comes back in order: answers in form order, events oldest first.
 func TestApplicationHistory(t *testing.T) {
 	pool := startPostgres(t)
@@ -386,10 +390,11 @@ func TestApplicationHistory(t *testing.T) {
 		t.Fatalf("shortlist: %v", err)
 	}
 
-	answers, events, err := apps.ApplicationHistory(ctx, app.ID)
+	history, err := apps.ApplicationHistory(ctx, app.ID, adminView)
 	if err != nil {
 		t.Fatalf("history: %v", err)
 	}
+	answers, events := history.Answers, history.Events
 	if len(answers) != 2 || answers[0].QuestionID != subQWhy || answers[1].QuestionID != subQYears {
 		t.Errorf("answers = %+v, want why then years", answers)
 	}
@@ -399,13 +404,17 @@ func TestApplicationHistory(t *testing.T) {
 	if *events[0].ActorID != subCandidateID || *events[1].ActorID != pipeAdminID {
 		t.Errorf("actors = %s, %s", *events[0].ActorID, *events[1].ActorID)
 	}
+	// Resolved from users when read, not stored in the event.
+	if *events[0].ActorName != "Applicant" || *events[1].ActorName != "Admin" || *events[1].ActorRole != domain.RoleAdmin {
+		t.Errorf("actor names = %s, %s", *events[0].ActorName, *events[1].ActorName)
+	}
 	if events[1].Payload["from"] != domain.StatusSubmitted || events[1].Payload["to"] != domain.StatusShortlisted {
 		t.Errorf("payload = %v", events[1].Payload)
 	}
 
 	// A well-formed ID with nothing behind it: empty, not nil, not an error.
-	answers, events, err = apps.ApplicationHistory(ctx, "22222222-0000-4000-8000-0000000000ff")
-	if err != nil || answers == nil || events == nil || len(answers)+len(events) != 0 {
-		t.Errorf("missing application: %v, %v, %v", answers, events, err)
+	history, err = apps.ApplicationHistory(ctx, "22222222-0000-4000-8000-0000000000ff", adminView)
+	if err != nil || history.Answers == nil || history.Events == nil || len(history.Answers)+len(history.Events) != 0 {
+		t.Errorf("missing application: %+v, %v", history, err)
 	}
 }

@@ -23,7 +23,8 @@ import (
 type ApplicationStore interface {
 	ListApplications(ctx context.Context, viewer domain.User, filter domain.ApplicationFilter) (apps []domain.Application, total int, more bool, err error)
 	GetApplication(ctx context.Context, id, viewerID string) (app *domain.Application, assigned bool, err error)
-	ApplicationHistory(ctx context.Context, id string) ([]domain.Answer, []domain.ApplicationEvent, error)
+	ApplicationHistory(ctx context.Context, id string, view domain.ApplicationView) (*domain.ApplicationHistory, error)
+	Timeline(ctx context.Context, id string, view domain.ApplicationView, filter domain.TimelineFilter) ([]domain.ApplicationEvent, bool, error)
 	SubmitApplication(ctx context.Context, in domain.NewApplication) (*domain.Application, error)
 	TransitionApplication(ctx context.Context, id, to, actorID string) (*domain.Application, error)
 	ScoreCard(ctx context.Context, id string) (*domain.ScoreCard, error)
@@ -149,19 +150,27 @@ type applicationPage struct {
 type eventResponse struct {
 	ID string `json:"id"`
 
-	// ActorID is null when the system acted, or the actor's account is gone.
+	// ActorID and ActorName are null when the system acted, or the actor's
+	// account is gone.
 	ActorID   *string        `json:"actor_id"`
+	ActorName *string        `json:"actor_name"`
 	Type      string         `json:"type"`
 	Payload   map[string]any `json:"payload"`
 	CreatedAt time.Time      `json:"created_at"`
 }
 
-// applicationDetailResponse is one application with its answers and its
-// history, flattened into one object as submittedApplicationResponse is.
+// applicationDetailResponse is one application with its answers, its
+// history and its reviews, flattened into one object as
+// submittedApplicationResponse is.
 type applicationDetailResponse struct {
 	applicationResponse
 	Answers []answerResponse `json:"answers"`
 	Events  []eventResponse  `json:"events"`
+
+	// Reviews is every review for an admin, only their own for an
+	// interviewer, and absent for anyone who may see no reviews. A pointer
+	// so that "absent" (nil, omitted) and "none yet" ([]) are different.
+	Reviews *[]reviewResponse `json:"reviews,omitempty"`
 }
 
 // updateStatusRequest is the body of PATCH /v1/applications/:id/status.
@@ -287,28 +296,50 @@ func (h *ApplicationHandler) Get(c *gin.Context) {
 	// Only now, after the policy has allowed it. A refused request and a
 	// missing one stop above having done the same work, so neither the
 	// answers nor the time taken to load them can tell an outsider anything.
-	answers, events, err := h.apps.ApplicationHistory(c.Request.Context(), app.ID)
+	//
+	// The view decides which reviews and events this caller gets, and the
+	// store applies it in SQL: another interviewer's mark is never read, so
+	// it cannot be sent by mistake.
+	history, err := h.apps.ApplicationHistory(c.Request.Context(), app.ID, auth.ApplicationViewFor(user))
 	if err != nil {
 		Respond(c, fmt.Errorf("get application: %w", err))
 		return
 	}
 
-	history := make([]eventResponse, 0, len(events))
-	for _, e := range events {
-		payload := e.Payload
-		if payload == nil {
-			payload = map[string]any{}
+	out := applicationDetailResponse{
+		applicationResponse: newApplicationResponse(app),
+		Answers:             newAnswerList(history.Answers),
+		Events:              newEventList(history.Events),
+	}
+	if history.Reviews != nil {
+		reviews := make([]reviewResponse, 0, len(history.Reviews))
+		for _, r := range history.Reviews {
+			reviews = append(reviews, newReviewResponse(r))
 		}
-		history = append(history, eventResponse{
-			ID: e.ID, ActorID: e.ActorID, Type: e.Type, Payload: payload, CreatedAt: e.CreatedAt.UTC(),
+		out.Reviews = &reviews
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// newEventList converts events for the application detail, never nil.
+func newEventList(events []domain.ApplicationEvent) []eventResponse {
+	out := make([]eventResponse, 0, len(events))
+	for _, e := range events {
+		out = append(out, eventResponse{
+			ID: e.ID, ActorID: e.ActorID, ActorName: e.ActorName, Type: e.Type,
+			Payload: payloadOrEmpty(e.Payload), CreatedAt: e.CreatedAt.UTC(),
 		})
 	}
+	return out
+}
 
-	c.JSON(http.StatusOK, applicationDetailResponse{
-		applicationResponse: newApplicationResponse(app),
-		Answers:             newAnswerList(answers),
-		Events:              history,
-	})
+// payloadOrEmpty returns p, or an empty map for a nil one, so a payload is
+// always a JSON object and never null.
+func payloadOrEmpty(p map[string]any) map[string]any {
+	if p == nil {
+		return map[string]any{}
+	}
+	return p
 }
 
 // UpdateStatus handles PATCH /v1/applications/:id/status: an admin moves the
@@ -831,4 +862,101 @@ func (h *ApplicationHandler) Search(c *gin.Context) {
 		out.NextOffset = &next
 	}
 	c.JSON(http.StatusOK, out)
+}
+
+// actorResponse is who caused an event, resolved to their current name.
+type actorResponse struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Role string `json:"role"`
+}
+
+// timelineEntry is one event in GET /v1/applications/:id/events.
+type timelineEntry struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+
+	// Actor is null for an event the system caused, or whose actor's account
+	// has been deleted.
+	Actor     *actorResponse `json:"actor"`
+	Payload   map[string]any `json:"payload"`
+	CreatedAt time.Time      `json:"created_at"`
+}
+
+// timelinePage is the body of GET /v1/applications/:id/events. next_cursor
+// is null on the last page.
+type timelinePage struct {
+	Data       []timelineEntry `json:"data"`
+	NextCursor *string         `json:"next_cursor"`
+}
+
+// Timeline handles GET /v1/applications/:id/events?limit=&after=: the
+// application's history, newest first, keyset-paginated, each event with its
+// actor resolved to a name.
+//
+// Access follows Score: admins and the assigned interviewers. A candidate,
+// who may see the application but not its timeline, gets a 403; anyone who
+// may not see the application gets the usual 404. An interviewer's timeline
+// leaves out other interviewers' review events, which carry their marks.
+func (h *ApplicationHandler) Timeline(c *gin.Context) {
+	user, ok := CurrentUser(c)
+	if !ok {
+		Respond(c, errors.New("application timeline: no authenticated user; is the route behind RequireAuth?"))
+		return
+	}
+
+	app, assigned, err := h.apps.GetApplication(c.Request.Context(), c.Param("id"), user.ID)
+	if errors.Is(err, domain.ErrNotFound) {
+		Respond(c, domain.ErrNotFound)
+		return
+	}
+	if err != nil {
+		Respond(c, fmt.Errorf("application timeline: %w", err))
+		return
+	}
+	if !auth.CanViewApplication(user, *app, assigned) {
+		Respond(c, domain.ErrNotFound)
+		return
+	}
+	if !auth.CanViewTimeline(user, *app, assigned) {
+		Respond(c, domain.ErrForbidden)
+		return
+	}
+
+	limit, ok := listingLimit(c)
+	if !ok {
+		return
+	}
+	filter := domain.TimelineFilter{Limit: limit}
+	if raw := c.Query("after"); raw != "" {
+		position, decodeErr := decodeCursor(raw)
+		if decodeErr != nil {
+			write(c, http.StatusBadRequest, codeInvalidCursor,
+				"The after parameter is not a cursor this API issued. Start again from the first page.", nil)
+			return
+		}
+		filter.After = &position
+	}
+
+	events, more, err := h.apps.Timeline(c.Request.Context(), app.ID, auth.ApplicationViewFor(user), filter)
+	if err != nil {
+		Respond(c, fmt.Errorf("application timeline: %w", err))
+		return
+	}
+
+	page := timelinePage{Data: make([]timelineEntry, 0, len(events))}
+	for _, e := range events {
+		entry := timelineEntry{ID: e.ID, Type: e.Type, Payload: payloadOrEmpty(e.Payload), CreatedAt: e.CreatedAt.UTC()}
+		// All three come from the same LEFT JOIN, so they are nil together.
+		if e.ActorID != nil && e.ActorName != nil && e.ActorRole != nil {
+			entry.Actor = &actorResponse{ID: *e.ActorID, Name: *e.ActorName, Role: *e.ActorRole}
+		}
+		page.Data = append(page.Data, entry)
+	}
+	if more && len(events) > 0 {
+		last := events[len(events)-1]
+		cursor := encodeCursor(domain.ListingPosition{CreatedAt: last.CreatedAt, ID: last.ID})
+		page.NextCursor = &cursor
+	}
+	c.JSON(http.StatusOK, page)
 }

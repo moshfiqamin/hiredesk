@@ -101,6 +101,11 @@ type ApplicationEvent struct {
 	// the actor's account has since been deleted.
 	ActorID *string
 
+	// ActorName and ActorRole are the actor's current name and role, read
+	// from users when the event is read. Both are nil when ActorID is.
+	ActorName *string
+	ActorRole *string
+
 	Type string
 
 	// Payload is the event's detail. Its shape depends on Type.

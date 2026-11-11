@@ -83,7 +83,7 @@ That is `2 + N` statements: 502 for 500 applicants. Steps 4 and 5 are also
 wasteful — all 500 rows travel to Go to keep 50 — but the round trips
 dominate.
 
-The handler ([`application_handler.go:671`](../../internal/api/application_handler.go#L671))
+The handler ([`application_handler.go:702`](../../internal/api/application_handler.go#L702))
 is admin only. `limit` defaults to 50 and is capped at 500, so the whole
 bulk post fits on one page for measuring. Unscored entries have `null`
 totals, not 0: a candidate who scored zero and one never scored are

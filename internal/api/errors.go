@@ -72,12 +72,16 @@ var mappings = []mapping{
 	{domain.ErrTokenExpired, http.StatusUnauthorized, "token_expired", "The access token has expired. Use your refresh token to get a new one."},
 	{domain.ErrUnauthenticated, http.StatusUnauthorized, "unauthenticated", "Authentication is required."},
 	{domain.ErrForbidden, http.StatusForbidden, "forbidden", "You do not have permission to do that."},
+	// Before ErrNotFound, which it also matches.
+	{domain.ErrNoReview, http.StatusNotFound, "no_review", "You have not reviewed this application yet. File a review with POST /v1/applications/:id/reviews first."},
 	{domain.ErrNotFound, http.StatusNotFound, "not_found", "The requested resource was not found."},
 	{domain.ErrNotScored, http.StatusNotFound, "not_scored", "This application has no score. Its job post had no rubric when it was submitted; it can be scored once the post has one."},
 	// Before ErrDuplicate, which it also matches: the first row that matches
 	// wins, and a candidate needs this message, not the generic one.
 	{domain.ErrAlreadyApplied, http.StatusConflict, "already_applied", "You have already applied to this job post. Each candidate can apply once per post; your existing application is under /v1/applications."},
 	{domain.ErrNoVacancies, http.StatusConflict, "no_vacancies", "Every vacancy on this job post already has an offer. Reject or withdraw an existing offer, or raise the number of vacancies, before making another."},
+	// Before ErrDuplicate, which it also matches.
+	{domain.ErrAlreadyReviewed, http.StatusConflict, "already_reviewed", "You have already reviewed this application. Correct your review with PATCH /v1/applications/:id/reviews/mine."},
 	{domain.ErrDuplicate, http.StatusConflict, "duplicate", "A resource with these details already exists."},
 	{domain.ErrInvalidTransition, http.StatusConflict, "invalid_transition", "The resource cannot move to that status from its current one."},
 	{domain.ErrNoRubric, http.StatusConflict, "no_rubric", "This job post has no rubric to score against. Add one with PUT /v1/job-posts/:id/rubric first; the existing scores were left unchanged."},

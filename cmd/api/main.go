@@ -79,14 +79,18 @@ func run(cfg *config.Config) error {
 	tokens := auth.NewTokenManager(cfg.JWTSecret)
 	users := store.NewUserStore(pool)
 	jobPosts := store.NewJobPostStore(pool)
+	// Shared by two handlers: the review routes load the application through
+	// it to check who may review it.
+	applications := store.NewApplicationStore(pool)
 
 	router, err := api.NewRouter(api.Deps{
 		Auth:         api.NewAuthHandler(users, store.NewTokenStore(pool), tokens),
-		Applications: api.NewApplicationHandler(store.NewApplicationStore(pool)),
+		Applications: api.NewApplicationHandler(applications),
 		JobPosts:     api.NewJobPostHandler(jobPosts),
 		Questions:    api.NewQuestionHandler(store.NewQuestionStore(pool)),
 		Listings:     api.NewJobListingHandler(jobPosts),
 		Rubrics:      api.NewRubricHandler(store.NewRubricStore(pool)),
+		Reviews:      api.NewReviewHandler(applications, store.NewReviewStore(pool)),
 		Tokens:       tokens,
 		Users:        users,
 		DB:           pool,

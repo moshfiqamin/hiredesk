@@ -208,6 +208,7 @@ func newRouter(t *testing.T, pool *pgxpool.Pool, tokens *auth.TokenManager) *gin
 	router, err := api.NewRouter(api.Deps{
 		Auth:         api.NewAuthHandler(users, store.NewTokenStore(pool), tokens),
 		Applications: api.NewApplicationHandler(store.NewApplicationStore(pool)),
+		Reviews:      api.NewReviewHandler(store.NewApplicationStore(pool), store.NewReviewStore(pool)),
 		JobPosts:     api.NewJobPostHandler(store.NewJobPostStore(pool)),
 		Questions:    api.NewQuestionHandler(store.NewQuestionStore(pool)),
 		Listings:     api.NewJobListingHandler(store.NewJobPostStore(pool)),
@@ -289,6 +290,20 @@ type callerRow struct {
 	// The ranking of postID, and a search of its applications: admins only.
 	ranking, search int
 
+	// Interviewer assignment, admins only. assignRepeat assigns the
+	// interviewer already assigned to A again: idempotent, a 200 that
+	// changes nothing. assignCandidate tries to assign a candidate to B: the
+	// privilege escalation, a 422. unassign removes the outside interviewer
+	// from B, where they are not assigned: idempotent, a 204.
+	assignList, assignRepeat, assignCandidate, unassign int
+
+	// Reviews, interviewers only, and only where assigned: creating a review
+	// of A, of B (where nobody is assigned), and correcting the review of A.
+	reviewA, reviewB, reviewPatchA int
+
+	// The timelines of A and B: admins, and the interviewers assigned.
+	eventsA, eventsB int
+
 	// listed is exactly which applications GET /v1/applications must return,
 	// for callers that get a 200.
 	listed []string
@@ -314,6 +329,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		conf = http.StatusConflict
 		gone = http.StatusNoContent
 		nf   = http.StatusNotFound
+		unpr = http.StatusUnprocessableEntity
 	)
 
 	// The matrix. Read across: what one caller gets from every endpoint.
@@ -325,7 +341,9 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau,
 			listing: ok, submit: unau, statusChange: unau,
 			rubricGet: unau, rubricPut: unau, scoreA: unau,
-			rescoreB: unau, rescoreAll: unau, ranking: unau, search: unau},
+			rescoreB: unau, rescoreAll: unau, ranking: unau, search: unau,
+			assignList: unau, assignRepeat: unau, assignCandidate: unau, unassign: unau,
+			reviewA: unau, reviewB: unau, reviewPatchA: unau, eventsA: unau, eventsB: unau},
 		{caller: "ghost (token for a deleted user)", userID: ghostID, role: domain.RoleAdmin,
 			me: unau, list: unau, getA: unau, getB: unau, getMissing: unau, getMalformed: unau,
 			postOpen: unau, postDraft: unau, postMissing: unau, postMalformed: unau,
@@ -334,7 +352,9 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau,
 			listing: ok, submit: unau, statusChange: unau,
 			rubricGet: unau, rubricPut: unau, scoreA: unau,
-			rescoreB: unau, rescoreAll: unau, ranking: unau, search: unau},
+			rescoreB: unau, rescoreAll: unau, ranking: unau, search: unau,
+			assignList: unau, assignRepeat: unau, assignCandidate: unau, unassign: unau,
+			reviewA: unau, reviewB: unau, reviewPatchA: unau, eventsA: unau, eventsB: unau},
 
 		{caller: "admin", userID: adminID, role: domain.RoleAdmin,
 			me: ok, list: ok, getA: ok, getB: ok, getMissing: nf, getMalformed: nf,
@@ -345,6 +365,8 @@ func TestAuthorizationMatrix(t *testing.T) {
 			listing: ok, submit: forb, statusChange: ok,
 			rubricGet: ok, rubricPut: ok, scoreA: ok,
 			rescoreB: ok, rescoreAll: ok, ranking: ok, search: ok,
+			assignList: ok, assignRepeat: ok, assignCandidate: unpr, unassign: gone,
+			reviewA: forb, reviewB: forb, reviewPatchA: forb, eventsA: ok, eventsB: ok,
 			listed: []string{appA, appB}},
 		{caller: "interviewer assigned to A", userID: interviewerID, role: domain.RoleInterviewer,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
@@ -355,6 +377,8 @@ func TestAuthorizationMatrix(t *testing.T) {
 			listing: ok, submit: forb, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: ok,
 			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb,
+			assignList: forb, assignRepeat: forb, assignCandidate: forb, unassign: forb,
+			reviewA: made, reviewB: nf, reviewPatchA: ok, eventsA: ok, eventsB: nf,
 			listed: []string{appA}},
 		{caller: "interviewer assigned to nothing", userID: outsideInterviewerID, role: domain.RoleInterviewer,
 			me: ok, list: ok, getA: nf, getB: nf, getMissing: nf, getMalformed: nf,
@@ -365,6 +389,8 @@ func TestAuthorizationMatrix(t *testing.T) {
 			listing: ok, submit: forb, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: nf,
 			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb,
+			assignList: forb, assignRepeat: forb, assignCandidate: forb, unassign: forb,
+			reviewA: nf, reviewB: nf, reviewPatchA: nf, eventsA: nf, eventsB: nf,
 			listed: []string{}},
 		{caller: "candidate who owns A", userID: candidateID, role: domain.RoleCandidate,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
@@ -375,6 +401,8 @@ func TestAuthorizationMatrix(t *testing.T) {
 			listing: ok, submit: conf, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: forb,
 			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb,
+			assignList: forb, assignRepeat: forb, assignCandidate: forb, unassign: forb,
+			reviewA: forb, reviewB: forb, reviewPatchA: forb, eventsA: forb, eventsB: nf,
 			listed: []string{appA}},
 		{caller: "candidate who owns B", userID: otherCandidateID, role: domain.RoleCandidate,
 			me: ok, list: ok, getA: nf, getB: ok, getMissing: nf, getMalformed: nf,
@@ -385,6 +413,8 @@ func TestAuthorizationMatrix(t *testing.T) {
 			listing: ok, submit: conf, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: nf,
 			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb,
+			assignList: forb, assignRepeat: forb, assignCandidate: forb, unassign: forb,
+			reviewA: forb, reviewB: forb, reviewPatchA: forb, eventsA: nf, eventsB: forb,
 			listed: []string{appB}},
 
 		// The token claims admin; the database says candidate. The database
@@ -398,6 +428,8 @@ func TestAuthorizationMatrix(t *testing.T) {
 			listing: ok, submit: conf, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: forb,
 			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb,
+			assignList: forb, assignRepeat: forb, assignCandidate: forb, unassign: forb,
+			reviewA: forb, reviewB: forb, reviewPatchA: forb, eventsA: forb, eventsB: nf,
 			listed: []string{appA}},
 	}
 
@@ -486,6 +518,32 @@ func TestAuthorizationMatrix(t *testing.T) {
 		{name: "GET search", method: http.MethodGet, route: "/v1/job-posts/:id/applications/search", path: "/v1/job-posts/" + postID + "/applications/search?q=go",
 			cellFor: func(r callerRow) int { return r.search }},
 
+		// Assignment. Each admin cell here changes nothing another cell reads:
+		// the repeat and the unassign are both idempotent no-ops, and the
+		// candidate is refused.
+		{name: "GET assignments of A", method: http.MethodGet, route: "/v1/applications/:id/assignments", path: "/v1/applications/" + appA + "/assignments",
+			cellFor: func(r callerRow) int { return r.assignList }},
+		{name: "POST assign A's interviewer again", method: http.MethodPost, route: "/v1/applications/:id/assign", path: "/v1/applications/" + appA + "/assign",
+			body: `{"interviewer_id":"` + interviewerID + `"}`, cellFor: func(r callerRow) int { return r.assignRepeat }},
+		{name: "POST assign a candidate to B", method: http.MethodPost, route: "/v1/applications/:id/assign", path: "/v1/applications/" + appB + "/assign",
+			body: `{"interviewer_id":"` + candidateID + `"}`, cellFor: func(r callerRow) int { return r.assignCandidate }},
+		{name: "DELETE unassigned interviewer from B", method: http.MethodDelete, route: "/v1/applications/:id/assign/:interviewerID",
+			path: "/v1/applications/" + appB + "/assign/" + outsideInterviewerID, cellFor: func(r callerRow) int { return r.unassign }},
+
+		// Reviews. The create comes before the correction, so the assigned
+		// interviewer has a review to correct when that cell runs.
+		{name: "POST review of A", method: http.MethodPost, route: "/v1/applications/:id/reviews", path: "/v1/applications/" + appA + "/reviews",
+			body: `{"mark":7,"notes":"From the matrix"}`, cellFor: func(r callerRow) int { return r.reviewA }},
+		{name: "POST review of B", method: http.MethodPost, route: "/v1/applications/:id/reviews", path: "/v1/applications/" + appB + "/reviews",
+			body: `{"mark":7}`, cellFor: func(r callerRow) int { return r.reviewB }},
+		{name: "PATCH my review of A", method: http.MethodPatch, route: "/v1/applications/:id/reviews/mine", path: "/v1/applications/" + appA + "/reviews/mine",
+			body: `{"mark":8}`, cellFor: func(r callerRow) int { return r.reviewPatchA }},
+
+		{name: "GET events of A", method: http.MethodGet, route: "/v1/applications/:id/events", path: "/v1/applications/" + appA + "/events",
+			cellFor: func(r callerRow) int { return r.eventsA }},
+		{name: "GET events of B", method: http.MethodGet, route: "/v1/applications/:id/events", path: "/v1/applications/" + appB + "/events",
+			cellFor: func(r callerRow) int { return r.eventsB }},
+
 		// Shortlists B, which no other cell depends on the status of.
 		{name: "PATCH application status", method: http.MethodPatch, route: "/v1/applications/:id/status", path: "/v1/applications/" + appB + "/status",
 			body: `{"status":"shortlisted"}`, appID: appB, cellFor: func(r callerRow) int { return r.statusChange }},
@@ -547,6 +605,13 @@ func TestAuthorizationMatrix(t *testing.T) {
 					// Refused by a domain rule, never a 500.
 					if got := errorCode(t, rec.Body.Bytes()); got != ep.conflictCode {
 						t.Errorf("code = %q, want %q", got, ep.conflictCode)
+					}
+
+				case want == unpr:
+					// The escalation attempt: refused as invalid input, and
+					// nothing written.
+					if got := errorCode(t, rec.Body.Bytes()); got != "validation_failed" {
+						t.Errorf("code = %q, want validation_failed", got)
 					}
 
 				case want == gone:
@@ -615,6 +680,22 @@ func TestAuthorizationMatrix(t *testing.T) {
 				}
 			})
 		}
+	}
+
+	// The write cells above were chosen to change nothing. Prove it: the
+	// candidate was never assigned, the repeat assignment and the no-op
+	// unassignment recorded no events, and exactly one review was filed.
+	var candidateAssignments, assignmentEvents, reviewsFiled int
+	if err := pool.QueryRow(context.Background(), `
+		SELECT (SELECT count(*) FROM interviewer_assignments WHERE interviewer_id IN ($1::text::uuid, $2::text::uuid)),
+		       (SELECT count(*) FROM application_events WHERE type IN ('application.assigned', 'application.unassigned')),
+		       (SELECT count(*) FROM reviews)`,
+		candidateID, otherCandidateID).Scan(&candidateAssignments, &assignmentEvents, &reviewsFiled); err != nil {
+		t.Fatalf("count side effects: %v", err)
+	}
+	if candidateAssignments != 0 || assignmentEvents != 0 || reviewsFiled != 1 {
+		t.Errorf("side effects: %d candidate assignments, %d assignment events, %d reviews; want 0, 0, 1",
+			candidateAssignments, assignmentEvents, reviewsFiled)
 	}
 }
 

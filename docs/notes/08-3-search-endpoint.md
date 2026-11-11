@@ -15,7 +15,7 @@ paged, and unable to produce a 500 whatever is typed into `q`.
 | [3](#3-why-ilike-go-would-be-wrong-twice) | **Why `ILIKE '%go%'` would be wrong, twice** | [`search_test.go:128`](../../test/integration/search_test.go#L128) |
 | [4](#4-every-hostile-input-and-what-it-gets) | Every hostile input, and what it gets | [`search.go:97`](../../internal/domain/search.go#L97) |
 | [5](#5-the-query-rank-a-page-then-join) | The query: rank, take a page, then join | [`search.go:74`](../../internal/store/search.go#L74) |
-| [6](#6-offset-paging-here-keyset-everywhere-else) | Offset paging here, keyset everywhere else | [`application_handler.go:763`](../../internal/api/application_handler.go#L763) |
+| [6](#6-offset-paging-here-keyset-everywhere-else) | Offset paging here, keyset everywhere else | [`application_handler.go:794`](../../internal/api/application_handler.go#L794) |
 | [7](#7-the-tests) | The tests | [`search_test.go:170`](../../test/integration/search_test.go#L170) |
 | [8](#8-verification) | Verification | — |
 
@@ -254,7 +254,7 @@ would loop forever on what it thinks is page 600.
 
 ## 6. Offset paging here, keyset everywhere else
 
-**📍 Open:** [`internal/api/application_handler.go:763`](../../internal/api/application_handler.go#L763)
+**📍 Open:** [`internal/api/application_handler.go:794`](../../internal/api/application_handler.go#L794)
 
 Every other list in this API uses keyset cursors (4.4) because `OFFSET n`
 makes PostgreSQL produce and throw away n rows. Search uses `offset` anyway:

@@ -354,10 +354,23 @@ func checkVacancy(ctx context.Context, tx pgx.Tx, jobPostID string) error {
 }
 
 // ApplicationHistory returns the answers of the application with this ID, in
-// form order, and its events, oldest first. It does not check who may see
-// them: call it only after auth.CanViewApplication has allowed the viewer.
-func (s *ApplicationStore) ApplicationHistory(ctx context.Context, id string) ([]domain.Answer, []domain.ApplicationEvent, error) {
+// form order; its events, oldest first; and its reviews, in the order they
+// were filed. Events and reviews are limited to what view allows, in the
+// SQL, so nothing outside it is ever read into memory.
+//
+// It does not check whether the viewer may see the application at all: call
+// it only after auth.CanViewApplication has allowed them, with the view
+// auth.ApplicationViewFor returned for them.
+func (s *ApplicationStore) ApplicationHistory(ctx context.Context, id string, view domain.ApplicationView) (*domain.ApplicationHistory, error) {
 	const op = "application history"
+
+	// One snapshot for all three reads, so an event and the review it
+	// describes cannot disagree because one committed between the queries.
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, fmt.Errorf("%s: begin: %w", op, err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // Read-only: there is nothing to undo, and Commit below ends it.
 
 	// Joined to questions only for the order: answers are shown in the order
 	// the form asks them, not the order they were inserted.
@@ -368,9 +381,9 @@ func (s *ApplicationStore) ApplicationHistory(ctx context.Context, id string) ([
 		WHERE aa.application_id = $1::text::uuid
 		ORDER BY q.position`
 
-	rows, err := s.db.Query(ctx, answersQuery, id)
+	rows, err := tx.Query(ctx, answersQuery, id)
 	if err != nil {
-		return nil, nil, translate(op, err)
+		return nil, translate(op, err)
 	}
 	answers, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Answer, error) {
 		var a domain.Answer
@@ -378,31 +391,33 @@ func (s *ApplicationStore) ApplicationHistory(ctx context.Context, id string) ([
 		return a, scanErr
 	})
 	if err != nil {
-		return nil, nil, translate(op, err)
+		return nil, translate(op, err)
 	}
 
 	// Served by application_events_application_id_created_at_idx. id breaks
 	// ties between events of one transaction, which share a created_at:
 	// now() is the transaction's start time, not the statement's.
-	const eventsQuery = `
-		SELECT id::text, application_id::text, actor_id::text, type, payload, created_at
-		FROM application_events
-		WHERE application_id = $1::text::uuid
-		ORDER BY created_at, id`
+	var where conditions
+	where.add("e.application_id = " + where.arg(id) + "::text::uuid")
+	addEventVisibility(&where, view)
+	eventsQuery := `SELECT ` + eventColumns + eventFrom + where.sql() + ` ORDER BY e.created_at, e.id`
 
-	rows, err = s.db.Query(ctx, eventsQuery, id)
+	rows, err = tx.Query(ctx, eventsQuery, where.args...)
 	if err != nil {
-		return nil, nil, translate(op, err)
+		return nil, translate(op, err)
 	}
-	events, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.ApplicationEvent, error) {
-		var e domain.ApplicationEvent
-		// actor_id is nullable, so it scans into a *string; payload is jsonb,
-		// which pgx decodes into a map with encoding/json.
-		scanErr := row.Scan(&e.ID, &e.ApplicationID, &e.ActorID, &e.Type, &e.Payload, &e.CreatedAt)
-		return e, scanErr
-	})
+	events, err := pgx.CollectRows(rows, scanEvent)
 	if err != nil {
-		return nil, nil, translate(op, err)
+		return nil, translate(op, err)
+	}
+
+	reviews, err := listReviews(ctx, tx, id, view)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return nil, translate(op+": commit", err)
 	}
 
 	if answers == nil {
@@ -411,7 +426,134 @@ func (s *ApplicationStore) ApplicationHistory(ctx context.Context, id string) ([
 	if events == nil {
 		events = []domain.ApplicationEvent{}
 	}
-	return answers, events, nil
+	return &domain.ApplicationHistory{Answers: answers, Events: events, Reviews: reviews}, nil
+}
+
+// Timeline returns one page of the application's events, newest first,
+// limited to what view allows, and whether a further page follows. Each
+// event carries its actor's current name and role.
+//
+// It does not check whether the viewer may see the timeline: call it only
+// after auth.CanViewTimeline has allowed them.
+func (s *ApplicationStore) Timeline(ctx context.Context, id string, view domain.ApplicationView, filter domain.TimelineFilter) ([]domain.ApplicationEvent, bool, error) {
+	const op = "application timeline"
+
+	var where conditions
+	where.add("e.application_id = " + where.arg(id) + "::text::uuid")
+	addEventVisibility(&where, view)
+	if filter.After != nil {
+		// "Older than the last event shown", in (created_at DESC, id DESC)
+		// order, as the other keyset-paged lists compare.
+		where.add("(e.created_at, e.id) < (" + where.arg(filter.After.CreatedAt) + "::timestamptz, " +
+			where.arg(filter.After.ID) + "::text::uuid)")
+	}
+	// One more than the page, to learn whether another page follows.
+	query := `SELECT ` + eventColumns + eventFrom + where.sql() +
+		` ORDER BY e.created_at DESC, e.id DESC LIMIT ` + where.arg(filter.Limit+1)
+
+	rows, err := s.db.Query(ctx, query, where.args...)
+	if err != nil {
+		return nil, false, translate(op, err)
+	}
+	events, err := pgx.CollectRows(rows, scanEvent)
+	if err != nil {
+		return nil, false, translate(op, err)
+	}
+
+	more := len(events) > filter.Limit
+	if more {
+		events = events[:filter.Limit]
+	}
+	if events == nil {
+		events = []domain.ApplicationEvent{}
+	}
+	return events, more, nil
+}
+
+// eventColumns and eventFrom are the select list and FROM clause of every
+// query on application_events, in the order scanEvent reads them. e is the
+// event and u its actor.
+//
+// The actor's name is read from users now, not copied into the event when
+// it was written; see docs/notes/09-3-timeline.md. LEFT JOIN, because a
+// system event has no actor, and an actor's account may be gone.
+const (
+	eventColumns = `e.id::text, e.application_id::text, e.actor_id::text, u.full_name, u.role, e.type, e.payload, e.created_at`
+	eventFrom    = ` FROM application_events e LEFT JOIN users u ON u.id = e.actor_id`
+)
+
+// scanEvent reads one row in eventColumns order.
+func scanEvent(row pgx.CollectableRow) (domain.ApplicationEvent, error) {
+	var e domain.ApplicationEvent
+	// The three actor columns are nullable, so they scan into *string;
+	// payload is jsonb, which pgx decodes into a map with encoding/json.
+	err := row.Scan(&e.ID, &e.ApplicationID, &e.ActorID, &e.ActorName, &e.ActorRole, &e.Type, &e.Payload, &e.CreatedAt)
+	return e, err
+}
+
+// addEventVisibility narrows a query on application_events, aliased e, to
+// the events view allows. It is the SQL half of auth.ApplicationViewFor, and
+// both event queries use it, so the rule is written once.
+func addEventVisibility(where *conditions, view domain.ApplicationView) {
+	// A non-nil list limits the types; an empty one matches nothing, since
+	// = ANY of an empty array is false.
+	if view.EventTypes != nil {
+		where.add("e.type = ANY(" + where.arg(view.EventTypes) + "::text[])")
+	}
+
+	// A review event carries the mark, so it is visible exactly when the
+	// review is. <> ALL is "is none of".
+	switch view.Reviews {
+	case domain.ReviewsAll:
+		// Nothing to hide.
+	case domain.ReviewsOwn:
+		where.add("(e.type <> ALL(" + where.arg(domain.ReviewEventTypes) + "::text[]) OR e.payload->>'interviewer_id' = " +
+			where.arg(view.ViewerID) + ")")
+	default:
+		where.add("e.type <> ALL(" + where.arg(domain.ReviewEventTypes) + "::text[])")
+	}
+}
+
+// listReviews returns the reviews of one application that view allows, in
+// the order they were filed: nil when the viewer may see no reviews, and an
+// empty slice when they may but there are none.
+func listReviews(ctx context.Context, db queryer, appID string, view domain.ApplicationView) ([]domain.Review, error) {
+	var where conditions
+	where.add("r.application_id = " + where.arg(appID) + "::text::uuid")
+
+	switch view.Reviews {
+	case domain.ReviewsAll:
+		// Every review.
+	case domain.ReviewsOwn:
+		if view.ViewerID == "" {
+			// Nobody's own review; "" would also fail the uuid cast.
+			return []domain.Review{}, nil
+		}
+		where.add("r.interviewer_id = " + where.arg(view.ViewerID) + "::text::uuid")
+	default:
+		// Not queried at all: the rows never leave the database.
+		return nil, nil
+	}
+
+	rows, err := db.Query(ctx, `SELECT `+reviewColumns+` FROM reviews r JOIN users u ON u.id = r.interviewer_id`+
+		where.sql()+` ORDER BY r.created_at, r.id`, where.args...)
+	if err != nil {
+		return nil, translate("list reviews", err)
+	}
+	reviews, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Review, error) {
+		r, scanErr := scanReview(row)
+		if scanErr != nil {
+			return domain.Review{}, scanErr
+		}
+		return *r, nil
+	})
+	if err != nil {
+		return nil, translate("list reviews", err)
+	}
+	if reviews == nil {
+		reviews = []domain.Review{}
+	}
+	return reviews, nil
 }
 
 // ScoreCard returns the stored score of the application with this ID: every

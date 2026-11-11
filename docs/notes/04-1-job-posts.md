@@ -16,7 +16,7 @@ Click the link, read the code, then come back.
 
 | # | Topic | Code |
 |---|---|---|
-| [1](#1-three-routes-two-guards) | Three routes, two guards | [`router.go:112`](../../internal/api/router.go#L112) |
+| [1](#1-three-routes-two-guards) | Three routes, two guards | [`router.go:125`](../../internal/api/router.go#L125) |
 | [2](#2-the-trap-a-string-has-no-value-that-means-not-sent) | The trap: a `string` has no value that means "not sent" | [`job_post_handler.go:72`](../../internal/api/job_post_handler.go#L72) |
 | [3](#3-the-pointer-field-approach) | The pointer-field approach | [`job_post_handler.go:72`](../../internal/api/job_post_handler.go#L72) |
 | [4](#4-from-request-to-patch-to-row) | From request, to patch, to row | [`job_post.go:264`](../../internal/domain/job_post.go#L264) |
@@ -34,7 +34,7 @@ Click the link, read the code, then come back.
 
 ## 1. Three routes, two guards
 
-**📍 Open:** [`internal/api/router.go:112`](../../internal/api/router.go#L112)
+**📍 Open:** [`internal/api/router.go:125`](../../internal/api/router.go#L125)
 
 | Route | Who | Handler |
 |---|---|---|
@@ -44,7 +44,7 @@ Click the link, read the code, then come back.
 
 `GET` is registered on `protected`, so it runs `RequireAuth` and then the
 handler. The two writes are registered on a nested group, at
-[`router.go:121`](../../internal/api/router.go#L121):
+[`router.go:134`](../../internal/api/router.go#L134):
 
 ```go
 admin := protected.Group("", RequireRole(domain.RoleAdmin))

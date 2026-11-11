@@ -37,6 +37,13 @@ type fakeApplications struct {
 	events       map[string][]domain.ApplicationEvent
 	historyCalls []string
 
+	// reviews is every review, by application ID, which ApplicationHistory
+	// filters by the view. lastView and lastTimeline are what the latest
+	// history or timeline call received.
+	reviews      map[string][]domain.Review
+	lastView     *domain.ApplicationView
+	lastTimeline *domain.TimelineFilter
+
 	// lastTransition is {id, to, actorID} of the most recent
 	// TransitionApplication call; transitionErr, when set, is its result.
 	lastTransition *[3]string
@@ -166,15 +173,50 @@ func (f *fakeApplications) ListApplications(_ context.Context, viewer domain.Use
 	return f.list, f.listTotal, f.listMore, nil
 }
 
-func (f *fakeApplications) ApplicationHistory(_ context.Context, id string) ([]domain.Answer, []domain.ApplicationEvent, error) {
+// ApplicationHistory returns the configured answers and events, and reviews
+// filtered by the view the way the SQL filters them, so a handler test can
+// check that the view it passes is the right one. It records each view.
+func (f *fakeApplications) ApplicationHistory(_ context.Context, id string, view domain.ApplicationView) (*domain.ApplicationHistory, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.historyCalls = append(f.historyCalls, id)
+	f.lastView = &view
 	if f.failWith != nil {
-		return nil, nil, f.failWith
+		return nil, f.failWith
 	}
-	return f.answers[id], f.events[id], nil
+
+	history := &domain.ApplicationHistory{Answers: f.answers[id], Events: f.events[id]}
+	switch view.Reviews {
+	case domain.ReviewsAll:
+		history.Reviews = append([]domain.Review{}, f.reviews[id]...)
+	case domain.ReviewsOwn:
+		history.Reviews = []domain.Review{}
+		for _, r := range f.reviews[id] {
+			if r.InterviewerID == view.ViewerID {
+				history.Reviews = append(history.Reviews, r)
+			}
+		}
+	}
+	return history, nil
+}
+
+// Timeline returns the configured events for id, one page of them, and
+// records the view and filter it was given.
+func (f *fakeApplications) Timeline(_ context.Context, id string, view domain.ApplicationView, filter domain.TimelineFilter) ([]domain.ApplicationEvent, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.lastView = &view
+	f.lastTimeline = &filter
+	if f.failWith != nil {
+		return nil, false, f.failWith
+	}
+	events := f.events[id]
+	if len(events) > filter.Limit {
+		return events[:filter.Limit], true, nil
+	}
+	return events, false, nil
 }
 
 func (f *fakeApplications) TransitionApplication(_ context.Context, id, to, actorID string) (*domain.Application, error) {

@@ -20,6 +20,7 @@ type Deps struct {
 	Questions    *QuestionHandler
 	Listings     *JobListingHandler
 	Rubrics      *RubricHandler
+	Reviews      *ReviewHandler
 
 	// Tokens verifies the access token on every protected route, and Users
 	// loads the user it names.
@@ -39,8 +40,8 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 	// Checked here, at startup, because a nil Users would otherwise surface as
 	// a panic on the first authenticated request.
 	if deps.Auth == nil || deps.Applications == nil || deps.JobPosts == nil || deps.Questions == nil ||
-		deps.Listings == nil || deps.Rubrics == nil || deps.Tokens == nil || deps.Users == nil || deps.DB == nil {
-		return nil, errors.New("build router: Auth, Applications, JobPosts, Questions, Listings, Rubrics, Tokens, Users and DB are all required")
+		deps.Listings == nil || deps.Rubrics == nil || deps.Reviews == nil || deps.Tokens == nil || deps.Users == nil || deps.DB == nil {
+		return nil, errors.New("build router: Auth, Applications, JobPosts, Questions, Listings, Rubrics, Reviews, Tokens, Users and DB are all required")
 	}
 
 	// gin.Default() with one substitution: its recovery middleware answers a
@@ -107,6 +108,19 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 		// handler decides, with auth.CanViewScore.
 		protected.GET("/applications/:id/score", deps.Applications.Score)
 
+		// The timeline: admins and the assigned interviewers, decided per row
+		// by auth.CanViewTimeline, as the score is.
+		protected.GET("/applications/:id/events", deps.Applications.Timeline)
+
+		// Reviews are filed by interviewers only. RequireRole refuses everyone
+		// else before the body is read; the handler then requires an
+		// assignment, which depends on the row.
+		reviewer := protected.Group("", RequireRole(domain.RoleInterviewer))
+		{
+			reviewer.POST("/applications/:id/reviews", deps.Reviews.CreateReview)
+			reviewer.PATCH("/applications/:id/reviews/mine", deps.Reviews.UpdateMyReview)
+		}
+
 		// Every role may read a post. Whether a draft is visible to the
 		// caller is decided by auth.CanViewDraftJobPosts.
 		protected.GET("/job-posts/:id", deps.JobPosts.Get)
@@ -134,6 +148,13 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 			// four statuses would be a dozen routes saying the same thing.
 			// The lifecycle map in domain decides what is legal.
 			admin.PATCH("/applications/:id/status", deps.Applications.UpdateStatus)
+
+			// Interviewer assignment. POST /assign is idempotent despite the
+			// method: a repeat answers 200 and changes nothing. DELETE names
+			// the interviewer in the path, as a DELETE has no body.
+			admin.POST("/applications/:id/assign", deps.Reviews.Assign)
+			admin.DELETE("/applications/:id/assign/:interviewerID", deps.Reviews.Unassign)
+			admin.GET("/applications/:id/assignments", deps.Reviews.Assignments)
 
 			// Rescoring against the current rubric: one application, or every
 			// application to a post. POST, not PUT: each call appends an event,
