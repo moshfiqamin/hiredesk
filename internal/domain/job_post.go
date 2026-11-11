@@ -2,6 +2,7 @@ package domain
 
 import (
 	"math"
+	"slices"
 	"strconv"
 	"time"
 	"unicode/utf8"
@@ -14,6 +15,156 @@ const (
 	JobStatusOpen   = "open"
 	JobStatusClosed = "closed"
 )
+
+// jobPostTransitions is the job post lifecycle: each status, and the statuses
+// a post in it may move to next. It is the one place the lifecycle is
+// written down. CanTransition and AllowedTransitions read it, and no other
+// code compares statuses to decide whether a move is legal.
+//
+// closed maps to an empty list rather than being left out, so "closed is
+// final" is stated here instead of implied by an absence.
+var jobPostTransitions = map[string][]string{
+	JobStatusDraft:  {JobStatusOpen},
+	JobStatusOpen:   {JobStatusClosed},
+	JobStatusClosed: {},
+}
+
+// CanTransition reports whether a job post in status from may move to status
+// to. Staying in the same status is not a transition, and is false. Any
+// status not in the lifecycle, on either side, is false.
+func CanTransition(from, to string) bool {
+	// A missing key yields a nil slice, which contains nothing, so an unknown
+	// from needs no separate check.
+	return slices.Contains(jobPostTransitions[from], to)
+}
+
+// AllowedTransitions returns the statuses a job post in status from may move
+// to. It returns an empty, non-nil slice for a final or unknown status.
+func AllowedTransitions(from string) []string {
+	next := jobPostTransitions[from]
+
+	// A copy, so a caller that appends to or sorts the result cannot change
+	// the lifecycle for every later caller. make with the length, never nil,
+	// so it encodes as [] in JSON.
+	out := make([]string, len(next))
+	copy(out, next)
+	return out
+}
+
+// CheckTransition returns a *TransitionError if a job post in status from
+// may not move to status to, and nil if it may.
+func CheckTransition(from, to string) error {
+	if CanTransition(from, to) {
+		return nil
+	}
+	return &TransitionError{From: from, To: to, Allowed: AllowedTransitions(from)}
+}
+
+// TransitionError is an ErrInvalidTransition that says what was attempted
+// and what would have been allowed.
+type TransitionError struct {
+	From    string
+	To      string
+	Allowed []string
+}
+
+// Error names both statuses. Neither is sensitive: the caller sent one and
+// can read the other.
+func (e *TransitionError) Error() string {
+	return ErrInvalidTransition.Error() + ": " + e.From + " to " + e.To
+}
+
+// Unwrap makes errors.Is(err, ErrInvalidTransition) true.
+func (e *TransitionError) Unwrap() error {
+	return ErrInvalidTransition
+}
+
+// Details returns what a client needs to correct the request: where the post
+// is, where it was asked to go, and where it could go instead.
+func (e *TransitionError) Details() map[string]any {
+	allowed := e.Allowed
+	if allowed == nil {
+		allowed = []string{}
+	}
+	return map[string]any{
+		"current_status":        e.From,
+		"requested_status":      e.To,
+		"allowed_next_statuses": allowed,
+	}
+}
+
+// OpenReadiness is what a job post has that opening it depends on. The
+// caller counts; CheckReadyToOpen judges.
+type OpenReadiness struct {
+	// Questions is how many questions the post's application form has.
+	Questions int
+
+	// Criteria is how many criteria the current version of the post's rubric
+	// has, and WeightedCriteria how many of those have a weight above zero.
+	Criteria         int
+	WeightedCriteria int
+}
+
+// CheckReadyToOpen returns a *NotReadyError naming everything a post still
+// lacks before it may be opened, or nil if it lacks nothing.
+func CheckReadyToOpen(r OpenReadiness) error {
+	missing := map[string]string{}
+
+	if r.Questions == 0 {
+		missing["questions"] = "The post has no questions. Add at least one before opening it."
+	}
+
+	switch {
+	case r.Criteria == 0:
+		missing["rubric"] = "The post has no rubric. Add at least one scoring criterion before opening it."
+	case r.WeightedCriteria == 0:
+		// A weighted total divides by the sum of the weights, which is zero
+		// here, so no application could be given a score.
+		missing["rubric"] = "Every rubric criterion has a weight of 0. Give at least one a positive weight before opening the post."
+	}
+
+	if len(missing) == 0 {
+		return nil
+	}
+	return &NotReadyError{Missing: missing}
+}
+
+// NotReadyError is an ErrNotReady that names each thing that is missing.
+type NotReadyError struct {
+	// Missing maps what is missing ("questions", "rubric") to a sentence for
+	// the client saying what to do about it.
+	Missing map[string]string
+}
+
+// Error lists what is missing, sorted so the same error always prints the
+// same way.
+func (e *NotReadyError) Error() string {
+	names := make([]string, 0, len(e.Missing))
+	for name := range e.Missing {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+
+	out := ErrNotReady.Error() + ": missing"
+	for _, name := range names {
+		out += " " + name
+	}
+	return out
+}
+
+// Unwrap makes errors.Is(err, ErrNotReady) true.
+func (e *NotReadyError) Unwrap() error {
+	return ErrNotReady
+}
+
+// Details returns Missing as a client sees it.
+func (e *NotReadyError) Details() map[string]any {
+	out := make(map[string]any, len(e.Missing))
+	for name, problem := range e.Missing {
+		out[name] = problem
+	}
+	return out
+}
 
 // MaxJobTitleLength is the longest title a job post may have, in characters.
 const MaxJobTitleLength = 200

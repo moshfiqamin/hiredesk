@@ -37,10 +37,21 @@ type errorDetail struct {
 	// Message is meant for people and may be reworded at any time.
 	Message string `json:"message"`
 
-	// Details maps a field name to its problem. No omitempty, and never nil,
-	// so it is always a JSON object and a client can read it without first
-	// checking that it exists.
-	Details map[string]string `json:"details"`
+	// Details says more about the problem: for a validation failure, each
+	// field's problem; for a refused status change, the statuses that are
+	// allowed. No omitempty, and never nil, so it is always a JSON object and
+	// a client can read it without first checking that it exists.
+	//
+	// any, not string, so a value can be a list.
+	Details map[string]any `json:"details"`
+}
+
+// detailedError is an error that carries details written to be shown to a
+// client. *domain.ValidationError, *domain.TransitionError and
+// *domain.NotReadyError implement it.
+type detailedError interface {
+	error
+	Details() map[string]any
 }
 
 // mapping is one row of the table that translates a domain error to HTTP.
@@ -62,6 +73,8 @@ var mappings = []mapping{
 	{domain.ErrForbidden, http.StatusForbidden, "forbidden", "You do not have permission to do that."},
 	{domain.ErrNotFound, http.StatusNotFound, "not_found", "The requested resource was not found."},
 	{domain.ErrDuplicate, http.StatusConflict, "duplicate", "A resource with these details already exists."},
+	{domain.ErrInvalidTransition, http.StatusConflict, "invalid_transition", "The resource cannot move to that status from its current one."},
+	{domain.ErrNotReady, http.StatusConflict, "not_ready", "The resource is missing something it needs before it can move to that status."},
 	{domain.ErrConflict, http.StatusConflict, "conflict", "The request conflicts with the current state of the resource."},
 }
 
@@ -100,13 +113,15 @@ func Respond(c *gin.Context, err error) {
 
 	// err.Error() is never sent, even for a known error: whatever wrapped the
 	// sentinel may have added a query, an ID or a driver message. The client
-	// gets the table's fixed text, plus field details that were written to be
+	// gets the table's fixed text, plus details that were written to be
 	// shown.
-	var details map[string]string
+	var details map[string]any
 
-	var invalid *domain.ValidationError
-	if errors.As(err, &invalid) {
-		details = invalid.Fields
+	// errors.As accepts a pointer to an interface type: it finds the first
+	// error in the chain that has a Details method, whatever its type.
+	var detailed detailedError
+	if errors.As(err, &detailed) {
+		details = detailed.Details()
 	}
 
 	write(c, m.status, m.code, m.message, details)
@@ -136,10 +151,10 @@ func Recovery() gin.HandlerFunc {
 
 // write sends the envelope and aborts, so no later handler or middleware in
 // the chain can add a second body.
-func write(c *gin.Context, status int, code, message string, details map[string]string) {
+func write(c *gin.Context, status int, code, message string, details map[string]any) {
 	// A nil map encodes as JSON null, which would be a second shape.
 	if details == nil {
-		details = map[string]string{}
+		details = map[string]any{}
 	}
 
 	c.AbortWithStatusJSON(status, errorBody{

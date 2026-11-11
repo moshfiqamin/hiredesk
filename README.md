@@ -16,7 +16,7 @@ git clone https://github.com/moshfiqamin/hiredesk.git && cd hiredesk && make up
 ```
 
 That generates `.env` with a random `JWT_SECRET`, builds the image, starts
-Postgres, waits for it to pass its healthcheck, **applies all six schema
+Postgres, waits for it to pass its healthcheck, **applies all seven schema
 migrations**, then starts the API.
 
 ```bash
@@ -57,6 +57,8 @@ Run `make` at any time to list every command.
 | `POST` | `/v1/job-posts` | **Admin only.** Create a job post, always as a draft. Body: `title` (1–200 characters), and optionally `description`, `employment_type`, `location`, `vacancies` (default 1), `salary_min`, `salary_max`, `closes_at`. Returns 201 and the post. |
 | `GET` | `/v1/job-posts/:id` | One job post with its questions. A draft is visible to admins only; to anyone else it is a 404. |
 | `PATCH` | `/v1/job-posts/:id` | **Admin only.** Partial update: only the fields present in the body change, and a field sent as `""` is stored as empty. `null` is treated as not sent. The rules are checked against the post as it would be after the change. |
+| `POST` | `/v1/job-posts/:id/open` | **Admin only.** Draft to open. Refused with 409 `not_ready` unless the post has at least one question and a rubric with a positive weight; `details` names what is missing. |
+| `POST` | `/v1/job-posts/:id/close` | **Admin only.** Open to closed, which is final. Any move the lifecycle does not allow is a 409 `invalid_transition` listing `allowed_next_statuses`. |
 
 Create the development accounts, then try it:
 
@@ -139,7 +141,8 @@ Every error response has the same body, including unknown routes and panics:
 ```
 
 `code` is stable and meant for programs; `message` is for people; `details` is
-always an object, and names each bad field when validation fails.
+always an object: it names each bad field when validation fails, and lists the
+allowed next statuses when a status change is refused.
 
 | Status | `code` | Meaning |
 |---|---|---|
@@ -153,6 +156,8 @@ always an object, and names each bad field when validation fails.
 | 404 | `route_not_found` | No such endpoint |
 | 405 | `method_not_allowed` | The endpoint exists under another method |
 | 409 | `duplicate` | A record with the same unique key exists |
+| 409 | `invalid_transition` | That status change is not allowed from the current status |
+| 409 | `not_ready` | The resource lacks something the new status needs; see `details` |
 | 409 | `conflict` | Valid, but not in the resource's current state |
 | 422 | `validation_failed` | One or more fields are invalid; see `details` |
 | 500 | `internal_error` | Unexpected; the cause is logged, never returned |
@@ -198,7 +203,7 @@ make build && DATABASE_URL="postgres://localhost:5432/hiredesk?sslmode=disable" 
 
 ## Schema
 
-Eleven tables across six migrations, applied automatically when the stack
+Twelve tables across seven migrations, applied automatically when the stack
 starts. Browse them at the Adminer link above, or:
 
 ```bash
@@ -215,7 +220,8 @@ make psql
 | `applications` | One per candidate per post — enforced by a unique constraint |
 | `application_answers` | Submitted answers, one per question per application |
 | `scores` | Per-criterion scores with the evidence behind them |
-| `application_events` | Append-only audit trail |
+| `application_events` | Append-only audit trail of each application |
+| `job_post_events` | Append-only audit trail of each job post, such as status changes |
 | `interviewer_assignments` | Who is reviewing what |
 | `reviews` | Marks (1–10) and notes |
 

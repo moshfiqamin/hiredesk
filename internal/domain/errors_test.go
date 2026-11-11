@@ -16,6 +16,8 @@ func TestSentinelsAreDistinct(t *testing.T) {
 		"ErrForbidden":          ErrForbidden,
 		"ErrValidation":         ErrValidation,
 		"ErrConflict":           ErrConflict,
+		"ErrInvalidTransition":  ErrInvalidTransition,
+		"ErrNotReady":           ErrNotReady,
 	}
 
 	for name, sentinel := range sentinels {
@@ -82,6 +84,12 @@ func TestValidationError(t *testing.T) {
 		}
 		if got, want := err.Error(), "validation failed: email, password"; got != want {
 			t.Errorf("Error() = %q, want %q", got, want)
+		}
+
+		var v2 ValidationError
+		v2.Add("email", "is required")
+		if d := v2.Details(); len(d) != 1 || d["email"] != "is required" {
+			t.Errorf("Details() = %v, want it to mirror Fields", d)
 		}
 
 		// Wrapped once more, the fields must still be recoverable.

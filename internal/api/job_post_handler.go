@@ -24,6 +24,7 @@ type JobPostStore interface {
 	CreateJobPost(ctx context.Context, in domain.NewJobPost) (*domain.JobPost, error)
 	GetJobPostByID(ctx context.Context, id string, includeDrafts bool) (*domain.JobPost, error)
 	UpdateJobPost(ctx context.Context, id string, patch domain.JobPostPatch) (*domain.JobPost, error)
+	TransitionJobPost(ctx context.Context, id, to, actorID string) (*domain.JobPost, error)
 }
 
 // JobPostHandler serves the job post endpoints. Every route it serves must be
@@ -306,6 +307,45 @@ func (h *JobPostHandler) Update(c *gin.Context) {
 	post, err := h.posts.UpdateJobPost(c.Request.Context(), id, patch)
 	if err != nil {
 		Respond(c, fmt.Errorf("update job post: %w", err))
+		return
+	}
+
+	c.JSON(http.StatusOK, newJobPostResponse(post))
+}
+
+// Open handles POST /v1/job-posts/:id/open: draft to open. A post with no
+// questions, or no rubric that could score an application, is refused.
+func (h *JobPostHandler) Open(c *gin.Context) {
+	h.transition(c, domain.JobStatusOpen)
+}
+
+// Close handles POST /v1/job-posts/:id/close: open to closed. A closed post
+// cannot be reopened.
+func (h *JobPostHandler) Close(c *gin.Context) {
+	h.transition(c, domain.JobStatusClosed)
+}
+
+// transition moves the post named in the path to status to, and answers with
+// the post as it now stands. A move the lifecycle refuses is a 409 whose
+// details list the statuses that are allowed.
+//
+// The target status comes from the route, never from the body, so each route
+// can do exactly one thing and its URL says which.
+func (h *JobPostHandler) transition(c *gin.Context, to string) {
+	user, ok := CurrentUser(c)
+	if !ok {
+		Respond(c, errors.New("transition job post: no authenticated user; is the route behind RequireAuth?"))
+		return
+	}
+
+	id, ok := pathUUID(c, "id")
+	if !ok {
+		return
+	}
+
+	post, err := h.posts.TransitionJobPost(c.Request.Context(), id, to, user.ID)
+	if err != nil {
+		Respond(c, fmt.Errorf("transition job post to %s: %w", to, err))
 		return
 	}
 

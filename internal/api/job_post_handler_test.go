@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -23,6 +24,13 @@ type fakeJobPosts struct {
 	byID map[string]domain.JobPost
 	next int
 
+	// readiness holds the rubric counts per post ID. Questions are counted
+	// from the post itself.
+	readiness map[string]domain.OpenReadiness
+
+	// lastActor is the actor the most recent TransitionJobPost call received.
+	lastActor string
+
 	// lastPatch is the patch the most recent UpdateJobPost call received, and
 	// calls counts every call to any method.
 	lastPatch domain.JobPostPatch
@@ -33,7 +41,7 @@ type fakeJobPosts struct {
 }
 
 func newFakeJobPosts() *fakeJobPosts {
-	return &fakeJobPosts{byID: make(map[string]domain.JobPost)}
+	return &fakeJobPosts{byID: make(map[string]domain.JobPost), readiness: make(map[string]domain.OpenReadiness)}
 }
 
 func (f *fakeJobPosts) CreateJobPost(_ context.Context, in domain.NewJobPost) (*domain.JobPost, error) {
@@ -101,6 +109,38 @@ func (f *fakeJobPosts) UpdateJobPost(_ context.Context, id string, patch domain.
 	if err := post.Validate(); err != nil {
 		return nil, err
 	}
+	f.byID[id] = post
+	return &post, nil
+}
+
+// TransitionJobPost runs the same domain checks as the real store, in the
+// same order, so the handler sees the same errors.
+func (f *fakeJobPosts) TransitionJobPost(_ context.Context, id, to, actorID string) (*domain.JobPost, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.calls++
+	f.lastActor = actorID
+	if f.failWith != nil {
+		return nil, f.failWith
+	}
+
+	post, ok := f.byID[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	if err := domain.CheckTransition(post.Status, to); err != nil {
+		return nil, err
+	}
+	if to == domain.JobStatusOpen {
+		readiness := f.readiness[id]
+		readiness.Questions = len(post.Questions)
+		if err := domain.CheckReadyToOpen(readiness); err != nil {
+			return nil, err
+		}
+	}
+
+	post.Status = to
 	f.byID[id] = post
 	return &post, nil
 }
@@ -329,7 +369,7 @@ func TestCreateJobPostValidation(t *testing.T) {
 				t.Errorf("details = %v, want exactly %v", got.Details, tt.wantFields)
 			}
 			for _, field := range tt.wantFields {
-				if got.Details[field] == "" {
+				if got.detail(field) == "" {
 					t.Errorf("no problem reported for %q; details = %v", field, got.Details)
 				}
 			}
@@ -582,7 +622,7 @@ func TestUpdateJobPostAbsentVersusEmpty(t *testing.T) {
 		if zero.Code != http.StatusUnprocessableEntity {
 			t.Fatalf("vacancies 0: status = %d, want 422; body = %s", zero.Code, zero.Body)
 		}
-		if got := decode(t, zero.Body.Bytes()); got.Details["vacancies"] == "" {
+		if got := decode(t, zero.Body.Bytes()); got.detail("vacancies") == "" {
 			t.Errorf("details = %v, want a problem with vacancies", got.Details)
 		}
 
@@ -641,7 +681,7 @@ func TestUpdateJobPost(t *testing.T) {
 		if rec.Code != http.StatusUnprocessableEntity {
 			t.Fatalf("status = %d, want 422; body = %s", rec.Code, rec.Body)
 		}
-		if got := decode(t, rec.Body.Bytes()); got.Details["salary_min"] == "" {
+		if got := decode(t, rec.Body.Bytes()); got.detail("salary_min") == "" {
 			t.Errorf("details = %v, want a problem with salary_min", got.Details)
 		}
 
@@ -742,6 +782,7 @@ func TestJobPostStoreFailures(t *testing.T) {
 		{http.MethodPost, "/v1/job-posts", `{"title":"x"}`},
 		{http.MethodGet, "/v1/job-posts/" + draftPostID, ``},
 		{http.MethodPatch, "/v1/job-posts/" + draftPostID, `{"title":"x"}`},
+		{http.MethodPost, "/v1/job-posts/" + draftPostID + "/open", ``},
 	} {
 		rec := f.send(req.method, req.path, f.headers[domain.RoleAdmin], req.body)
 		if rec.Code != http.StatusInternalServerError {
@@ -751,7 +792,208 @@ func TestJobPostStoreFailures(t *testing.T) {
 			t.Errorf("%s %s: the cause leaked to the client: %s", req.method, req.path, rec.Body)
 		}
 	}
-	if n := strings.Count(logged.String(), "10.0.0.5"); n != 3 {
-		t.Errorf("cause logged %d times, want 3; log = %q", n, logged)
+	if n := strings.Count(logged.String(), "10.0.0.5"); n != 4 {
+		t.Errorf("cause logged %d times, want 4; log = %q", n, logged)
 	}
+}
+
+// lifecycleFixture adds, to postFixture's draft (no questions) and open post,
+// a draft that is ready to open and a closed post.
+func newLifecycleFixture(t *testing.T) *postFixture {
+	t.Helper()
+
+	f := newPostFixture(t)
+
+	ready := f.draft
+	ready.ID = readyPostID
+	ready.Questions = []domain.Question{{ID: "q-r", JobPostID: readyPostID, Prompt: "Why?", Kind: "text", Position: 1}}
+	f.posts.byID[readyPostID] = ready
+	f.posts.readiness[readyPostID] = domain.OpenReadiness{Criteria: 2, WeightedCriteria: 2}
+
+	closed := f.open
+	closed.ID = closedPostID
+	closed.Status = domain.JobStatusClosed
+	f.posts.byID[closedPostID] = closed
+
+	return f
+}
+
+const (
+	readyPostID  = "cccccccc-0000-4000-8000-000000000003"
+	closedPostID = "cccccccc-0000-4000-8000-000000000004"
+)
+
+// allowedNext reads details.allowed_next_statuses from an error response.
+func allowedNext(t *testing.T, rec *httptest.ResponseRecorder) []string {
+	t.Helper()
+
+	var body struct {
+		Error struct {
+			Details struct {
+				Allowed *[]string `json:"allowed_next_statuses"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("body: %v\n%s", err, rec.Body)
+	}
+	if body.Error.Details.Allowed == nil {
+		t.Fatalf("details.allowed_next_statuses is missing or null: %s", rec.Body)
+	}
+	return *body.Error.Details.Allowed
+}
+
+func TestJobPostTransitions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		action     string // "open" or "close"
+		id         string
+		wantStatus int
+		wantCode   string   // for a refusal
+		wantNext   []string // allowed_next_statuses, for an invalid transition
+		wantState  string   // the post's status afterwards
+	}{
+		{"open a ready draft", "open", readyPostID, http.StatusOK, "", nil, domain.JobStatusOpen},
+		{"close an open post", "close", openPostID, http.StatusOK, "", nil, domain.JobStatusClosed},
+
+		{"close a draft", "close", readyPostID, http.StatusConflict, "invalid_transition", []string{"open"}, domain.JobStatusDraft},
+		{"open an open post", "open", openPostID, http.StatusConflict, "invalid_transition", []string{"closed"}, domain.JobStatusOpen},
+		{"reopen a closed post", "open", closedPostID, http.StatusConflict, "invalid_transition", []string{}, domain.JobStatusClosed},
+		{"close a closed post", "close", closedPostID, http.StatusConflict, "invalid_transition", []string{}, domain.JobStatusClosed},
+
+		{"a post that does not exist", "open", missingPostID, http.StatusNotFound, "not_found", nil, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newLifecycleFixture(t)
+			rec := f.send(http.MethodPost, "/v1/job-posts/"+tt.id+"/"+tt.action, f.headers[domain.RoleAdmin], "")
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d; body = %s", rec.Code, tt.wantStatus, rec.Body)
+			}
+
+			if tt.wantStatus == http.StatusOK {
+				if got := decodePost(t, rec); got.Status != tt.wantState {
+					t.Errorf("response status = %q, want %q", got.Status, tt.wantState)
+				}
+				if f.posts.lastActor != f.adminID {
+					t.Errorf("actor = %q, want the admin %q", f.posts.lastActor, f.adminID)
+				}
+			} else {
+				if got := decode(t, rec.Body.Bytes()); got.Code != tt.wantCode {
+					t.Errorf("code = %q, want %q", got.Code, tt.wantCode)
+				}
+				if tt.wantNext != nil {
+					if got := allowedNext(t, rec); !slices.Equal(got, tt.wantNext) {
+						t.Errorf("allowed_next_statuses = %#v, want %#v", got, tt.wantNext)
+					}
+				}
+			}
+
+			if tt.wantState != "" {
+				if got := f.stored(tt.id).Status; got != tt.wantState {
+					t.Errorf("stored status = %q, want %q", got, tt.wantState)
+				}
+			}
+		})
+	}
+}
+
+func TestOpenJobPostRefusesAnUnreadyPost(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		questions   int
+		readiness   domain.OpenReadiness
+		wantMissing []string
+	}{
+		{"neither questions nor rubric", 0, domain.OpenReadiness{}, []string{"questions", "rubric"}},
+		{"no questions", 0, domain.OpenReadiness{Criteria: 1, WeightedCriteria: 1}, []string{"questions"}},
+		{"no rubric", 1, domain.OpenReadiness{}, []string{"rubric"}},
+		{"a rubric weighted zero", 1, domain.OpenReadiness{Criteria: 2}, []string{"rubric"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newLifecycleFixture(t)
+			post := f.stored(readyPostID)
+			post.Questions = post.Questions[:tt.questions]
+			f.posts.byID[readyPostID] = post
+			f.posts.readiness[readyPostID] = tt.readiness
+
+			rec := f.send(http.MethodPost, "/v1/job-posts/"+readyPostID+"/open", f.headers[domain.RoleAdmin], "")
+
+			if rec.Code != http.StatusConflict {
+				t.Fatalf("status = %d, want 409; body = %s", rec.Code, rec.Body)
+			}
+			got := decode(t, rec.Body.Bytes())
+			if got.Code != "not_ready" {
+				t.Errorf("code = %q, want not_ready", got.Code)
+			}
+			if len(got.Details) != len(tt.wantMissing) {
+				t.Errorf("details = %v, want exactly %v", got.Details, tt.wantMissing)
+			}
+			for _, key := range tt.wantMissing {
+				if got.detail(key) == "" {
+					t.Errorf("no message for %q; details = %v", key, got.Details)
+				}
+			}
+			if f.stored(readyPostID).Status != domain.JobStatusDraft {
+				t.Errorf("an unready post was opened")
+			}
+		})
+	}
+}
+
+func TestJobPostTransitionsAreAdminOnly(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range []string{
+		"/v1/job-posts/" + readyPostID + "/open",
+		"/v1/job-posts/" + openPostID + "/close",
+		"/v1/job-posts/not-a-uuid/open",
+	} {
+		for role, wantStatus := range map[string]int{
+			domain.RoleInterviewer: http.StatusForbidden,
+			domain.RoleCandidate:   http.StatusForbidden,
+			"":                     http.StatusUnauthorized,
+		} {
+			t.Run(path+" as "+role, func(t *testing.T) {
+				t.Parallel()
+
+				f := newLifecycleFixture(t)
+				rec := f.send(http.MethodPost, path, f.headers[role], "")
+
+				if rec.Code != wantStatus {
+					t.Errorf("status = %d, want %d; body = %s", rec.Code, wantStatus, rec.Body)
+				}
+				if n := f.posts.callCount(); n != 0 {
+					t.Errorf("store called %d times, want 0", n)
+				}
+			})
+		}
+	}
+
+	t.Run("a malformed ID is a 400 for an admin, before the store", func(t *testing.T) {
+		t.Parallel()
+
+		f := newLifecycleFixture(t)
+		for _, action := range []string{"open", "close"} {
+			rec := f.send(http.MethodPost, "/v1/job-posts/not-a-uuid/"+action, f.headers[domain.RoleAdmin], "")
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("%s: status = %d, want 400", action, rec.Code)
+			}
+		}
+		if n := f.posts.callCount(); n != 0 {
+			t.Errorf("store called %d times, want 0", n)
+		}
+	})
 }

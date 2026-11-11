@@ -334,7 +334,7 @@ func TestRegisterValidation(t *testing.T) {
 			if got.Code != "validation_failed" {
 				t.Errorf("code = %q, want %q", got.Code, "validation_failed")
 			}
-			if !reflect.DeepEqual(got.Details, tt.want) {
+			if !reflect.DeepEqual(got.stringDetails(), tt.want) {
 				t.Errorf("details = %v, want %v", got.Details, tt.want)
 			}
 			if len(s.users.byEmail) != 0 {
@@ -477,7 +477,7 @@ func TestLoginValidation(t *testing.T) {
 	}
 
 	want := map[string]string{"email": "must be a valid email address", "password": "is required"}
-	if got := decode(t, rec.Body.Bytes()); !reflect.DeepEqual(got.Details, want) {
+	if got := decode(t, rec.Body.Bytes()); !reflect.DeepEqual(got.stringDetails(), want) {
 		t.Errorf("details = %v, want %v", got.Details, want)
 	}
 }

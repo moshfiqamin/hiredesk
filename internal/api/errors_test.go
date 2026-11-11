@@ -54,6 +54,27 @@ func respond(t *testing.T, err error) *httptest.ResponseRecorder {
 	return rec
 }
 
+// detail returns details[name] as a string, and "" if it is absent or not a
+// string.
+func (d errorDetail) detail(name string) string {
+	s, _ := d.Details[name].(string)
+	return s
+}
+
+// stringDetails returns details as a map of strings, for comparing with a
+// table of expected field problems. A value that is not a string is kept as
+// its %v form, so a comparison with it fails rather than passing silently.
+func (d errorDetail) stringDetails() map[string]string {
+	out := make(map[string]string, len(d.Details))
+	for key, value := range d.Details {
+		out[key] = fmt.Sprintf("%v", value)
+		if s, ok := value.(string); ok {
+			out[key] = s
+		}
+	}
+	return out
+}
+
 // decode fails the test unless body is exactly the envelope: one top-level
 // key, and code, message and details beneath it.
 func decode(t *testing.T, body []byte) errorDetail {
@@ -170,11 +191,11 @@ func TestRespondValidationCarriesFieldDetails(t *testing.T) {
 	if len(got.Details) != 2 {
 		t.Fatalf("details = %v, want two fields", got.Details)
 	}
-	if got.Details["email"] != "is not a valid address" {
-		t.Errorf("details[email] = %q", got.Details["email"])
+	if got.detail("email") != "is not a valid address" {
+		t.Errorf("details[email] = %q", got.detail("email"))
 	}
-	if got.Details["password"] != "must be at least 12 characters" {
-		t.Errorf("details[password] = %q", got.Details["password"])
+	if got.detail("password") != "must be at least 12 characters" {
+		t.Errorf("details[password] = %q", got.detail("password"))
 	}
 }
 

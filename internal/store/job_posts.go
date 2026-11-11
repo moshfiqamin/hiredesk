@@ -189,6 +189,120 @@ func (s *JobPostStore) UpdateJobPost(ctx context.Context, id string, patch domai
 	return post, nil
 }
 
+// TransitionJobPost moves the job post with this ID to status to, records
+// who did it in job_post_events, and returns the post as stored, with its
+// questions.
+//
+// It fails with:
+//
+//   - an error matching domain.ErrNotFound if there is no such post;
+//   - a *domain.TransitionError if the lifecycle does not allow the move;
+//   - a *domain.NotReadyError if to is open and the post has no questions or
+//     no usable rubric.
+//
+// In none of those cases is anything written. When it succeeds, the status
+// change and its event are committed together or not at all.
+func (s *JobPostStore) TransitionJobPost(ctx context.Context, id, to, actorID string) (*domain.JobPost, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("transition job post: begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // Its error carries nothing after Commit or on an early return.
+
+	// The lock serialises status changes to one post. Two admins pressing
+	// "open" at once both read draft without it, and both would pass the
+	// check and record an event.
+	//
+	// It also holds off new questions and criteria: inserting a row that
+	// references this post takes a FOR KEY SHARE lock on it, which waits for
+	// FOR UPDATE. The counts below cannot be overtaken by an insert.
+	const selectQuery = `
+		SELECT ` + jobPostColumns + `
+		FROM job_posts
+		WHERE id = $1::text::uuid
+		FOR UPDATE`
+
+	post, err := scanJobPost(tx.QueryRow(ctx, selectQuery, id))
+	if err != nil {
+		return nil, translateByID("transition job post", err)
+	}
+	from := post.Status
+
+	if err = domain.CheckTransition(from, to); err != nil {
+		return nil, fmt.Errorf("transition job post: %w", err)
+	}
+
+	if to == domain.JobStatusOpen {
+		readiness, readErr := openReadiness(ctx, tx, post.ID)
+		if readErr != nil {
+			return nil, fmt.Errorf("transition job post: %w", readErr)
+		}
+		if err = domain.CheckReadyToOpen(readiness); err != nil {
+			return nil, fmt.Errorf("transition job post: %w", err)
+		}
+	}
+
+	const updateQuery = `
+		UPDATE job_posts
+		SET status = $2, updated_at = now()
+		WHERE id = $1::text::uuid
+		RETURNING ` + jobPostColumns
+
+	post, err = scanJobPost(tx.QueryRow(ctx, updateQuery, post.ID, to))
+	if err != nil {
+		return nil, translate("transition job post", err)
+	}
+
+	// In the same transaction as the UPDATE, so the log can never show a
+	// change that did not happen, nor miss one that did. jsonb_build_object
+	// assembles the payload in SQL from typed parameters, so no JSON is built
+	// by string concatenation.
+	const eventQuery = `
+		INSERT INTO job_post_events (job_post_id, actor_id, type, payload)
+		VALUES ($1::text::uuid, $2::text::uuid, 'status_changed',
+		        jsonb_build_object('from', $3::text, 'to', $4::text))`
+
+	if _, err = tx.Exec(ctx, eventQuery, post.ID, actorID, from, to); err != nil {
+		return nil, translate("transition job post: record event", err)
+	}
+
+	post.Questions, err = listQuestions(ctx, tx, post.ID)
+	if err != nil {
+		return nil, fmt.Errorf("transition job post: %w", err)
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("transition job post: commit: %w", err)
+	}
+	return post, nil
+}
+
+// openReadiness counts what opening the post depends on, in one round trip.
+//
+// The rubric counted is the current one: the rows at the post's highest
+// rubric_version. Earlier versions belong to applications already scored.
+func openReadiness(ctx context.Context, tx pgx.Tx, jobPostID string) (domain.OpenReadiness, error) {
+	// An aggregate with no GROUP BY returns exactly one row even when no row
+	// matches, so a post with no rubric gets counts of 0 rather than
+	// pgx.ErrNoRows. FILTER restricts one aggregate without a second scan.
+	const query = `
+		SELECT
+			(SELECT count(*) FROM questions q WHERE q.job_post_id = $1::text::uuid),
+			count(*),
+			count(*) FILTER (WHERE rc.weight > 0)
+		FROM rubric_criteria rc
+		WHERE rc.job_post_id = $1::text::uuid
+		  AND rc.rubric_version = (
+			SELECT max(rubric_version) FROM rubric_criteria WHERE job_post_id = $1::text::uuid
+		  )`
+
+	var r domain.OpenReadiness
+	if err := tx.QueryRow(ctx, query, jobPostID).Scan(&r.Questions, &r.Criteria, &r.WeightedCriteria); err != nil {
+		return domain.OpenReadiness{}, translate("count questions and rubric", err)
+	}
+	return r, nil
+}
+
 // ListJobPosts returns job posts, newest first, without their questions.
 // With includeDrafts false, drafts are left out by the query itself.
 func (s *JobPostStore) ListJobPosts(ctx context.Context, includeDrafts bool) ([]domain.JobPost, error) {

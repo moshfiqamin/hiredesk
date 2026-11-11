@@ -48,6 +48,12 @@ const (
 	postID      = "11111111-0000-4000-8000-000000000001"
 	draftPostID = "11111111-0000-4000-8000-000000000002"
 
+	// readyDraftID is a draft with a question and a rubric, which the admin
+	// opens. closablePostID is open, and the admin closes it. Each is touched
+	// by one cell only, so the order the cells run in does not matter.
+	readyDraftID   = "11111111-0000-4000-8000-000000000003"
+	closablePostID = "11111111-0000-4000-8000-000000000004"
+
 	// missingPost is a well-formed UUID that no row has.
 	missingPost = "11111111-0000-4000-8000-0000000000ff"
 
@@ -125,7 +131,15 @@ func seed(t *testing.T, pool *pgxpool.Pool) {
 
 		INSERT INTO job_posts (id, title, status, created_by) VALUES
 			('` + postID + `',      'Backend Engineer', 'open',  '` + adminID + `'),
-			('` + draftPostID + `', 'Data Analyst',     'draft', '` + adminID + `');
+			('` + draftPostID + `', 'Data Analyst',     'draft', '` + adminID + `'),
+			('` + readyDraftID + `', 'Ready to Open',   'draft', '` + adminID + `'),
+			('` + closablePostID + `', 'To Be Closed',  'open',  '` + adminID + `');
+
+		INSERT INTO questions (job_post_id, prompt, kind, position)
+		VALUES ('` + readyDraftID + `', 'Why this role?', 'text', 1);
+
+		INSERT INTO rubric_criteria (job_post_id, label, kind, weight)
+		VALUES ('` + readyDraftID + `', 'Go experience', 'experience_years', 1);
 
 		INSERT INTO applications (id, job_post_id, candidate_id, cv_url, submitted_at) VALUES
 			('` + appA + `', '` + postID + `', '` + candidateID + `',      'https://cv.test/a.pdf', '2026-03-02T09:00:00Z'),
@@ -189,6 +203,10 @@ type callerRow struct {
 	postOpen, postDraft, postMissing, postMalformed int
 	postCreate, postPatch, postPatchMalformed       int
 
+	// The lifecycle routes: opening a ready draft, opening a draft with no
+	// questions or rubric, and closing an open post.
+	postOpenReady, postOpenUnready, postClose int
+
 	// listed is exactly which applications GET /v1/applications must return,
 	// for callers that get a 200.
 	listed []string
@@ -211,6 +229,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		bad  = http.StatusBadRequest
 		unau = http.StatusUnauthorized
 		forb = http.StatusForbidden
+		conf = http.StatusConflict
 		nf   = http.StatusNotFound
 	)
 
@@ -218,36 +237,43 @@ func TestAuthorizationMatrix(t *testing.T) {
 	matrix := []callerRow{
 		{caller: "anonymous", me: unau, list: unau, getA: unau, getB: unau, getMissing: unau, getMalformed: unau,
 			postOpen: unau, postDraft: unau, postMissing: unau, postMalformed: unau,
-			postCreate: unau, postPatch: unau, postPatchMalformed: unau},
+			postCreate: unau, postPatch: unau, postPatchMalformed: unau,
+			postOpenReady: unau, postOpenUnready: unau, postClose: unau},
 		{caller: "ghost (token for a deleted user)", userID: ghostID, role: domain.RoleAdmin,
 			me: unau, list: unau, getA: unau, getB: unau, getMissing: unau, getMalformed: unau,
 			postOpen: unau, postDraft: unau, postMissing: unau, postMalformed: unau,
-			postCreate: unau, postPatch: unau, postPatchMalformed: unau},
+			postCreate: unau, postPatch: unau, postPatchMalformed: unau,
+			postOpenReady: unau, postOpenUnready: unau, postClose: unau},
 
 		{caller: "admin", userID: adminID, role: domain.RoleAdmin,
 			me: ok, list: ok, getA: ok, getB: ok, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: ok, postMissing: nf, postMalformed: bad,
 			postCreate: made, postPatch: ok, postPatchMalformed: bad,
+			postOpenReady: ok, postOpenUnready: conf, postClose: ok,
 			listed: []string{appA, appB}},
 		{caller: "interviewer assigned to A", userID: interviewerID, role: domain.RoleInterviewer,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
+			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			listed: []string{appA}},
 		{caller: "interviewer assigned to nothing", userID: outsideInterviewerID, role: domain.RoleInterviewer,
 			me: ok, list: ok, getA: nf, getB: nf, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
+			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			listed: []string{}},
 		{caller: "candidate who owns A", userID: candidateID, role: domain.RoleCandidate,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
+			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			listed: []string{appA}},
 		{caller: "candidate who owns B", userID: otherCandidateID, role: domain.RoleCandidate,
 			me: ok, list: ok, getA: nf, getB: ok, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
+			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			listed: []string{appB}},
 
 		// The token claims admin; the database says candidate. The database
@@ -256,6 +282,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
+			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			listed: []string{appA}},
 	}
 
@@ -289,6 +316,13 @@ func TestAuthorizationMatrix(t *testing.T) {
 			body: `{"description":"Patched by the matrix"}`, postID: draftPostID, cellFor: func(r callerRow) int { return r.postPatch }},
 		{name: "PATCH malformed job post ID", method: http.MethodPatch, route: "/v1/job-posts/:id", path: "/v1/job-posts/not-a-uuid",
 			body: `{"description":"x"}`, cellFor: func(r callerRow) int { return r.postPatchMalformed }},
+
+		{name: "POST open a ready draft", method: http.MethodPost, route: "/v1/job-posts/:id/open", path: "/v1/job-posts/" + readyDraftID + "/open",
+			postID: readyDraftID, cellFor: func(r callerRow) int { return r.postOpenReady }},
+		{name: "POST open an unready draft", method: http.MethodPost, route: "/v1/job-posts/:id/open", path: "/v1/job-posts/" + draftPostID + "/open",
+			cellFor: func(r callerRow) int { return r.postOpenUnready }},
+		{name: "POST close an open post", method: http.MethodPost, route: "/v1/job-posts/:id/close", path: "/v1/job-posts/" + closablePostID + "/close",
+			postID: closablePostID, cellFor: func(r callerRow) int { return r.postClose }},
 	}
 
 	assertEveryProtectedRouteIsInTheMatrix(t, router, endpoints)
@@ -341,6 +375,12 @@ func TestAuthorizationMatrix(t *testing.T) {
 				case want == bad:
 					if got := errorCode(t, rec.Body.Bytes()); got != "invalid_id" {
 						t.Errorf("code = %q, want invalid_id", got)
+					}
+
+				case want == conf:
+					// Refused by the lifecycle rules, never a 500.
+					if got := errorCode(t, rec.Body.Bytes()); got != "not_ready" {
+						t.Errorf("code = %q, want not_ready", got)
 					}
 
 				case want == nf:

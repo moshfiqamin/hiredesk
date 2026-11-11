@@ -38,6 +38,16 @@ var (
 	// ErrConflict means the request is valid on its own and cannot be applied
 	// to the resource in its current state, such as hiring into a closed job.
 	ErrConflict = errors.New("conflict with current state")
+
+	// ErrInvalidTransition means a status change was refused because the
+	// lifecycle does not allow it from the current status. Use a
+	// *TransitionError to say which statuses would be allowed.
+	ErrInvalidTransition = errors.New("status change not allowed")
+
+	// ErrNotReady means a status change was refused because the resource
+	// lacks something the new status depends on. Use a *NotReadyError to say
+	// what.
+	ErrNotReady = errors.New("not ready for this status")
 )
 
 // ValidationError is an ErrValidation that names each offending field.
@@ -89,6 +99,15 @@ func (e *ValidationError) Error() string {
 	sort.Strings(names)
 
 	return ErrValidation.Error() + ": " + strings.Join(names, ", ")
+}
+
+// Details returns Fields as a client sees it.
+func (e *ValidationError) Details() map[string]any {
+	out := make(map[string]any, len(e.Fields))
+	for field, problem := range e.Fields {
+		out[field] = problem
+	}
+	return out
 }
 
 // Unwrap makes errors.Is(err, ErrValidation) true for a *ValidationError, so

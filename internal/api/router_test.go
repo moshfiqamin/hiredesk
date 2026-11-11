@@ -47,6 +47,9 @@ func TestRoutes(t *testing.T) {
 		{"job post is under /v1 and protected", http.MethodGet, "/v1/job-posts/not-checked-before-auth", http.StatusUnauthorized},
 		{"creating a job post is protected", http.MethodPost, "/v1/job-posts", http.StatusUnauthorized},
 		{"updating a job post is protected", http.MethodPatch, "/v1/job-posts/not-checked-before-auth", http.StatusUnauthorized},
+		{"opening a job post is protected", http.MethodPost, "/v1/job-posts/not-checked-before-auth/open", http.StatusUnauthorized},
+		{"closing a job post is protected", http.MethodPost, "/v1/job-posts/not-checked-before-auth/close", http.StatusUnauthorized},
+		{"GET on a transition route", http.MethodGet, "/v1/job-posts/not-checked-before-auth/open", http.StatusMethodNotAllowed},
 		{"PUT on a PATCH route", http.MethodPut, "/v1/job-posts/not-checked-before-auth", http.StatusMethodNotAllowed},
 
 		{"register without the version", http.MethodPost, "/auth/register", http.StatusNotFound},

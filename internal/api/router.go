@@ -104,6 +104,12 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 		{
 			admin.POST("/job-posts", deps.JobPosts.Create)
 			admin.PATCH("/job-posts/:id", deps.JobPosts.Update)
+
+			// One route per transition rather than a writable status field,
+			// so each move has its own URL, its own rules and its own entry
+			// in the access log. The lifecycle itself is in domain.
+			admin.POST("/job-posts/:id/open", deps.JobPosts.Open)
+			admin.POST("/job-posts/:id/close", deps.JobPosts.Close)
 		}
 	}
 

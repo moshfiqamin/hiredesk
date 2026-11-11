@@ -415,7 +415,7 @@ func TestRefreshValidation(t *testing.T) {
 			t.Errorf("%s: status = %d, want %d", path, rec.Code, http.StatusUnprocessableEntity)
 			continue
 		}
-		if got := decode(t, rec.Body.Bytes()); got.Details["refresh_token"] != "is required" {
+		if got := decode(t, rec.Body.Bytes()); got.detail("refresh_token") != "is required" {
 			t.Errorf("%s: details = %v, want refresh_token is required", path, got.Details)
 		}
 	}
