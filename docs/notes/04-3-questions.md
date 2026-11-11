@@ -16,7 +16,7 @@ Click the link, read the code, then come back.
 
 | # | Topic | Code |
 |---|---|---|
-| [1](#1-the-endpoints) | The endpoints | [`router.go:125`](../../internal/api/router.go#L125) |
+| [1](#1-the-endpoints) | The endpoints | [`router.go:135`](../../internal/api/router.go#L135) |
 | [2](#2-the-form-locks-when-the-post-opens) | The form locks when the post opens | [`question.go:46`](../../internal/domain/question.go#L46) |
 | [3](#3-why-the-lock-is-a-domain-decision) | Why the lock is a domain decision | [`question.go:46`](../../internal/domain/question.go#L46) |
 | [4](#4-making-the-lock-hold-under-concurrency) | Making the lock hold under concurrency | [`questions.go:293`](../../internal/store/questions.go#L293) |
@@ -32,7 +32,7 @@ Click the link, read the code, then come back.
 
 ## 1. The endpoints
 
-**📍 Open:** [`internal/api/router.go:125`](../../internal/api/router.go#L125)
+**📍 Open:** [`internal/api/router.go:135`](../../internal/api/router.go#L135)
 
 | Route | Does | Answers |
 |---|---|---|
@@ -515,7 +515,7 @@ ordinary value: `id IS DISTINCT FROM NULL` is true for every real id. With
 | [`TestQuestionStoreReorderConcurrently`](../../internal/store/questions_integration_test.go#L319) | Section 8 |
 | [`TestQuestionStoreLockedOutsideDraft`](../../internal/store/questions_integration_test.go#L361) | The lock against real SQL, including a missing question on a locked form |
 | [`TestQuestionEditWaitsForAnOpeningInProgress`](../../internal/store/questions_integration_test.go#L410) | Section 4 |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L248) | Six new columns: list, create, create on an open post (409 `form_locked`), update, reorder, delete (204) |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L260) | Six new columns: list, create, create on an open post (409 `form_locked`), update, reorder, delete (204) |
 
 ---
 

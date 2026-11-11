@@ -44,7 +44,7 @@ Click the link, read the code, then come back.
 
 `GET` is registered on `protected`, so it runs `RequireAuth` and then the
 handler. The two writes are registered on a nested group, at
-[`router.go:111`](../../internal/api/router.go#L111):
+[`router.go:115`](../../internal/api/router.go#L115):
 
 ```go
 admin := protected.Group("", RequireRole(domain.RoleAdmin))
@@ -563,7 +563,7 @@ what stops minor units being mistaken for whole ones.
 | [`TestParseMoney`](../../internal/domain/money_test.go#L8) | What is and is not an amount |
 | [`TestJobPostStoreUpdateConcurrently`](../../internal/store/job_posts_integration_test.go#L331) | Section 8's race, against PostgreSQL |
 | [`TestJobPostStoreUpdate`](../../internal/store/job_posts_integration_test.go#L217) | Partial updates in real SQL; a refused patch writes nothing, including its valid fields |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L248) | Seven new columns: every caller against every job post route |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L260) | Seven new columns: every caller against every job post route |
 
 The handler tests use a fake store that records the patch it was given, so
 they can assert on *nil versus non-nil* directly rather than inferring it

@@ -33,13 +33,13 @@ type JobListing struct {
 	CreatedAt time.Time
 }
 
-// ListingPosition is a place in the public listing: the sort key of the last
-// row a client has seen. The next page is every open post that sorts after
-// it.
+// ListingPosition is a place in a newest-first listing: the sort key of the
+// last row a client has seen. The next page is every row that sorts after it.
 //
-// The listing is ordered newest first by created_at, with id breaking ties.
-// Both values are fixed for the life of a post, which is what makes a
-// position stay valid while posts are added, edited or closed around it.
+// The public job listing orders by created_at, and the applications list by
+// submitted_at, each with id breaking ties. CreatedAt holds whichever time
+// the listing sorts by. Both values are fixed for the life of a row, which is
+// what makes a position stay valid while rows are added or changed around it.
 type ListingPosition struct {
 	CreatedAt time.Time
 	ID        string

@@ -21,7 +21,7 @@ type appFixture struct {
 	store *ApplicationStore
 
 	admin, candidate, otherCandidate, assigned, outsider domain.User
-	mine, theirs                                         string
+	mine, theirs, postID                                 string
 }
 
 func newAppFixture(t *testing.T) *appFixture {
@@ -59,6 +59,7 @@ func newAppFixture(t *testing.T) *appFixture {
 	).Scan(&postID); err != nil {
 		t.Fatalf("create post: %v", err)
 	}
+	f.postID = postID
 
 	insertApp := func(candidateID string) string {
 		var id string
@@ -120,7 +121,7 @@ func TestListApplicationsByRole(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			apps, err := f.store.ListApplications(ctx, tt.viewer)
+			apps, _, _, err := f.store.ListApplications(ctx, tt.viewer, domain.ApplicationFilter{Limit: 100})
 			if err != nil {
 				t.Fatalf("ListApplications: %v", err)
 			}
@@ -136,7 +137,9 @@ func TestListApplicationsByRole(t *testing.T) {
 	// The shared database may hold other applications, so the admin's list is
 	// checked for containing both, not for being exactly these two.
 	t.Run("admin sees every application", func(t *testing.T) {
-		apps, err := f.store.ListApplications(ctx, f.admin)
+		// Narrowed to the fixture's post: the shared database may hold more
+		// applications than one page.
+		apps, _, _, err := f.store.ListApplications(ctx, f.admin, domain.ApplicationFilter{JobPostID: f.postID, Limit: 100})
 		if err != nil {
 			t.Fatalf("ListApplications: %v", err)
 		}
@@ -156,7 +159,7 @@ func TestListApplicationsRefusesUnknownRoles(t *testing.T) {
 		viewer := f.admin
 		viewer.Role = role
 
-		apps, err := f.store.ListApplications(context.Background(), viewer)
+		apps, _, _, err := f.store.ListApplications(context.Background(), viewer, domain.ApplicationFilter{Limit: 100})
 		if !errors.Is(err, domain.ErrForbidden) {
 			t.Errorf("role %q: err = %v, want ErrForbidden", role, err)
 		}

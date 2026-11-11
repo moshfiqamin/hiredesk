@@ -24,11 +24,32 @@ type fakeApplications struct {
 	assignments map[[2]string]bool // {applicationID, interviewerID}
 	list        []domain.Application
 
-	// lastViewer is the user the most recent ListApplications call received.
+	// lastViewer and lastFilter are what the most recent ListApplications
+	// call received; listTotal and listMore are what it returns beside list.
 	lastViewer domain.User
+	lastFilter domain.ApplicationFilter
+	listTotal  int
+	listMore   bool
+
+	// answers and events are what ApplicationHistory returns, by application
+	// ID; historyCalls records every ID it was asked for.
+	answers      map[string][]domain.Answer
+	events       map[string][]domain.ApplicationEvent
+	historyCalls []string
+
+	// lastTransition is {id, to, actorID} of the most recent
+	// TransitionApplication call; transitionErr, when set, is its result.
+	lastTransition *[3]string
+	transitionErr  error
 
 	// failWith, when set, is returned by every call.
 	failWith error
+
+	// lastSubmitted is what the most recent SubmitApplication received;
+	// submitResult and submitErr are what it returns.
+	lastSubmitted *domain.NewApplication
+	submitResult  *domain.Application
+	submitErr     error
 }
 
 func newFakeApplications() *fakeApplications {
@@ -38,15 +59,46 @@ func newFakeApplications() *fakeApplications {
 	}
 }
 
-func (f *fakeApplications) ListApplications(_ context.Context, viewer domain.User) ([]domain.Application, error) {
+func (f *fakeApplications) ListApplications(_ context.Context, viewer domain.User, filter domain.ApplicationFilter) ([]domain.Application, int, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.lastViewer = viewer
+	f.lastFilter = filter
+	if f.failWith != nil {
+		return nil, 0, false, f.failWith
+	}
+	return f.list, f.listTotal, f.listMore, nil
+}
+
+func (f *fakeApplications) ApplicationHistory(_ context.Context, id string) ([]domain.Answer, []domain.ApplicationEvent, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.historyCalls = append(f.historyCalls, id)
+	if f.failWith != nil {
+		return nil, nil, f.failWith
+	}
+	return f.answers[id], f.events[id], nil
+}
+
+func (f *fakeApplications) TransitionApplication(_ context.Context, id, to, actorID string) (*domain.Application, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.lastTransition = &[3]string{id, to, actorID}
 	if f.failWith != nil {
 		return nil, f.failWith
 	}
-	return f.list, nil
+	if f.transitionErr != nil {
+		return nil, f.transitionErr
+	}
+	app, ok := f.byID[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	app.Status = to
+	return &app, nil
 }
 
 func (f *fakeApplications) GetApplication(_ context.Context, id, viewerID string) (*domain.Application, bool, error) {
@@ -61,6 +113,22 @@ func (f *fakeApplications) GetApplication(_ context.Context, id, viewerID string
 		return nil, false, domain.ErrNotFound
 	}
 	return &app, f.assignments[[2]string{id, viewerID}], nil
+}
+
+// SubmitApplication records what it was given and returns submitResult or
+// submitErr. Validation is the store's and the domain's, and is tested there.
+func (f *fakeApplications) SubmitApplication(_ context.Context, in domain.NewApplication) (*domain.Application, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.lastSubmitted = &in
+	if f.failWith != nil {
+		return nil, f.failWith
+	}
+	if f.submitErr != nil {
+		return nil, f.submitErr
+	}
+	return f.submitResult, nil
 }
 
 // appFixture is a test server with one user of each role and two applications.
@@ -216,8 +284,9 @@ func TestListApplications(t *testing.T) {
 		f := newAppFixture(t)
 		rec := f.get("/v1/applications", f.headers["candidate"])
 
-		if rec.Code != http.StatusOK || rec.Body.String() != `{"data":[]}` {
-			t.Errorf("status = %d, body = %s; want 200 {\"data\":[]}", rec.Code, rec.Body)
+		want := `{"data":[],"next_cursor":null,"total":0}`
+		if rec.Code != http.StatusOK || rec.Body.String() != want {
+			t.Errorf("status = %d, body = %s; want 200 %s", rec.Code, rec.Body, want)
 		}
 	})
 

@@ -76,8 +76,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: TestAuthorizationMatrix
-        run: go test -race -count=1 -tags integration -run TestAuthorizationMatrix ./test/integration/
+      # Every container test, not only the matrix: the rollback test and the
+      # two concurrency tests are the proof that duplicate applications and
+      # over-filled vacancies cannot happen, and belong in every run.
+      - name: Container integration tests
+        run: go test -race -count=1 -tags integration ./test/integration/
 
   # A separate job so lint and tests run in parallel and one failure does not
   # hide the other's result.

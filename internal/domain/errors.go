@@ -7,6 +7,7 @@ package domain
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -52,6 +53,19 @@ var (
 	// ErrFormLocked means a job post's questions cannot be changed because
 	// the post is no longer a draft. Use a *FormLockedError to say why.
 	ErrFormLocked = errors.New("application form is locked")
+
+	// ErrNotAcceptingApplications means an application was refused because
+	// the job post is not open. Use a *NotAcceptingError to say what status
+	// it is in.
+	ErrNotAcceptingApplications = errors.New("job post is not accepting applications")
+
+	// ErrAlreadyApplied means a candidate tried to apply to a job post they
+	// have already applied to. It also matches ErrDuplicate.
+	ErrAlreadyApplied = fmt.Errorf("already applied to this job post: %w", ErrDuplicate)
+
+	// ErrNoVacancies means an offer was refused because every vacancy on the
+	// job post already has an offer. Use a *NoVacanciesError to say how many.
+	ErrNoVacancies = errors.New("no remaining vacancies")
 )
 
 // ValidationError is an ErrValidation that names each offending field.

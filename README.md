@@ -52,8 +52,9 @@ Run `make` at any time to list every command.
 | `POST` | `/v1/auth/refresh` | Body: `refresh_token`. Returns a new access token and a **new** refresh token; the one presented stops working. Presenting a token a second time ends every session of that user. |
 | `POST` | `/v1/auth/logout` | Body: `refresh_token`. Revokes it. Always 204. |
 | `GET` | `/v1/me` | The current user. Requires `Authorization: Bearer <access token>`. |
-| `GET` | `/v1/applications` | The applications the caller may see: all of them for an admin, their own for a candidate, assigned ones for an interviewer. Body: `{"data":[…]}`. |
-| `GET` | `/v1/applications/:id` | One application. An application the caller may not see is a 404, identical to one that does not exist — see [`docs/decisions.md`](docs/decisions.md). |
+| `GET` | `/v1/applications` | The applications the caller may see: all of them for an admin, their own for a candidate, assigned ones for an interviewer. Filters `?status=` and `?job_post_id=`; newest first, keyset-paginated with `?limit=20&after=<next_cursor>` (`limit` capped at 100). Body: `{"data":[…],"next_cursor":"…","total":42}`, where `total` counts every match across all pages. |
+| `GET` | `/v1/applications/:id` | One application with its `answers`, in form order, and its `events`, oldest first. An application the caller may not see is a 404, identical to one that does not exist — see [`docs/decisions.md`](docs/decisions.md). |
+| `PATCH` | `/v1/applications/:id/status` | **Admin only.** Body: `status`. One step at a time through `submitted → shortlisted → interview → offer`; `rejected` from any stage, and final. Any other move is a 409 `invalid_transition` listing `allowed_next_statuses`. An offer when every vacancy already has one is a 409 `no_vacancies`. Each change records an `application.status_changed` event with `from` and `to`. |
 | `GET` | `/v1/job-posts` | **Public, no token needed.** Open posts, newest first: `id`, `title`, `location`, `employment_type`, `skill_tags`, `remaining_vacancies`. Keyset-paginated: `?limit=20&after=<next_cursor>`, `limit` capped at 100. Body: `{"data":[…],"next_cursor":"…"}`, `null` on the last page. |
 | `POST` | `/v1/job-posts` | **Admin only.** Create a job post, always as a draft. Body: `title` (1–200 characters), and optionally `description`, `employment_type`, `location`, `vacancies` (default 1), `salary_min`, `salary_max`, `closes_at`. Returns 201 and the post. |
 | `GET` | `/v1/job-posts/:id` | One job post with its questions. A draft is visible to admins only; to anyone else it is a 404. |
@@ -64,6 +65,7 @@ Run `make` at any time to list every command.
 | `POST` | `/v1/job-posts/:id/questions` | **Admin only, draft only.** Add a question. Body: `prompt`, `kind` (`text`, `number`, `boolean`, `choice`), `choices` (required for `choice`, absent otherwise), `min_length` (text only), `required` (default true), `position` (default: after the last). |
 | `PATCH` | `/v1/job-posts/:id/questions/:questionID` | **Admin only, draft only.** Partial update. Send `"choices":[]` to clear choices when changing the kind. |
 | `DELETE` | `/v1/job-posts/:id/questions/:questionID` | **Admin only, draft only.** Returns 204. |
+| `POST` | `/v1/job-posts/:id/applications` | **Candidate only.** Apply to an open post. Body: `cv_url` (absolute `http`/`https`), `answers`: `[{"question_id","answer"}]`, where `answer` may be a string, number or boolean. Every problem comes back in one 422, under `details.cv_url` and `details.answers` (each with `question_id`, `code` and, for `too_short`, `min_length` and `got`). A closed post is a 409 `not_accepting_applications`, a second application a 409 `already_applied`, also when several arrive at once. Returns 201, the application and its answers; the application, answers and an `application.submitted` event are written in one transaction. |
 | `PUT` | `/v1/job-posts/:id/questions/order` | **Admin only, draft only.** Body: `question_ids`, every question of the post exactly once, in the new order. Applied in one transaction. |
 
 Create the development accounts, then try it:
@@ -169,6 +171,9 @@ allowed next statuses when a status change is refused.
 | 404 | `route_not_found` | No such endpoint |
 | 405 | `method_not_allowed` | The endpoint exists under another method |
 | 409 | `duplicate` | A record with the same unique key exists |
+| 409 | `already_applied` | The candidate has already applied to this job post |
+| 409 | `not_accepting_applications` | The job post is closed |
+| 409 | `no_vacancies` | Every vacancy on the job post already has an offer; see `details` |
 | 409 | `invalid_transition` | That status change is not allowed from the current status |
 | 409 | `not_ready` | The resource lacks something the new status needs; see `details` |
 | 409 | `form_locked` | The job post is no longer a draft, so its questions cannot change |

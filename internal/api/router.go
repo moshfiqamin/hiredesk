@@ -105,6 +105,10 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 		// caller is decided by auth.CanViewDraftJobPosts.
 		protected.GET("/job-posts/:id", deps.JobPosts.Get)
 
+		// Only a candidate applies. An admin or interviewer is refused before
+		// the body is read.
+		protected.POST("/job-posts/:id/applications", RequireRole(domain.RoleCandidate), deps.Applications.Submit)
+
 		// A group with an empty path adds middleware without adding a URL
 		// segment. These routes run RequireAuth, then RequireRole, then the
 		// handler, so a non-admin is refused before the body is read.
@@ -118,6 +122,12 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 			// in the access log. The lifecycle itself is in domain.
 			admin.POST("/job-posts/:id/open", deps.JobPosts.Open)
 			admin.POST("/job-posts/:id/close", deps.JobPosts.Close)
+
+			// The application pipeline. A single status route rather than one
+			// per transition, as job posts have: five targets reachable from
+			// four statuses would be a dozen routes saying the same thing.
+			// The lifecycle map in domain decides what is legal.
+			admin.PATCH("/applications/:id/status", deps.Applications.UpdateStatus)
 
 			// The application form. Everyone else sees it inside GET
 			// /v1/job-posts/:id; these routes are for building it, and every

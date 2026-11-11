@@ -47,8 +47,9 @@ type errorDetail struct {
 }
 
 // detailedError is an error that carries details written to be shown to a
-// client. *domain.ValidationError, *domain.TransitionError and
-// *domain.NotReadyError and *domain.FormLockedError implement it.
+// client. *domain.ValidationError, *domain.SubmissionError,
+// *domain.TransitionError, *domain.NotReadyError, *domain.FormLockedError and
+// *domain.NotAcceptingError implement it.
 type detailedError interface {
 	error
 	Details() map[string]any
@@ -72,10 +73,15 @@ var mappings = []mapping{
 	{domain.ErrUnauthenticated, http.StatusUnauthorized, "unauthenticated", "Authentication is required."},
 	{domain.ErrForbidden, http.StatusForbidden, "forbidden", "You do not have permission to do that."},
 	{domain.ErrNotFound, http.StatusNotFound, "not_found", "The requested resource was not found."},
+	// Before ErrDuplicate, which it also matches: the first row that matches
+	// wins, and a candidate needs this message, not the generic one.
+	{domain.ErrAlreadyApplied, http.StatusConflict, "already_applied", "You have already applied to this job post. Each candidate can apply once per post; your existing application is under /v1/applications."},
+	{domain.ErrNoVacancies, http.StatusConflict, "no_vacancies", "Every vacancy on this job post already has an offer. Reject or withdraw an existing offer, or raise the number of vacancies, before making another."},
 	{domain.ErrDuplicate, http.StatusConflict, "duplicate", "A resource with these details already exists."},
 	{domain.ErrInvalidTransition, http.StatusConflict, "invalid_transition", "The resource cannot move to that status from its current one."},
 	{domain.ErrNotReady, http.StatusConflict, "not_ready", "The resource is missing something it needs before it can move to that status."},
 	{domain.ErrFormLocked, http.StatusConflict, "form_locked", "The application form is locked because the job post is no longer a draft. Candidates may already have answered these questions."},
+	{domain.ErrNotAcceptingApplications, http.StatusConflict, "not_accepting_applications", "This job post is not accepting applications."},
 	{domain.ErrConflict, http.StatusConflict, "conflict", "The request conflicts with the current state of the resource."},
 }
 

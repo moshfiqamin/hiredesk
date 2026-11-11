@@ -61,6 +61,10 @@ const (
 	formQ2     = "33333333-0000-4000-8000-000000000002"
 	formQ3     = "33333333-0000-4000-8000-000000000003"
 
+	// closedPostID is closed, so every candidate who gets past RequireRole
+	// is refused by the first submission rule, and nothing is written.
+	closedPostID = "11111111-0000-4000-8000-000000000006"
+
 	// missingPost is a well-formed UUID that no row has.
 	missingPost = "11111111-0000-4000-8000-0000000000ff"
 
@@ -141,7 +145,8 @@ func seed(t *testing.T, pool *pgxpool.Pool) {
 			('` + draftPostID + `', 'Data Analyst',     'draft', '` + adminID + `'),
 			('` + readyDraftID + `', 'Ready to Open',   'draft', '` + adminID + `'),
 			('` + closablePostID + `', 'To Be Closed',  'open',  '` + adminID + `'),
-			('` + formPostID + `',     'Form Building', 'draft', '` + adminID + `');
+			('` + formPostID + `',     'Form Building', 'draft', '` + adminID + `'),
+			('` + closedPostID + `',   'Closed',        'closed', '` + adminID + `');
 
 		INSERT INTO questions (id, job_post_id, prompt, kind, position) VALUES
 			('` + formQ1 + `', '` + formPostID + `', 'First',  'text', 1),
@@ -236,6 +241,13 @@ type callerRow struct {
 	// The public listing, which every caller gets, identically.
 	listing int
 
+	// Submitting an application, to a closed post: candidates pass the role
+	// check and are refused by the first rule; everyone else is refused first.
+	submit int
+
+	// Moving an application through the pipeline: admins only.
+	statusChange int
+
 	// listed is exactly which applications GET /v1/applications must return,
 	// for callers that get a 200.
 	listed []string
@@ -270,14 +282,14 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postCreate: unau, postPatch: unau, postPatchMalformed: unau,
 			postOpenReady: unau, postOpenUnready: unau, postClose: unau,
 			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau,
-			listing: ok},
+			listing: ok, submit: unau, statusChange: unau},
 		{caller: "ghost (token for a deleted user)", userID: ghostID, role: domain.RoleAdmin,
 			me: unau, list: unau, getA: unau, getB: unau, getMissing: unau, getMalformed: unau,
 			postOpen: unau, postDraft: unau, postMissing: unau, postMalformed: unau,
 			postCreate: unau, postPatch: unau, postPatchMalformed: unau,
 			postOpenReady: unau, postOpenUnready: unau, postClose: unau,
 			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau,
-			listing: ok},
+			listing: ok, submit: unau, statusChange: unau},
 
 		{caller: "admin", userID: adminID, role: domain.RoleAdmin,
 			me: ok, list: ok, getA: ok, getB: ok, getMissing: nf, getMalformed: nf,
@@ -285,40 +297,40 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postCreate: made, postPatch: ok, postPatchMalformed: bad,
 			postOpenReady: ok, postOpenUnready: conf, postClose: ok,
 			qList: ok, qCreate: made, qCreateLocked: conf, qUpdate: ok, qReorder: ok, qDelete: gone,
-			listing: ok,
-			listed:  []string{appA, appB}},
+			listing: ok, submit: forb, statusChange: ok,
+			listed: []string{appA, appB}},
 		{caller: "interviewer assigned to A", userID: interviewerID, role: domain.RoleInterviewer,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
-			listing: ok,
-			listed:  []string{appA}},
+			listing: ok, submit: forb, statusChange: forb,
+			listed: []string{appA}},
 		{caller: "interviewer assigned to nothing", userID: outsideInterviewerID, role: domain.RoleInterviewer,
 			me: ok, list: ok, getA: nf, getB: nf, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
-			listing: ok,
-			listed:  []string{}},
+			listing: ok, submit: forb, statusChange: forb,
+			listed: []string{}},
 		{caller: "candidate who owns A", userID: candidateID, role: domain.RoleCandidate,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
-			listing: ok,
-			listed:  []string{appA}},
+			listing: ok, submit: conf, statusChange: forb,
+			listed: []string{appA}},
 		{caller: "candidate who owns B", userID: otherCandidateID, role: domain.RoleCandidate,
 			me: ok, list: ok, getA: nf, getB: ok, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
-			listing: ok,
-			listed:  []string{appB}},
+			listing: ok, submit: conf, statusChange: forb,
+			listed: []string{appB}},
 
 		// The token claims admin; the database says candidate. The database
 		// wins on every endpoint, including the list's choice of query.
@@ -328,8 +340,8 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
-			listing: ok,
-			listed:  []string{appA}},
+			listing: ok, submit: conf, statusChange: forb,
+			listed: []string{appA}},
 	}
 
 	endpoints := []endpoint{
@@ -390,6 +402,13 @@ func TestAuthorizationMatrix(t *testing.T) {
 			body: `{"question_ids":["` + formQ3 + `","` + formQ1 + `","` + formQ2 + `"]}`, cellFor: func(r callerRow) int { return r.qReorder }},
 		{name: "DELETE question", method: http.MethodDelete, route: "/v1/job-posts/:id/questions/:questionID", path: "/v1/job-posts/" + formPostID + "/questions/" + formQ3,
 			cellFor: func(r callerRow) int { return r.qDelete }},
+
+		{name: "POST application to a closed post", method: http.MethodPost, route: "/v1/job-posts/:id/applications", path: "/v1/job-posts/" + closedPostID + "/applications",
+			body: `{"cv_url":"https://cv.test/new.pdf","answers":[]}`, conflictCode: "not_accepting_applications", cellFor: func(r callerRow) int { return r.submit }},
+
+		// Shortlists B, which no other cell depends on the status of.
+		{name: "PATCH application status", method: http.MethodPatch, route: "/v1/applications/:id/status", path: "/v1/applications/" + appB + "/status",
+			body: `{"status":"shortlisted"}`, appID: appB, cellFor: func(r callerRow) int { return r.statusChange }},
 	}
 
 	assertEveryProtectedRouteIsInTheMatrix(t, router, endpoints)
