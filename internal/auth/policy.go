@@ -32,6 +32,29 @@ func CanViewApplication(u domain.User, app domain.Application, assigned bool) bo
 	}
 }
 
+// CanViewScore reports whether u may read the score breakdown of app: every
+// criterion, the points it earned, and the evidence behind them.
+//
+//   - An admin may view any application's score.
+//   - An interviewer may view the score of an application they are assigned
+//     to, as part of reviewing it.
+//   - A candidate may not, not even of their own application. The breakdown
+//     shows the rubric at work: which keywords were looked for and how each
+//     answer was weighed. See docs/notes/07-3-score-breakdown.md.
+//
+// It is narrower than CanViewApplication, never wider: anyone it allows may
+// also view the application.
+func CanViewScore(u domain.User, _ domain.Application, assigned bool) bool {
+	switch u.Role {
+	case domain.RoleAdmin:
+		return true
+	case domain.RoleInterviewer:
+		return assigned
+	default:
+		return false
+	}
+}
+
 // CanReviewApplication reports whether u may file or edit a review of app.
 //
 //   - Only an interviewer assigned to app may review it.

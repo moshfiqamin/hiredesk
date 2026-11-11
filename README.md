@@ -5,7 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A hiring pipeline REST API in Go — jobs, candidates, applications and stage
-transitions — built with Gin and Postgres.
+transitions — built with Gin and Postgres, where every point of a candidate's
+score can be traced to the answer that earned it.
 
 ## Quick start
 
@@ -16,7 +17,7 @@ git clone https://github.com/moshfiqamin/hiredesk.git && cd hiredesk && make up
 ```
 
 That generates `.env` with a random `JWT_SECRET`, builds the image, starts
-Postgres, waits for it to pass its healthcheck, **applies all nine schema
+Postgres, waits for it to pass its healthcheck, **applies all eleven schema
 migrations**, then starts the API.
 
 ```bash
@@ -41,6 +42,48 @@ development tool: never expose it.
 
 Run `make` at any time to list every command.
 
+## What a score looks like
+
+Every application is scored the moment it is submitted, inside the same
+transaction, against a rubric stored as data. The breakdown names the answer
+behind each number and quotes the part of it that mattered
+(`GET /v1/applications/:id/score`, abridged):
+
+```json
+{
+  "application_id": "d5f1a1b8-bbe5-457e-b0ac-78734c0fea26",
+  "total_earned": 66.8,
+  "total_available": 100,
+  "percentage": 66.8,
+  "rubric_version": 1,
+  "breakdown": [
+    {
+      "criterion": "Go knowledge",
+      "kind": "keyword_match",
+      "earned": 12,
+      "available": 30,
+      "detail": "matched 2 of 5 keywords: go, gin",
+      "evidence": {
+        "question": "Describe a project you built",
+        "answer_id": "a188f925-702d-4f6a-a839-61844fc66603",
+        "excerpt": "...services for a few years. Last year I built a REST API in Go using Gin, with goroutines handling the background jobs..."
+      }
+    },
+    {
+      "criterion": "Experience",
+      "kind": "experience_years",
+      "earned": 30,
+      "available": 40,
+      "detail": "3 years, 75% of the way from 0 to the target of 4",
+      "evidence": { "question": "Years of Go?", "answer_id": "6858469c-bd7b-40eb-83b7-220672afec44", "excerpt": "3" }
+    }
+  ]
+}
+```
+
+A rubric is never edited in place: replacing it adds a new version, and a
+score keeps pointing at the exact criteria that produced it.
+
 ## Endpoints
 
 | Method | Path | Purpose |
@@ -54,6 +97,7 @@ Run `make` at any time to list every command.
 | `GET` | `/v1/me` | The current user. Requires `Authorization: Bearer <access token>`. |
 | `GET` | `/v1/applications` | The applications the caller may see: all of them for an admin, their own for a candidate, assigned ones for an interviewer. Filters `?status=` and `?job_post_id=`; newest first, keyset-paginated with `?limit=20&after=<next_cursor>` (`limit` capped at 100). Body: `{"data":[…],"next_cursor":"…","total":42}`, where `total` counts every match across all pages. |
 | `GET` | `/v1/applications/:id` | One application with its `answers`, in form order, and its `events`, oldest first. An application the caller may not see is a 404, identical to one that does not exist — see [`docs/decisions.md`](docs/decisions.md). |
+| `GET` | `/v1/applications/:id/score` | **Admins, and the interviewer assigned to the application.** The stored score: `total_earned`, `total_available`, `percentage`, `rubric_version`, and a `breakdown` with each criterion's `earned`, `available`, `detail` and `evidence` (`question`, `answer_id`, and an `excerpt` of about 120 characters around the first keyword match; `null` when no single answer was the evidence). The candidate who applied gets a 403; anyone who may not see the application gets the usual 404. An application with no score is a 404 `not_scored`. Built in one query, whatever the number of criteria. |
 | `PATCH` | `/v1/applications/:id/status` | **Admin only.** Body: `status`. One step at a time through `submitted → shortlisted → interview → offer`; `rejected` from any stage, and final. Any other move is a 409 `invalid_transition` listing `allowed_next_statuses`. An offer when every vacancy already has one is a 409 `no_vacancies`. Each change records an `application.status_changed` event with `from` and `to`. |
 | `GET` | `/v1/job-posts` | **Public, no token needed.** Open posts, newest first: `id`, `title`, `location`, `employment_type`, `skill_tags`, `remaining_vacancies`. Keyset-paginated: `?limit=20&after=<next_cursor>`, `limit` capped at 100. Body: `{"data":[…],"next_cursor":"…"}`, `null` on the last page. |
 | `POST` | `/v1/job-posts` | **Admin only.** Create a job post, always as a draft. Body: `title` (1–200 characters), and optionally `description`, `employment_type`, `location`, `vacancies` (default 1), `salary_min`, `salary_max`, `closes_at`. Returns 201 and the post. |
@@ -61,11 +105,13 @@ Run `make` at any time to list every command.
 | `PATCH` | `/v1/job-posts/:id` | **Admin only.** Partial update: only the fields present in the body change, and a field sent as `""` is stored as empty. `null` is treated as not sent. The rules are checked against the post as it would be after the change. |
 | `POST` | `/v1/job-posts/:id/open` | **Admin only.** Draft to open. Refused with 409 `not_ready` unless the post has at least one question and a rubric with a positive weight; `details` names what is missing. |
 | `POST` | `/v1/job-posts/:id/close` | **Admin only.** Open to closed, which is final. Any move the lifecycle does not allow is a 409 `invalid_transition` listing `allowed_next_statuses`. |
+| `GET` | `/v1/job-posts/:id/rubric` | **Admin only.** The current version of the post's scoring rubric: `version` (`null` before the first) and `criteria` in order, each with `label`, `kind`, `weight`, `question_id` and `config`. |
+| `PUT` | `/v1/job-posts/:id/rubric` | **Admin only, any status.** Body: `criteria`, the whole rubric; it becomes the next version, and earlier versions are kept for the scores that use them. Kinds: `keyword_match` `{"keywords":[…]}`, `experience_years` `{"min":0,"target":2}`, `answer_depth` `{"min_chars":50,"target_chars":400}`, `boolean_all` `{"question_ids":[…]}`. Weights must sum to 100. Every problem comes back in one 422 keyed like `criteria[2].config`. Nothing is rescored: the response's `applications_to_rescore` says how many applications still carry an older score. |
 | `GET` | `/v1/job-posts/:id/questions` | **Admin only.** The post's application form in order, whatever its status. Everyone else gets the form inside `GET /v1/job-posts/:id`. |
 | `POST` | `/v1/job-posts/:id/questions` | **Admin only, draft only.** Add a question. Body: `prompt`, `kind` (`text`, `number`, `boolean`, `choice`), `choices` (required for `choice`, absent otherwise), `min_length` (text only), `required` (default true), `position` (default: after the last). |
 | `PATCH` | `/v1/job-posts/:id/questions/:questionID` | **Admin only, draft only.** Partial update. Send `"choices":[]` to clear choices when changing the kind. |
 | `DELETE` | `/v1/job-posts/:id/questions/:questionID` | **Admin only, draft only.** Returns 204. |
-| `POST` | `/v1/job-posts/:id/applications` | **Candidate only.** Apply to an open post. Body: `cv_url` (absolute `http`/`https`), `answers`: `[{"question_id","answer"}]`, where `answer` may be a string, number or boolean. Every problem comes back in one 422, under `details.cv_url` and `details.answers` (each with `question_id`, `code` and, for `too_short`, `min_length` and `got`). A closed post is a 409 `not_accepting_applications`, a second application a 409 `already_applied`, also when several arrive at once. Returns 201, the application and its answers; the application, answers and an `application.submitted` event are written in one transaction. |
+| `POST` | `/v1/job-posts/:id/applications` | **Candidate only.** Apply to an open post. Body: `cv_url` (absolute `http`/`https`), `answers`: `[{"question_id","answer"}]`, where `answer` may be a string, number or boolean. Every problem comes back in one 422, under `details.cv_url` and `details.answers` (each with `question_id`, `code` and, for `too_short`, `min_length` and `got`). A closed post is a 409 `not_accepting_applications`, a second application a 409 `already_applied`, also when several arrive at once. Returns 201, the application and its answers; the application, answers, one score per rubric criterion and an `application.submitted` event are written in one transaction, and a rubric that cannot be applied fails the whole submission. |
 | `PUT` | `/v1/job-posts/:id/questions/order` | **Admin only, draft only.** Body: `question_ids`, every question of the post exactly once, in the new order. Applied in one transaction. |
 
 Create the development accounts, then try it:
@@ -169,6 +215,7 @@ allowed next statuses when a status change is refused.
 | 401 | `unauthenticated` | No usable access or refresh token |
 | 403 | `forbidden` | Authenticated, not permitted |
 | 404 | `not_found` | The record does not exist |
+| 404 | `not_scored` | The application exists but has no stored score |
 | 404 | `route_not_found` | No such endpoint |
 | 405 | `method_not_allowed` | The endpoint exists under another method |
 | 409 | `duplicate` | A record with the same unique key exists |

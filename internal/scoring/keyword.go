@@ -69,12 +69,12 @@ func newKeywordMatch(c domain.Criterion) (scorer, error) {
 // word. The edges are "start of text or a non-word character" and "a
 // non-word character or end of text", rather than \b, because \b needs a word
 // character on one side: it can never match after the last "+" of "c++".
-// RE2 has no lookaround, so the edge characters are part of the match, which
-// is harmless when the only question is whether there is one.
+// RE2 has no lookaround, so the edge characters are part of the match. The
+// keyword itself is capture group 1, which is where Excerpt finds it.
 func compileKeyword(kw string) (*regexp.Regexp, error) {
-	return regexp.Compile(`(?i)(?:^|[^` + wordChars + `])` +
+	return regexp.Compile(`(?i)(?:^|[^` + wordChars + `])(` +
 		regexp.QuoteMeta(kw) +
-		`(?:[^` + wordChars + `]|$)`)
+		`)(?:[^` + wordChars + `]|$)`)
 }
 
 // matchKeywords reports which keywords appear in text, in config order.

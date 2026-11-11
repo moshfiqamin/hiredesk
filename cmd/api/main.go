@@ -86,6 +86,7 @@ func run(cfg *config.Config) error {
 		JobPosts:     api.NewJobPostHandler(jobPosts),
 		Questions:    api.NewQuestionHandler(store.NewQuestionStore(pool)),
 		Listings:     api.NewJobListingHandler(jobPosts),
+		Rubrics:      api.NewRubricHandler(store.NewRubricStore(pool)),
 		Tokens:       tokens,
 		Users:        users,
 		DB:           pool,

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/moshfiqamin/hiredesk/internal/auth"
 	"github.com/moshfiqamin/hiredesk/internal/domain"
+	"github.com/moshfiqamin/hiredesk/internal/scoring"
 )
 
 // ApplicationStore is the part of the application storage the handlers need.
@@ -23,6 +25,7 @@ type ApplicationStore interface {
 	ApplicationHistory(ctx context.Context, id string) ([]domain.Answer, []domain.ApplicationEvent, error)
 	SubmitApplication(ctx context.Context, in domain.NewApplication) (*domain.Application, error)
 	TransitionApplication(ctx context.Context, id, to, actorID string) (*domain.Application, error)
+	ScoreCard(ctx context.Context, id string) (*domain.ScoreCard, error)
 }
 
 // ApplicationHandler serves the application endpoints. Every route it serves
@@ -394,4 +397,133 @@ func (h *ApplicationHandler) Submit(c *gin.Context) {
 		applicationResponse: newApplicationResponse(app),
 		Answers:             newAnswerList(app.Answers),
 	})
+}
+
+// scoreResponse is the body of GET /v1/applications/:id/score, in the shape
+// section 3 of the project overview sets out.
+type scoreResponse struct {
+	ApplicationID  string  `json:"application_id"`
+	TotalEarned    float64 `json:"total_earned"`
+	TotalAvailable float64 `json:"total_available"`
+	Percentage     float64 `json:"percentage"`
+	RubricVersion  int     `json:"rubric_version"`
+
+	Breakdown []scoreEntryResponse `json:"breakdown"`
+}
+
+// scoreEntryResponse is what one criterion contributed, and why.
+type scoreEntryResponse struct {
+	Criterion string  `json:"criterion"`
+	Kind      string  `json:"kind"`
+	Earned    float64 `json:"earned"`
+	Available float64 `json:"available"`
+	Detail    string  `json:"detail"`
+
+	// Evidence is null when the score rests on no single answer: the
+	// question was not answered, or the criterion reads several answers.
+	Evidence *evidenceResponse `json:"evidence"`
+}
+
+// evidenceResponse is the answer behind a score. Excerpt is a short window
+// of it, never the whole answer.
+type evidenceResponse struct {
+	Question string `json:"question"`
+	AnswerID string `json:"answer_id"`
+	Excerpt  string `json:"excerpt"`
+}
+
+// newScoreResponse assembles the nested response from the flat rows of the
+// score card, adding up the totals and cutting each excerpt as it goes.
+func newScoreResponse(card *domain.ScoreCard) scoreResponse {
+	out := scoreResponse{
+		ApplicationID: card.ApplicationID,
+		RubricVersion: card.RubricVersion,
+		Breakdown:     make([]scoreEntryResponse, 0, len(card.Entries)),
+	}
+
+	for _, e := range card.Entries {
+		entry := scoreEntryResponse{
+			Criterion: e.Criterion.Label,
+			Kind:      e.Criterion.Kind,
+			Earned:    e.Earned,
+			Available: e.Available,
+			Detail:    e.Detail,
+		}
+		if e.Evidence != nil {
+			entry.Evidence = &evidenceResponse{
+				Question: e.Evidence.Question,
+				AnswerID: e.Evidence.AnswerID,
+				// Cut here, on the server, by the same keyword rule the
+				// scorer used, so the full answer never leaves it.
+				Excerpt: scoring.Excerpt(e.Criterion, e.Evidence.AnswerText),
+			}
+		}
+		out.Breakdown = append(out.Breakdown, entry)
+		out.TotalEarned += e.Earned
+		out.TotalAvailable += e.Available
+	}
+
+	// Each stored value has two decimals, but their float64 sum may not:
+	// 0.1 + 0.2 is 0.30000000000000004. Rounding gives back the total a
+	// person adding the column would get.
+	out.TotalEarned = roundCents(out.TotalEarned)
+	out.TotalAvailable = roundCents(out.TotalAvailable)
+	if out.TotalAvailable > 0 {
+		out.Percentage = roundCents(out.TotalEarned / out.TotalAvailable * 100)
+	}
+	return out
+}
+
+// roundCents rounds to two decimal places.
+func roundCents(v float64) float64 {
+	return math.Round(v*100) / 100
+}
+
+// Score handles GET /v1/applications/:id/score: the stored score of one
+// application, criterion by criterion, each with an excerpt of the answer
+// that earned it.
+//
+// Who may read it is narrower than who may read the application:
+//
+//   - a caller who may not see the application gets the same 404 as for one
+//     that does not exist, as on GET /v1/applications/:id;
+//   - a caller who may see it but not its score, which is a candidate
+//     looking at their own, gets a 403. They know the application exists,
+//     so a 404 would hide nothing and only mislead.
+//
+// An application with no stored score is a 404 with the code not_scored.
+func (h *ApplicationHandler) Score(c *gin.Context) {
+	user, ok := CurrentUser(c)
+	if !ok {
+		Respond(c, errors.New("application score: no authenticated user; is the route behind RequireAuth?"))
+		return
+	}
+
+	app, assigned, err := h.apps.GetApplication(c.Request.Context(), c.Param("id"), user.ID)
+	if errors.Is(err, domain.ErrNotFound) {
+		Respond(c, domain.ErrNotFound)
+		return
+	}
+	if err != nil {
+		Respond(c, fmt.Errorf("application score: %w", err))
+		return
+	}
+
+	if !auth.CanViewApplication(user, *app, assigned) {
+		Respond(c, domain.ErrNotFound)
+		return
+	}
+	if !auth.CanViewScore(user, *app, assigned) {
+		Respond(c, domain.ErrForbidden)
+		return
+	}
+
+	// Loaded only once the caller is allowed, as GET /v1/applications/:id
+	// loads the answers.
+	card, err := h.apps.ScoreCard(c.Request.Context(), app.ID)
+	if err != nil {
+		Respond(c, fmt.Errorf("application score: %w", err))
+		return
+	}
+	c.JSON(http.StatusOK, newScoreResponse(card))
 }

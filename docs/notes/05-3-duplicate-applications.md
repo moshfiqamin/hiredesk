@@ -18,8 +18,8 @@ Click the link, read the code, then come back.
 |---|---|---|
 | [1](#1-the-race-a-check-then-insert-would-have) | The race a check-then-insert would have | — |
 | [2](#2-why-the-constraint-is-the-only-reliable-guard) | Why the constraint is the only reliable guard | [`000004_applications.up.sql:39`](../../migrations/000004_applications.up.sql#L39) |
-| [3](#3-from-sqlstate-23505-to-a-409) | From SQLSTATE 23505 to a 409 | [`applications.go:481`](../../internal/store/applications.go#L481) |
-| [4](#4-why-a-500-here-would-be-a-bug) | Why a 500 here would be a bug | [`errors.go:78`](../../internal/api/errors.go#L78) |
+| [3](#3-from-sqlstate-23505-to-a-409) | From SQLSTATE 23505 to a 409 | [`applications.go:571`](../../internal/store/applications.go#L571) |
+| [4](#4-why-a-500-here-would-be-a-bug) | Why a 500 here would be a bug | [`errors.go:79`](../../internal/api/errors.go#L79) |
 | [5](#5-goroutines) | Goroutines | [`concurrency_test.go:57`](../../test/integration/concurrency_test.go#L57) |
 | [6](#6-syncwaitgroup-and-the-start-gate) | `sync.WaitGroup` and the start gate | [`concurrency_test.go:50`](../../test/integration/concurrency_test.go#L50) |
 | [7](#7-what--race-detects-and-what-it-does-not) | What `-race` detects, and what it does not | [`concurrency_test.go:79`](../../test/integration/concurrency_test.go#L79) |
@@ -142,7 +142,7 @@ well.
 
 ## 3. From SQLSTATE 23505 to a 409
 
-**📍 Open:** [`internal/store/applications.go:481`](../../internal/store/applications.go#L481)
+**📍 Open:** [`internal/store/applications.go:571`](../../internal/store/applications.go#L571)
 
 ```go
 var pgErr *pgconn.PgError
@@ -161,7 +161,7 @@ if errors.As(err, &pgErr) && pgErr.Code == codeUniqueViolation &&
 - **The constraint name is checked too.** Any unique index on the table
   raises 23505. If a future migration adds one, a violation of it must not be
   reported to the candidate as "you have already applied". The name is a
-  constant ([`applications.go:27`](../../internal/store/applications.go#L27))
+  constant ([`applications.go:28`](../../internal/store/applications.go#L28))
   so a typo is one place to fix.
 - **`%w` twice.** The domain sentinel goes in so the api layer can map it;
   the original `*pgconn.PgError` goes in so the log, if anything logs it,
@@ -170,7 +170,7 @@ if errors.As(err, &pgErr) && pgErr.Code == codeUniqueViolation &&
   ([`domain/errors.go:64`](../../internal/domain/errors.go#L64)), so code
   that only cares about "some unique key clashed" keeps working.
 
-The api mapping row ([`api/errors.go:78`](../../internal/api/errors.go#L78))
+The api mapping row ([`api/errors.go:79`](../../internal/api/errors.go#L79))
 sits **above** the generic `ErrDuplicate` row, because the table is read
 top to bottom and the first match wins. The candidate gets:
 
@@ -186,7 +186,7 @@ find what they already submitted. A frontend can branch on the stable
 
 ## 4. Why a 500 here would be a bug
 
-**📍 Open:** [`internal/api/errors.go:78`](../../internal/api/errors.go#L78)
+**📍 Open:** [`internal/api/errors.go:79`](../../internal/api/errors.go#L79)
 
 If the insert's error were returned as it came from pgx — no `errors.As`,
 no `translate` — the `*pgconn.PgError` would reach `Respond`, match no

@@ -23,8 +23,8 @@ Click the link, read the code, then come back.
 | [2](#2-criterion-and-the-existing-answer) | `Criterion`, and the existing `Answer` | [`criterion.go:16`](../../internal/domain/criterion.go#L16) |
 | [3](#3-config-jsonrawmessage-not-mapstringany) | `Config`: `json.RawMessage`, not `map[string]any` | [`criterion.go:28`](../../internal/domain/criterion.go#L28) |
 | [4](#4-a-function-type-and-a-registry-instead-of-a-switch) | A function type and a registry instead of a switch | [`engine.go:122`](../../internal/scoring/engine.go#L122) |
-| [5](#5-compile-once-score-many) | Compile once, score many | [`engine.go:159`](../../internal/scoring/engine.go#L159) |
-| [6](#6-the-edge-cases) | The edge cases | [`engine.go:255`](../../internal/scoring/engine.go#L255) |
+| [5](#5-compile-once-score-many) | Compile once, score many | [`engine.go:177`](../../internal/scoring/engine.go#L177) |
+| [6](#6-the-edge-cases) | The edge cases | [`engine.go:273`](../../internal/scoring/engine.go#L273) |
 | [7](#7-keyword_match-and-the-stringscontains-bug) | `keyword_match`, and the `strings.Contains` bug | [`keyword.go:81`](../../internal/scoring/keyword.go#L81) |
 | [8](#8-word-boundaries-and-why-not-b) | Word boundaries, and why not `\b` | [`keyword.go:74`](../../internal/scoring/keyword.go#L74) |
 | [9](#9-what-regexpquotemeta-protects-against) | What `regexp.QuoteMeta` protects against | [`keyword.go:76`](../../internal/scoring/keyword.go#L76) |
@@ -96,7 +96,7 @@ store will load rows; this package only does arithmetic on them.
   part 2 added one ([06-2 §1](06-2-depth-and-validation.md#1-answer_depth)).
 
 **`Answer` was not redefined.** `domain.Answer` already exists
-([`application.go:40`](../../internal/domain/application.go#L40)) with `ID`,
+([`application.go:45`](../../internal/domain/application.go#L45)) with `ID`,
 `QuestionID` and `Text` — exactly the fields asked for — and it is what the
 store already returns. A second `Answer` type would need converting between
 the two at every call.
@@ -127,7 +127,7 @@ misspelt key (`"keyword"`) just returns `nil, false` — indistinguishable
 from "not set".
 
 With `json.RawMessage`, each strategy declares the shape it wants and
-decodes once ([`engine.go:343`](../../internal/scoring/engine.go#L343)):
+decodes once ([`engine.go:361`](../../internal/scoring/engine.go#L361)):
 
 ```go
 type keywordConfig struct {
@@ -200,11 +200,11 @@ Why the registry wins:
   case can quietly do its own thing.
 - **The dispatch has one unknown-kind path.** `spec, ok := registry[c.Kind]`
   — `!ok` is the only place an unknown kind is detected
-  ([`engine.go:192`](../../internal/scoring/engine.go#L192)). A switch needs a
+  ([`engine.go:210`](../../internal/scoring/engine.go#L210)). A switch needs a
   `default:` someone has to remember.
 - **The engine owns the shared rules.** The strategy returns a fraction in
   `outcome`; the engine multiplies by the weight and clamps to 0–1
-  ([`engine.go:301`](../../internal/scoring/engine.go#L301)). So "no criterion
+  ([`engine.go:319`](../../internal/scoring/engine.go#L319)). So "no criterion
   can earn more than its weight" is enforced in one place, for every
   strategy, including ones not written yet.
 
@@ -218,11 +218,11 @@ strategy has no state beyond what its closure captures.
 
 ## 5. Compile once, score many
 
-**📍 Open:** [`internal/scoring/engine.go:159`](../../internal/scoring/engine.go#L159)
+**📍 Open:** [`internal/scoring/engine.go:177`](../../internal/scoring/engine.go#L177)
 
 The brief asked for `Score(answers, criteria) (Result, error)` and a
 registry of scorers. That function exists
-([`engine.go:263`](../../internal/scoring/engine.go#L263)), but it is two
+([`engine.go:281`](../../internal/scoring/engine.go#L281)), but it is two
 steps underneath, and the registry maps to *constructors*:
 
 1. `Compile(criteria) (*Rubric, error)` — decode every config, validate it,
@@ -248,7 +248,7 @@ broken rubric with a 422, using the same code that will later score it.
 
 ## 6. The edge cases
 
-**📍 Open:** [`internal/scoring/engine.go:255`](../../internal/scoring/engine.go#L255)
+**📍 Open:** [`internal/scoring/engine.go:273`](../../internal/scoring/engine.go#L273)
 
 All four are listed in the package doc comment, where a caller reads them.
 
@@ -268,7 +268,7 @@ score. The error is a `*CriterionError` wrapping `ErrUnknownKind`, so the
 caller can `errors.Is` the category and `errors.As` for the criterion ID.
 
 **Missing answer — zero, not an error.**
-([`engine.go:287`](../../internal/scoring/engine.go#L287)) A question can be
+([`engine.go:305`](../../internal/scoring/engine.go#L305)) A question can be
 optional; a candidate who skips it has submitted a perfectly valid
 application. An error here would mean one skipped optional question makes
 the whole application unscoreable — and an error is about the *system*

@@ -50,13 +50,34 @@ type fakeApplications struct {
 	lastSubmitted *domain.NewApplication
 	submitResult  *domain.Application
 	submitErr     error
+
+	// scoreCards is what ScoreCard returns, by application ID; an ID with no
+	// card gets domain.ErrNotScored. scoreCalls records every ID asked for.
+	scoreCards map[string]*domain.ScoreCard
+	scoreCalls []string
 }
 
 func newFakeApplications() *fakeApplications {
 	return &fakeApplications{
 		byID:        make(map[string]domain.Application),
 		assignments: make(map[[2]string]bool),
+		scoreCards:  make(map[string]*domain.ScoreCard),
 	}
+}
+
+func (f *fakeApplications) ScoreCard(_ context.Context, id string) (*domain.ScoreCard, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.scoreCalls = append(f.scoreCalls, id)
+	if f.failWith != nil {
+		return nil, f.failWith
+	}
+	card, ok := f.scoreCards[id]
+	if !ok {
+		return nil, domain.ErrNotScored
+	}
+	return card, nil
 }
 
 func (f *fakeApplications) ListApplications(_ context.Context, viewer domain.User, filter domain.ApplicationFilter) ([]domain.Application, int, bool, error) {

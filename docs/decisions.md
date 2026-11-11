@@ -13,7 +13,7 @@ The longer, teaching-oriented explanations live in [`notes/`](notes/).
 **Date:** 2026-11-11
 **Status:** accepted
 **Applies to:** every endpoint that addresses one record by ID — today
-`GET /v1/applications/:id`.
+`GET /v1/applications/:id` and `GET /v1/applications/:id/score`.
 
 ### Decision
 
@@ -100,3 +100,108 @@ Too subtle to apply consistently, and every inconsistency is a leak.
   that each refusal's body equals the body for an ID that does not exist.
 - [`internal/api/application_handler_test.go`](../internal/api/application_handler_test.go)
   — the same comparison without a database.
+
+---
+
+## D2. A rubric may change after a post opens, and is never rescored implicitly
+
+**Date:** 2026-11-12
+**Status:** accepted
+**Applies to:** `PUT /v1/job-posts/:id/rubric`.
+
+### Decision
+
+The rubric is editable in every status. Each `PUT` stores a new version and
+keeps the old one; scores already stored keep the version that produced them.
+Nothing is rescored by the `PUT`: the response reports
+`applications_to_rescore`, and rescoring is a separate, explicit action.
+
+### Why
+
+`rubric_version` exists so a rubric can change after scores exist; draft-only
+would leave it permanently at 1, and make a typo in a keyword list
+unfixable without closing the post. Unlike the questions, which every
+candidate must be *asked* identically, a rubric is how stored answers are
+*judged*, and a judgement can be redone.
+
+### Rejected
+
+- **Draft only**, as questions are: safe, but versioning becomes dead weight
+  and mistakes become permanent.
+- **Rescore inside the `PUT`**: couples a cheap edit to a decision-changing
+  operation, so a typo fix would silently re-rank a shortlist.
+
+### Costs
+
+Until someone rescores, a post's applications may be scored by different
+versions. Every score row carries its version, and the breakdown shows it.
+
+### Enforced by
+
+- [`internal/store/rubric.go`](../internal/store/rubric.go) — `ReplaceRubric`
+  inserts a new version under a lock and deletes nothing.
+- `scores.criterion_id … ON DELETE RESTRICT` in
+  [`migrations/000005_scores_events.up.sql`](../migrations/000005_scores_events.up.sql).
+
+---
+
+## D3. A candidate does not see the score breakdown, even of their own application
+
+**Date:** 2026-11-12
+**Status:** accepted
+**Applies to:** `GET /v1/applications/:id/score`.
+
+### Decision
+
+Admins, and interviewers assigned to the application, may read its breakdown.
+The candidate who applied gets a 403 (per D1: they know the application
+exists); anyone else who may not see the application gets D1's 404.
+
+### Why
+
+The breakdown publishes the rubric — keywords, weights, how each answer was
+weighed. Shared once, it teaches every later applicant to answer the scorer
+rather than the question. And the number is a first pass, not the decision;
+the evidence exists so a person can explain an outcome.
+
+### Rejected
+
+**Full transparency to the candidate.** If a candidate is ever entitled to
+an explanation (for example under GDPR Articles 15 and 22), the right answer
+is a separate candidate-facing view without keywords, weights or configs —
+not this one.
+
+### Enforced by
+
+- `auth.CanViewScore` in [`internal/auth/policy.go`](../internal/auth/policy.go).
+- The `scoreA` column of `TestAuthorizationMatrix`.
+
+---
+
+## D4. An application to a post with no rubric is stored unscored
+
+**Date:** 2026-11-12
+**Status:** accepted
+**Applies to:** `POST /v1/job-posts/:id/applications`.
+
+### Decision
+
+If an open post has no rubric criteria, the application is accepted with no
+scores, and its `application.submitted` event records
+`"rubric_version": null`. A rubric that exists but cannot be applied is
+different: the submission fails and nothing is written.
+
+### Why
+
+Opening a post requires a rubric, so this only happens after hand-edited
+data. The candidate cannot fix that, and should not be turned away for it.
+"Not scored" is an honest state the ranking (a `LEFT JOIN`) and the rescore
+already expect; a zero score would be a false result.
+
+### Enforced by
+
+- `scoreApplication` in [`internal/store/applications.go`](../internal/store/applications.go).
+- `TestSubmitWithoutRubricIsKeptUnscored` and
+  `TestSubmitRollsBackWhenScoringFails` in
+  [`test/integration/scoring_test.go`](../test/integration/scoring_test.go).
+

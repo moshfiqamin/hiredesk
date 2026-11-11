@@ -110,6 +110,7 @@ type testServer struct {
 	refresh *fakeRefreshTokens
 	apps    *fakeApplications
 	posts   *fakeJobPosts
+	rubrics *fakeRubrics
 	tokens  *auth.TokenManager
 
 	// clock is what the handler and the fake token store both read as "now".
@@ -149,12 +150,14 @@ func newTestServer(t *testing.T) *testServer {
 
 	s.apps = newFakeApplications()
 	s.posts = newFakeJobPosts()
+	s.rubrics = newFakeRubrics()
 	engine, err := NewRouter(Deps{
 		Auth:         handler,
 		Applications: NewApplicationHandler(s.apps),
 		JobPosts:     NewJobPostHandler(s.posts),
 		Questions:    NewQuestionHandler(s.posts),
 		Listings:     NewJobListingHandler(s.posts),
+		Rubrics:      NewRubricHandler(s.rubrics),
 		Tokens:       s.tokens,
 		Users:        s.users,
 		DB:           okPinger{},

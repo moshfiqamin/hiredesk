@@ -25,10 +25,10 @@ Click the link, read the code, then come back.
 | [1](#1-answer_depth) | `answer_depth` | [`depth.go:25`](../../internal/scoring/depth.go#L25) |
 | [2](#2-bytes-runes-and-a-candidate-writing-in-bengali) | Bytes, runes, and a candidate writing in Bengali | [`depth.go:52`](../../internal/scoring/depth.go#L52) |
 | [3](#3-validatecriteria-and-why-it-collects-every-problem) | `ValidateCriteria`, and why it collects every problem | [`validate.go:27`](../../internal/scoring/validate.go#L27) |
-| [4](#4-a-kind-that-needs-a-question) | A kind that needs a question | [`engine.go:201`](../../internal/scoring/engine.go#L201) |
-| [5](#5-one-list-of-rules-two-ways-to-report-them) | One list of rules, two ways to report them | [`engine.go:181`](../../internal/scoring/engine.go#L181) |
+| [4](#4-a-kind-that-needs-a-question) | A kind that needs a question | [`engine.go:219`](../../internal/scoring/engine.go#L219) |
+| [5](#5-one-list-of-rules-two-ways-to-report-them) | One list of rules, two ways to report them | [`engine.go:199`](../../internal/scoring/engine.go#L199) |
 | [6](#6-why-weights-are-never-compared-with-) | Why weights are never compared with `==` | [`validate.go:18`](../../internal/scoring/validate.go#L18) |
-| [7](#7-config-errors-a-client-may-see) | Config errors a client may see | [`engine.go:361`](../../internal/scoring/engine.go#L361) |
+| [7](#7-config-errors-a-client-may-see) | Config errors a client may see | [`engine.go:379`](../../internal/scoring/engine.go#L379) |
 | [8](#8-the-whole-engine-suite) | The whole-engine suite | [`engine_test.go:121`](../../internal/scoring/engine_test.go#L121) |
 | [9](#9-the-full-rubric-by-hand) | **The full rubric, by hand** | [`engine_test.go:121`](../../internal/scoring/engine_test.go#L121) |
 | [10](#10-the-fuzz-test-and-whether-it-is-worth-it) | The fuzz test, and whether it is worth it | [`keyword_test.go:284`](../../internal/scoring/keyword_test.go#L284) |
@@ -180,7 +180,7 @@ still scores consistently, and a draft rubric can be previewed.
 
 ## 4. A kind that needs a question
 
-**📍 Open:** [`internal/scoring/engine.go:201`](../../internal/scoring/engine.go#L201)
+**📍 Open:** [`internal/scoring/engine.go:219`](../../internal/scoring/engine.go#L219)
 
 In part 1, a `keyword_match` criterion with no `question_id` scored
 "no answer provided" for everyone. That was a quiet failure: the rubric was
@@ -202,7 +202,7 @@ author's mistake (an error); a missing answer is the candidate's choice
 
 ## 5. One list of rules, two ways to report them
 
-**📍 Open:** [`internal/scoring/engine.go:181`](../../internal/scoring/engine.go#L181)
+**📍 Open:** [`internal/scoring/engine.go:199`](../../internal/scoring/engine.go#L199)
 
 `checkCriterion` runs every per-criterion check and returns a list of
 problems. `Compile` takes the first and stops; `ValidateCriteria` takes all
@@ -267,7 +267,7 @@ the message says "40.01", not "40.004999999999995".
 
 ## 7. Config errors a client may see
 
-**📍 Open:** [`internal/scoring/engine.go:361`](../../internal/scoring/engine.go#L361)
+**📍 Open:** [`internal/scoring/engine.go:379`](../../internal/scoring/engine.go#L379)
 
 `ValidateCriteria`'s messages go to the client, and the domain's rule is
 that field messages contain no internals. The JSON decoder's own messages
@@ -468,9 +468,9 @@ count; their table tests already cover every branch.
 
 | Line | Code | Does it matter? |
 |---|---|---|
-| [`engine.go:306`](../../internal/scoring/engine.go#L306) | `clampFraction`: `return 1` | **No.** Every strategy already caps its own fraction at 1, so the engine's clamp never fires. It is a safety net for a future strategy, and it cannot be reached through the public API. |
-| [`engine.go:337`](../../internal/scoring/engine.go#L337) | `configReason` fallback | **No.** Reached only if a constructor returned an error that is not a `configError`; none does. |
-| [`engine.go:376`](../../internal/scoring/engine.go#L376) | `decodeReason` default | **No.** Every error the decoder produced for every malformed config tried falls into a typed case. Kept so a new error shape gets a safe message rather than a Go type name. |
+| [`engine.go:324`](../../internal/scoring/engine.go#L324) | `clampFraction`: `return 1` | **No.** Every strategy already caps its own fraction at 1, so the engine's clamp never fires. It is a safety net for a future strategy, and it cannot be reached through the public API. |
+| [`engine.go:355`](../../internal/scoring/engine.go#L355) | `configReason` fallback | **No.** Reached only if a constructor returned an error that is not a `configError`; none does. |
+| [`engine.go:394`](../../internal/scoring/engine.go#L394) | `decodeReason` default | **No.** Every error the decoder produced for every malformed config tried falls into a typed case. Kept so a new error shape gets a safe message rather than a Go type name. |
 | [`keyword.go:58`](../../internal/scoring/keyword.go#L58) | `regexp.Compile` failed | **No.** After `QuoteMeta` every keyword is a literal; the fuzzer compiled hundreds of thousands without one failure. Kept because a panic would be worse than an error. |
 
 All four are defensive branches that exist so that a *future* mistake fails

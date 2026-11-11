@@ -73,6 +73,7 @@ var mappings = []mapping{
 	{domain.ErrUnauthenticated, http.StatusUnauthorized, "unauthenticated", "Authentication is required."},
 	{domain.ErrForbidden, http.StatusForbidden, "forbidden", "You do not have permission to do that."},
 	{domain.ErrNotFound, http.StatusNotFound, "not_found", "The requested resource was not found."},
+	{domain.ErrNotScored, http.StatusNotFound, "not_scored", "This application has no score. Its job post had no rubric when it was submitted; it can be scored once the post has one."},
 	// Before ErrDuplicate, which it also matches: the first row that matches
 	// wins, and a candidate needs this message, not the generic one.
 	{domain.ErrAlreadyApplied, http.StatusConflict, "already_applied", "You have already applied to this job post. Each candidate can apply once per post; your existing application is under /v1/applications."},

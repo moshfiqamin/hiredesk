@@ -19,6 +19,7 @@ type Deps struct {
 	JobPosts     *JobPostHandler
 	Questions    *QuestionHandler
 	Listings     *JobListingHandler
+	Rubrics      *RubricHandler
 
 	// Tokens verifies the access token on every protected route, and Users
 	// loads the user it names.
@@ -38,8 +39,8 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 	// Checked here, at startup, because a nil Users would otherwise surface as
 	// a panic on the first authenticated request.
 	if deps.Auth == nil || deps.Applications == nil || deps.JobPosts == nil || deps.Questions == nil ||
-		deps.Listings == nil || deps.Tokens == nil || deps.Users == nil || deps.DB == nil {
-		return nil, errors.New("build router: Auth, Applications, JobPosts, Questions, Listings, Tokens, Users and DB are all required")
+		deps.Listings == nil || deps.Rubrics == nil || deps.Tokens == nil || deps.Users == nil || deps.DB == nil {
+		return nil, errors.New("build router: Auth, Applications, JobPosts, Questions, Listings, Rubrics, Tokens, Users and DB are all required")
 	}
 
 	// gin.Default() with one substitution: its recovery middleware answers a
@@ -101,6 +102,11 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 		protected.GET("/applications", deps.Applications.List)
 		protected.GET("/applications/:id", deps.Applications.Get)
 
+		// Admins and the interviewers assigned to the application. Not
+		// RequireRole: an interviewer's access depends on the row, so the
+		// handler decides, with auth.CanViewScore.
+		protected.GET("/applications/:id/score", deps.Applications.Score)
+
 		// Every role may read a post. Whether a draft is visible to the
 		// caller is decided by auth.CanViewDraftJobPosts.
 		protected.GET("/job-posts/:id", deps.JobPosts.Get)
@@ -137,6 +143,12 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 			admin.PUT("/job-posts/:id/questions/order", deps.Questions.Reorder)
 			admin.PATCH("/job-posts/:id/questions/:questionID", deps.Questions.Update)
 			admin.DELETE("/job-posts/:id/questions/:questionID", deps.Questions.Delete)
+
+			// The scoring rubric. PUT, not PATCH: the body is the whole rubric,
+			// which becomes the next version. Editable in any status; scores
+			// already stored keep the version that produced them.
+			admin.GET("/job-posts/:id/rubric", deps.Rubrics.Get)
+			admin.PUT("/job-posts/:id/rubric", deps.Rubrics.Replace)
 		}
 	}
 

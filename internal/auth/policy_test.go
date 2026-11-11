@@ -259,3 +259,37 @@ func TestCanViewDraftJobPosts(t *testing.T) {
 		}
 	}
 }
+
+// TestCanViewScore checks every combination of the policy table's inputs.
+// Ownership never changes the answer, so the expectations are written per
+// role and assignment, and every ownership is checked against them.
+func TestCanViewScore(t *testing.T) {
+	t.Parallel()
+
+	// {role, assigned} → may view the score. Written out, not derived.
+	want := map[string]map[bool]bool{
+		domain.RoleAdmin:       {true: true, false: true},
+		domain.RoleInterviewer: {true: true, false: false},
+		domain.RoleCandidate:   {true: false, false: false},
+		"":                     {true: false, false: false},
+		"Admin":                {true: false, false: false},
+		"superuser":            {true: false, false: false},
+	}
+
+	for _, role := range testRoles {
+		for _, own := range testOwnerships {
+			for _, assigned := range testAssigned {
+				u, app := inputs(role, own)
+				got := CanViewScore(u, app, assigned)
+				if got != want[role][assigned] {
+					t.Errorf("role=%q/%s/assigned=%v: CanViewScore = %v, want %v", role, own, assigned, got, want[role][assigned])
+				}
+				// Narrower, never wider: a score belongs to an application, so
+				// anyone who may see it must be able to see the application.
+				if got && !CanViewApplication(u, app, assigned) {
+					t.Errorf("role=%q/%s/assigned=%v: may view the score but not the application", role, own, assigned)
+				}
+			}
+		}
+	}
+}

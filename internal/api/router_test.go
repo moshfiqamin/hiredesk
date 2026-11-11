@@ -49,6 +49,10 @@ func TestRoutes(t *testing.T) {
 		{"updating a job post is protected", http.MethodPatch, "/v1/job-posts/not-checked-before-auth", http.StatusUnauthorized},
 		{"opening a job post is protected", http.MethodPost, "/v1/job-posts/not-checked-before-auth/open", http.StatusUnauthorized},
 		{"closing a job post is protected", http.MethodPost, "/v1/job-posts/not-checked-before-auth/close", http.StatusUnauthorized},
+		{"reading a rubric is protected", http.MethodGet, "/v1/job-posts/not-checked-before-auth/rubric", http.StatusUnauthorized},
+		{"replacing a rubric is protected", http.MethodPut, "/v1/job-posts/not-checked-before-auth/rubric", http.StatusUnauthorized},
+		{"PATCH on the rubric", http.MethodPatch, "/v1/job-posts/not-checked-before-auth/rubric", http.StatusMethodNotAllowed},
+		{"an application's score is protected", http.MethodGet, "/v1/applications/not-checked-before-auth/score", http.StatusUnauthorized},
 		{"GET on a transition route", http.MethodGet, "/v1/job-posts/not-checked-before-auth/open", http.StatusMethodNotAllowed},
 		{"PUT on a PATCH route", http.MethodPut, "/v1/job-posts/not-checked-before-auth", http.StatusMethodNotAllowed},
 
@@ -83,6 +87,7 @@ func TestReadyzReportsAnUnreachableDatabase(t *testing.T) {
 		JobPosts:     NewJobPostHandler(newFakeJobPosts()),
 		Questions:    NewQuestionHandler(newFakeJobPosts()),
 		Listings:     NewJobListingHandler(newFakeJobPosts()),
+		Rubrics:      NewRubricHandler(newFakeRubrics()),
 		Tokens:       auth.NewTokenManager(testJWTSecret),
 		Users:        users,
 		DB:           downPinger{},

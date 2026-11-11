@@ -221,8 +221,10 @@ func TestListOpenJobPostsSkillTags(t *testing.T) {
 	criterion := func(postID, kind string, version int, config string) {
 		t.Helper()
 		if _, err := f.store.db.Exec(ctx, `
-			INSERT INTO rubric_criteria (job_post_id, label, kind, weight, config, rubric_version)
-			VALUES ($1::text::uuid, 'c', $2, 1, $3::jsonb, $4)`, postID, kind, config, version,
+			INSERT INTO rubric_criteria (job_post_id, label, kind, weight, config, rubric_version, position)
+			VALUES ($1::text::uuid, 'c', $2, 1, $3::jsonb, $4,
+			        (SELECT coalesce(max(position), 0) + 1 FROM rubric_criteria
+			         WHERE job_post_id = $1::text::uuid AND rubric_version = $4))`, postID, kind, config, version,
 		); err != nil {
 			t.Fatalf("add criterion: %v", err)
 		}

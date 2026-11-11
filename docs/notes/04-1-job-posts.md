@@ -16,7 +16,7 @@ Click the link, read the code, then come back.
 
 | # | Topic | Code |
 |---|---|---|
-| [1](#1-three-routes-two-guards) | Three routes, two guards | [`router.go:106`](../../internal/api/router.go#L106) |
+| [1](#1-three-routes-two-guards) | Three routes, two guards | [`router.go:112`](../../internal/api/router.go#L112) |
 | [2](#2-the-trap-a-string-has-no-value-that-means-not-sent) | The trap: a `string` has no value that means "not sent" | [`job_post_handler.go:72`](../../internal/api/job_post_handler.go#L72) |
 | [3](#3-the-pointer-field-approach) | The pointer-field approach | [`job_post_handler.go:72`](../../internal/api/job_post_handler.go#L72) |
 | [4](#4-from-request-to-patch-to-row) | From request, to patch, to row | [`job_post.go:264`](../../internal/domain/job_post.go#L264) |
@@ -34,7 +34,7 @@ Click the link, read the code, then come back.
 
 ## 1. Three routes, two guards
 
-**📍 Open:** [`internal/api/router.go:106`](../../internal/api/router.go#L106)
+**📍 Open:** [`internal/api/router.go:112`](../../internal/api/router.go#L112)
 
 | Route | Who | Handler |
 |---|---|---|
@@ -44,7 +44,7 @@ Click the link, read the code, then come back.
 
 `GET` is registered on `protected`, so it runs `RequireAuth` and then the
 handler. The two writes are registered on a nested group, at
-[`router.go:115`](../../internal/api/router.go#L115):
+[`router.go:121`](../../internal/api/router.go#L121):
 
 ```go
 admin := protected.Group("", RequireRole(domain.RoleAdmin))
@@ -472,7 +472,7 @@ truly missing ID.
 
 The rule has two halves:
 
-- **Who:** [`auth.CanViewDraftJobPosts`](../../internal/auth/policy.go#L73),
+- **Who:** [`auth.CanViewDraftJobPosts`](../../internal/auth/policy.go#L96),
   a pure function of the user, like the three policies in module 3.
 - **How:** its answer is passed to the store as `includeDrafts`, and applied
   in SQL at [`job_posts.go:97`](../../internal/store/job_posts.go#L97):
@@ -563,7 +563,7 @@ what stops minor units being mistaken for whole ones.
 | [`TestParseMoney`](../../internal/domain/money_test.go#L8) | What is and is not an amount |
 | [`TestJobPostStoreUpdateConcurrently`](../../internal/store/job_posts_integration_test.go#L331) | Section 8's race, against PostgreSQL |
 | [`TestJobPostStoreUpdate`](../../internal/store/job_posts_integration_test.go#L217) | Partial updates in real SQL; a refused patch writes nothing, including its valid fields |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L260) | Seven new columns: every caller against every job post route |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L282) | Seven new columns: every caller against every job post route |
 
 The handler tests use a fake store that records the patch it was given, so
 they can assert on *nil versus non-nil* directly rather than inferring it

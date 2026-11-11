@@ -76,6 +76,11 @@ const (
 
 	// missingApp is a well-formed UUID that no row has.
 	missingApp = "22222222-0000-4000-8000-0000000000ff"
+
+	// postQYears is a number question on postID, which postID's rubric
+	// scores. appA has a stored score against it; appB has none.
+	postQYears    = "33333333-0000-4000-8000-0000000000a1"
+	postCriterion = "66666666-0000-4000-8000-000000000001"
 )
 
 // startPostgres runs a PostgreSQL container with every migration applied, and
@@ -156,15 +161,25 @@ func seed(t *testing.T, pool *pgxpool.Pool) {
 		INSERT INTO questions (job_post_id, prompt, kind, position)
 		VALUES ('` + readyDraftID + `', 'Why this role?', 'text', 1);
 
-		INSERT INTO rubric_criteria (job_post_id, label, kind, weight)
-		VALUES ('` + readyDraftID + `', 'Go experience', 'experience_years', 1);
+		INSERT INTO rubric_criteria (job_post_id, label, kind, weight, position)
+		VALUES ('` + readyDraftID + `', 'Go experience', 'experience_years', 1, 1);
 
 		INSERT INTO applications (id, job_post_id, candidate_id, cv_url, submitted_at) VALUES
 			('` + appA + `', '` + postID + `', '` + candidateID + `',      'https://cv.test/a.pdf', '2026-03-02T09:00:00Z'),
 			('` + appB + `', '` + postID + `', '` + otherCandidateID + `', 'https://cv.test/b.pdf', '2026-03-01T09:00:00Z');
 
 		INSERT INTO interviewer_assignments (application_id, interviewer_id, assigned_by)
-		VALUES ('` + appA + `', '` + interviewerID + `', '` + adminID + `');`
+		VALUES ('` + appA + `', '` + interviewerID + `', '` + adminID + `');
+
+		INSERT INTO questions (id, job_post_id, prompt, kind, position)
+		VALUES ('` + postQYears + `', '` + postID + `', 'Years of Go?', 'number', 1);
+
+		INSERT INTO rubric_criteria (id, job_post_id, label, kind, weight, config, question_id, position)
+		VALUES ('` + postCriterion + `', '` + postID + `', 'Experience', 'experience_years', 100,
+		        '{"target": 2}', '` + postQYears + `', 1);
+
+		INSERT INTO scores (application_id, criterion_id, earned, available, detail, rubric_version)
+		VALUES ('` + appA + `', '` + postCriterion + `', 0, 100, 'no answer provided', 1);`
 
 	if _, err := pool.Exec(context.Background(), fixtures); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -184,6 +199,7 @@ func newRouter(t *testing.T, pool *pgxpool.Pool, tokens *auth.TokenManager) *gin
 		JobPosts:     api.NewJobPostHandler(store.NewJobPostStore(pool)),
 		Questions:    api.NewQuestionHandler(store.NewQuestionStore(pool)),
 		Listings:     api.NewJobListingHandler(store.NewJobPostStore(pool)),
+		Rubrics:      api.NewRubricHandler(store.NewRubricStore(pool)),
 		Tokens:       tokens,
 		Users:        users,
 		DB:           pool,
@@ -197,13 +213,14 @@ func newRouter(t *testing.T, pool *pgxpool.Pool, tokens *auth.TokenManager) *gin
 
 // endpoint is one protected route, with a concrete path to request.
 type endpoint struct {
-	name   string
-	method string
-	route  string // the pattern registered with Gin, e.g. /v1/applications/:id
-	path   string
-	body   string // sent as JSON when not empty
-	appID  string // for single-application endpoints: which one is requested
-	postID string // for single-post endpoints that answer with the post
+	name    string
+	method  string
+	route   string // the pattern registered with Gin, e.g. /v1/applications/:id
+	path    string
+	body    string // sent as JSON when not empty
+	appID   string // for single-application endpoints: which one is requested
+	scoreOf string // for the score endpoint: the application_id the 200 must carry
+	postID  string // for single-post endpoints that answer with the post
 
 	// conflictCode is the error code a 409 from this endpoint must carry.
 	conflictCode string
@@ -248,6 +265,11 @@ type callerRow struct {
 	// Moving an application through the pipeline: admins only.
 	statusChange int
 
+	// The rubric, read and replaced: admins only. The score of application
+	// A: admins and its assigned interviewer. Its candidate may see A but
+	// not its score, so gets a 403; anyone who may not see A gets the 404.
+	rubricGet, rubricPut, scoreA int
+
 	// listed is exactly which applications GET /v1/applications must return,
 	// for callers that get a 200.
 	listed []string
@@ -282,14 +304,16 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postCreate: unau, postPatch: unau, postPatchMalformed: unau,
 			postOpenReady: unau, postOpenUnready: unau, postClose: unau,
 			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau,
-			listing: ok, submit: unau, statusChange: unau},
+			listing: ok, submit: unau, statusChange: unau,
+			rubricGet: unau, rubricPut: unau, scoreA: unau},
 		{caller: "ghost (token for a deleted user)", userID: ghostID, role: domain.RoleAdmin,
 			me: unau, list: unau, getA: unau, getB: unau, getMissing: unau, getMalformed: unau,
 			postOpen: unau, postDraft: unau, postMissing: unau, postMalformed: unau,
 			postCreate: unau, postPatch: unau, postPatchMalformed: unau,
 			postOpenReady: unau, postOpenUnready: unau, postClose: unau,
 			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau,
-			listing: ok, submit: unau, statusChange: unau},
+			listing: ok, submit: unau, statusChange: unau,
+			rubricGet: unau, rubricPut: unau, scoreA: unau},
 
 		{caller: "admin", userID: adminID, role: domain.RoleAdmin,
 			me: ok, list: ok, getA: ok, getB: ok, getMissing: nf, getMalformed: nf,
@@ -298,6 +322,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postOpenReady: ok, postOpenUnready: conf, postClose: ok,
 			qList: ok, qCreate: made, qCreateLocked: conf, qUpdate: ok, qReorder: ok, qDelete: gone,
 			listing: ok, submit: forb, statusChange: ok,
+			rubricGet: ok, rubricPut: ok, scoreA: ok,
 			listed: []string{appA, appB}},
 		{caller: "interviewer assigned to A", userID: interviewerID, role: domain.RoleInterviewer,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
@@ -306,6 +331,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listing: ok, submit: forb, statusChange: forb,
+			rubricGet: forb, rubricPut: forb, scoreA: ok,
 			listed: []string{appA}},
 		{caller: "interviewer assigned to nothing", userID: outsideInterviewerID, role: domain.RoleInterviewer,
 			me: ok, list: ok, getA: nf, getB: nf, getMissing: nf, getMalformed: nf,
@@ -314,6 +340,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listing: ok, submit: forb, statusChange: forb,
+			rubricGet: forb, rubricPut: forb, scoreA: nf,
 			listed: []string{}},
 		{caller: "candidate who owns A", userID: candidateID, role: domain.RoleCandidate,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
@@ -322,6 +349,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listing: ok, submit: conf, statusChange: forb,
+			rubricGet: forb, rubricPut: forb, scoreA: forb,
 			listed: []string{appA}},
 		{caller: "candidate who owns B", userID: otherCandidateID, role: domain.RoleCandidate,
 			me: ok, list: ok, getA: nf, getB: ok, getMissing: nf, getMalformed: nf,
@@ -330,6 +358,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listing: ok, submit: conf, statusChange: forb,
+			rubricGet: forb, rubricPut: forb, scoreA: nf,
 			listed: []string{appB}},
 
 		// The token claims admin; the database says candidate. The database
@@ -341,6 +370,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listing: ok, submit: conf, statusChange: forb,
+			rubricGet: forb, rubricPut: forb, scoreA: forb,
 			listed: []string{appA}},
 	}
 
@@ -405,6 +435,16 @@ func TestAuthorizationMatrix(t *testing.T) {
 
 		{name: "POST application to a closed post", method: http.MethodPost, route: "/v1/job-posts/:id/applications", path: "/v1/job-posts/" + closedPostID + "/applications",
 			body: `{"cv_url":"https://cv.test/new.pdf","answers":[]}`, conflictCode: "not_accepting_applications", cellFor: func(r callerRow) int { return r.submit }},
+
+		// Reading postID's rubric, and replacing it with a version 2. The
+		// score of A was given against version 1 and is unaffected.
+		{name: "GET rubric", method: http.MethodGet, route: "/v1/job-posts/:id/rubric", path: "/v1/job-posts/" + postID + "/rubric",
+			cellFor: func(r callerRow) int { return r.rubricGet }},
+		{name: "PUT rubric", method: http.MethodPut, route: "/v1/job-posts/:id/rubric", path: "/v1/job-posts/" + postID + "/rubric",
+			body:    `{"criteria":[{"label":"Experience","kind":"experience_years","weight":100,"question_id":"` + postQYears + `","config":{"target":3}}]}`,
+			cellFor: func(r callerRow) int { return r.rubricPut }},
+		{name: "GET score of A", method: http.MethodGet, route: "/v1/applications/:id/score", path: "/v1/applications/" + appA + "/score",
+			scoreOf: appA, cellFor: func(r callerRow) int { return r.scoreA }},
 
 		// Shortlists B, which no other cell depends on the status of.
 		{name: "PATCH application status", method: http.MethodPatch, route: "/v1/applications/:id/status", path: "/v1/applications/" + appB + "/status",
@@ -496,6 +536,16 @@ func TestAuthorizationMatrix(t *testing.T) {
 				case ep.isList:
 					if got := listedIDs(t, rec.Body.Bytes()); !sameSet(got, row.listed) {
 						t.Errorf("listed %v, want exactly %v", got, row.listed)
+					}
+
+				case ep.scoreOf != "":
+					var score struct {
+						ApplicationID string `json:"application_id"`
+						RubricVersion int    `json:"rubric_version"`
+					}
+					if err := json.Unmarshal(rec.Body.Bytes(), &score); err != nil ||
+						score.ApplicationID != ep.scoreOf || score.RubricVersion != 1 {
+						t.Errorf("score body = %s, want application %s at rubric version 1", rec.Body, ep.scoreOf)
 					}
 
 				case ep.appID != "":

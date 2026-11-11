@@ -297,10 +297,10 @@ The shutdown path:
 1. [`signal.NotifyContext`](../../cmd/api/main.go#L55) gives a context cancelled
    on SIGINT (Ctrl-C) or SIGTERM — what `docker stop` and Kubernetes send.
 2. `ListenAndServe` blocks, so it runs in a goroutine and reports failures back
-   over a **buffered** channel ([`:109`](../../cmd/api/main.go#L109)). Buffered
+   over a **buffered** channel ([`:110`](../../cmd/api/main.go#L110)). Buffered
    with room for one value so that goroutine can exit even if nobody is reading
    — an unbuffered channel would leak it.
-3. `ErrServerClosed` is filtered out at [`:116`](../../cmd/api/main.go#L116):
+3. `ErrServerClosed` is filtered out at [`:117`](../../cmd/api/main.go#L117):
    it is what a deliberate `Shutdown` returns, a normal outcome rather than a
    failure.
 4. `srv.Shutdown` stops accepting new connections and waits for in-flight
@@ -308,7 +308,7 @@ The shutdown path:
 5. `defer pool.Close()` then waits for borrowed connections to be returned and
    closes them.
 
-**The shutdown context at [`:134`](../../cmd/api/main.go#L134) is deliberately
+**The shutdown context at [`:135`](../../cmd/api/main.go#L135) is deliberately
 NOT derived from `ctx`.** `ctx` is already cancelled — that is why we are
 shutting down — and a cancelled parent would make `Shutdown` give up
 immediately, defeating the entire grace period. This is the subtle bug the
@@ -327,7 +327,7 @@ shutdown complete
 and the database's count of API connections went from 1 to **0** — the pool
 closed cleanly rather than leaving backends for the server to reap.
 
-`ReadHeaderTimeout` at [`:103`](../../cmd/api/main.go#L103) is unrelated to
+`ReadHeaderTimeout` at [`:104`](../../cmd/api/main.go#L104) is unrelated to
 shutdown but belongs on every `http.Server`: without it a client that opens a
 connection and dribbles header bytes holds it open forever, which is the
 Slowloris attack.

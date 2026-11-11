@@ -19,21 +19,21 @@ Click the link, read the code, then come back.
 
 | # | Topic | Code |
 |---|---|---|
-| [1](#1-the-endpoint) | The endpoint | [`router.go:110`](../../internal/api/router.go#L110) |
+| [1](#1-the-endpoint) | The endpoint | [`router.go:116`](../../internal/api/router.go#L116) |
 | [2](#2-the-rules) | The rules | [`submission.go:184`](../../internal/domain/submission.go#L184) |
 | [3](#3-rule-1-and-why-a-draft-is-a-404) | Rule 1, and why a draft is a 404 | [`submission.go:41`](../../internal/domain/submission.go#L41) |
 | [4](#4-why-collect-every-error) | Why collect every error | [`submission.go:192`](../../internal/domain/submission.go#L192) |
-| [5](#5-the-one-place-failing-fast-is-right) | The one place failing fast is right | [`applications.go:447`](../../internal/store/applications.go#L447) |
-| [6](#6-why-the-server-validates-when-the-frontend-already-does) | Why the server validates when the frontend already does | [`application_handler.go:354`](../../internal/api/application_handler.go#L354) |
+| [5](#5-the-one-place-failing-fast-is-right) | The one place failing fast is right | [`applications.go:537`](../../internal/store/applications.go#L537) |
+| [6](#6-why-the-server-validates-when-the-frontend-already-does) | Why the server validates when the frontend already does | [`application_handler.go:357`](../../internal/api/application_handler.go#L357) |
 | [7](#7-testing-the-rules-without-gin) | Testing the rules without Gin | [`submission_test.go:96`](../../internal/domain/submission_test.go#L96) |
 | [8](#8-the-error-shape) | The error shape | [`submission.go:132`](../../internal/domain/submission.go#L132) |
-| [9](#9-go-idioms-appearing-for-the-first-time) | Go idioms appearing for the first time | [`application_handler.go:83`](../../internal/api/application_handler.go#L83) |
+| [9](#9-go-idioms-appearing-for-the-first-time) | Go idioms appearing for the first time | [`application_handler.go:86`](../../internal/api/application_handler.go#L86) |
 
 ---
 
 ## 1. The endpoint
 
-**📍 Open:** [`internal/api/router.go:110`](../../internal/api/router.go#L110)
+**📍 Open:** [`internal/api/router.go:116`](../../internal/api/router.go#L116)
 
 `POST /v1/job-posts/:id/applications`, body:
 
@@ -163,7 +163,7 @@ needs a richer shape (section 8) but the same principle.
 
 ## 5. The one place failing fast is right
 
-**📍 Open:** [`internal/store/applications.go:447`](../../internal/store/applications.go#L447)
+**📍 Open:** [`internal/store/applications.go:537`](../../internal/store/applications.go#L537)
 
 Rule 1 stops everything. If the post is closed, a draft or missing, nothing
 else is checked:
@@ -187,7 +187,7 @@ that the caller can fix; stop at an error that makes the rest meaningless.
 
 ## 6. Why the server validates when the frontend already does
 
-**📍 Open:** [`internal/api/application_handler.go:354`](../../internal/api/application_handler.go#L354)
+**📍 Open:** [`internal/api/application_handler.go:357`](../../internal/api/application_handler.go#L357)
 
 Frontend validation is a convenience for the candidate. Server validation is
 the guarantee. They are not the same check done twice:
@@ -288,7 +288,7 @@ across the whole answers array", and every test would need an
 
 ### Custom `UnmarshalJSON`
 
-**📍 Open:** [`internal/api/application_handler.go:83`](../../internal/api/application_handler.go#L83)
+**📍 Open:** [`internal/api/application_handler.go:86`](../../internal/api/application_handler.go#L86)
 
 `answerValue` is a named type over `string` with an `UnmarshalJSON` method.
 `encoding/json` checks every destination for that method (the
@@ -312,7 +312,7 @@ types (`case float64, bool:`) gives `s` the original interface type.
 
 ### Struct embedding in a response
 
-**📍 Open:** [`internal/api/application_handler.go:116`](../../internal/api/application_handler.go#L116)
+**📍 Open:** [`internal/api/application_handler.go:119`](../../internal/api/application_handler.go#L119)
 
 `submittedApplicationResponse` embeds `applicationResponse` (a field with a
 type but no name). `encoding/json` treats an embedded struct's fields as if

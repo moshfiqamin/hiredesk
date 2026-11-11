@@ -30,8 +30,10 @@ func (f *postFixture) addCriterion(t *testing.T, postID string, version int, wei
 	t.Helper()
 
 	if _, err := f.store.db.Exec(context.Background(),
-		`INSERT INTO rubric_criteria (job_post_id, label, kind, weight, rubric_version)
-		 VALUES ($1::text::uuid, 'Go experience', 'experience_years', $2::numeric, $3)`,
+		`INSERT INTO rubric_criteria (job_post_id, label, kind, weight, rubric_version, position)
+		 VALUES ($1::text::uuid, 'Go experience', 'experience_years', $2::numeric, $3,
+		         (SELECT coalesce(max(position), 0) + 1 FROM rubric_criteria
+		          WHERE job_post_id = $1::text::uuid AND rubric_version = $3))`,
 		postID, weight, version,
 	); err != nil {
 		t.Fatalf("add criterion: %v", err)

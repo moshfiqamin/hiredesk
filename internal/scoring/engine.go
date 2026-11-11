@@ -131,15 +131,33 @@ type kindSpec struct {
 	// needsQuestion is true for kinds that read the answer to the
 	// criterion's own QuestionID.
 	needsQuestion bool
+
+	// questionKinds are the kinds of question this kind can read an answer
+	// from. CheckAgainstForm enforces it; the scorers themselves only ever
+	// see text.
+	questionKinds []string
 }
 
 // registry maps each kind to its spec. Read-only after package
 // initialisation, so sharing it between goroutines is safe.
 var registry = map[string]kindSpec{
-	domain.CriterionKindKeywordMatch:    {build: newKeywordMatch, needsQuestion: true},
-	domain.CriterionKindExperienceYears: {build: newExperienceYears, needsQuestion: true},
-	domain.CriterionKindAnswerDepth:     {build: newAnswerDepth, needsQuestion: true},
-	domain.CriterionKindBooleanAll:      {build: newBooleanAll},
+	domain.CriterionKindKeywordMatch: {
+		build: newKeywordMatch, needsQuestion: true,
+		questionKinds: []string{domain.QuestionKindText, domain.QuestionKindChoice},
+	},
+	domain.CriterionKindExperienceYears: {
+		build: newExperienceYears, needsQuestion: true,
+		questionKinds: []string{domain.QuestionKindNumber},
+	},
+	domain.CriterionKindAnswerDepth: {
+		build: newAnswerDepth, needsQuestion: true,
+		questionKinds: []string{domain.QuestionKindText},
+	},
+	// The questions it reads are listed in its config, not in QuestionID.
+	domain.CriterionKindBooleanAll: {
+		build:         newBooleanAll,
+		questionKinds: []string{domain.QuestionKindBoolean},
+	},
 }
 
 // Rubric is a list of criteria whose configs have been checked and compiled.

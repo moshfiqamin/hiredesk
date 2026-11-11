@@ -18,12 +18,12 @@ Click the link, read the code, then come back.
 | # | Topic | Code |
 |---|---|---|
 | [1](#1-the-lifecycle) | The lifecycle | [`application_status.go:21`](../../internal/domain/application_status.go#L21) |
-| [2](#2-why-the-event-stores-from-and-to) | Why the event stores `from` and `to` | [`applications.go:306`](../../internal/store/applications.go#L306) |
-| [3](#3-no-offer-without-a-vacancy) | No offer without a vacancy | [`applications.go:335`](../../internal/store/applications.go#L335) |
+| [2](#2-why-the-event-stores-from-and-to) | Why the event stores `from` and `to` | [`applications.go:307`](../../internal/store/applications.go#L307) |
+| [3](#3-no-offer-without-a-vacancy) | No offer without a vacancy | [`applications.go:336`](../../internal/store/applications.go#L336) |
 | [4](#4-the-snapshot-bug-and-how-the-test-found-it) | The snapshot bug, and how the test found it | [`pipeline_test.go:193`](../../test/integration/pipeline_test.go#L193) |
-| [5](#5-filters-without-string-concatenating-values) | Filters without string-concatenating values | [`applications.go:176`](../../internal/store/applications.go#L176) |
-| [6](#6-the-total-count-and-what-it-costs) | The total count, and what it costs | [`applications.go:105`](../../internal/store/applications.go#L105) |
-| [7](#7-the-detail-endpoint) | The detail endpoint | [`application_handler.go:256`](../../internal/api/application_handler.go#L256) |
+| [5](#5-filters-without-string-concatenating-values) | Filters without string-concatenating values | [`applications.go:177`](../../internal/store/applications.go#L177) |
+| [6](#6-the-total-count-and-what-it-costs) | The total count, and what it costs | [`applications.go:106`](../../internal/store/applications.go#L106) |
+| [7](#7-the-detail-endpoint) | The detail endpoint | [`application_handler.go:259`](../../internal/api/application_handler.go#L259) |
 | [8](#8-the-tests) | The tests | [`pipeline_test.go:116`](../../test/integration/pipeline_test.go#L116) |
 
 ---
@@ -61,20 +61,20 @@ Decisions inside it:
   posts got `/open` and `/close` because there are two moves. Here there are
   seven legal moves to five targets; a route each would be noise, and the
   map already says what is legal.
-  ([`router.go:130`](../../internal/api/router.go#L130))
+  ([`router.go:136`](../../internal/api/router.go#L136))
 - **An unknown status is 422, a known but illegal one is 409.**
   `{"status":"hired"}` is a malformed request: no state could accept it.
   `{"status":"offer"}` on a submitted application is a fine request refused
   by the resource's current state.
 
-In the store ([`applications.go:261`](../../internal/store/applications.go#L261))
+In the store ([`applications.go:262`](../../internal/store/applications.go#L262))
 the application's row is read `FOR UPDATE` first, so two admins moving the
 same application at once take turns: the second reads the first one's
 result, not the status both started from.
 
 ## 2. Why the event stores `from` and `to`
 
-**📍 Open:** [`internal/store/applications.go:306`](../../internal/store/applications.go#L306)
+**📍 Open:** [`internal/store/applications.go:307`](../../internal/store/applications.go#L307)
 
 ```sql
 INSERT INTO application_events (application_id, actor_id, type, payload)
@@ -108,7 +108,7 @@ JSON is ever built by concatenating strings in Go.
 
 ## 3. No offer without a vacancy
 
-**📍 Open:** [`internal/store/applications.go:335`](../../internal/store/applications.go#L335)
+**📍 Open:** [`internal/store/applications.go:336`](../../internal/store/applications.go#L336)
 
 Remaining vacancies are defined as in the public listing (4.4): the post's
 `vacancies` minus its applications at `offer`. The rule is in the domain,
@@ -190,7 +190,7 @@ the protection before its passing means anything, and under READ COMMITTED,
 
 ## 5. Filters without string-concatenating values
 
-**📍 Open:** [`internal/store/applications.go:176`](../../internal/store/applications.go#L176)
+**📍 Open:** [`internal/store/applications.go:177`](../../internal/store/applications.go#L177)
 
 `GET /v1/applications` combines three things in one `WHERE`: the role scope
 from 3.3, the optional filters `status` and `job_post_id`, and the keyset
@@ -233,7 +233,7 @@ func (c *conditions) arg(v any) string {
 }
 ```
 
-Used like this ([`applications.go:97`](../../internal/store/applications.go#L97)):
+Used like this ([`applications.go:98`](../../internal/store/applications.go#L98)):
 
 ```go
 if filter.Status != "" {
@@ -256,7 +256,7 @@ condition at all. There are only 3 scopes × 4 filter combinations × 2
 cache handles them comfortably.
 
 **The cursor composes the same way**
-([`applications.go:115`](../../internal/store/applications.go#L115)): it is
+([`applications.go:116`](../../internal/store/applications.go#L116)): it is
 one more condition, `(a.submitted_at, a.id) < ($n, $m)`, added to a clone of
 the conditions. The count query is built from the conditions *before* the
 cursor is added, so it counts every match rather than what remains.
@@ -265,7 +265,7 @@ cursor is added, so it counts every match rather than what remains.
 which is `id ASC`. A row comparison `(a, b) < (x, y)` only expresses "after
 the cursor" when both columns run the same direction, so it is now
 `submitted_at DESC, id DESC`
-([`applications.go:33`](../../internal/store/applications.go#L33)), with a
+([`applications.go:34`](../../internal/store/applications.go#L34)), with a
 matching index in migration 000010 for the unfiltered admin view.
 
 **The interviewer scope became `EXISTS`** instead of a `JOIN`, so the
@@ -274,7 +274,7 @@ differs.
 
 ## 6. The total count, and what it costs
 
-**📍 Open:** [`internal/store/applications.go:105`](../../internal/store/applications.go#L105)
+**📍 Open:** [`internal/store/applications.go:106`](../../internal/store/applications.go#L106)
 
 Keyset pagination makes a page cost the same at row 20 and at row 2,000,000:
 the index takes the scan straight to the cursor and it stops after one page.
@@ -302,7 +302,7 @@ request.
 
 **What was built.** The count and the page run in one read-only
 `REPEATABLE READ` transaction
-([`applications.go:126`](../../internal/store/applications.go#L126)), so
+([`applications.go:127`](../../internal/store/applications.go#L127)), so
 both read the same snapshot and the total cannot disagree with the page
 because an application arrived between the two statements.
 
@@ -322,7 +322,7 @@ estimated count later is a change in the store, not to the API's shape.
 
 ## 7. The detail endpoint
 
-**📍 Open:** [`internal/api/application_handler.go:256`](../../internal/api/application_handler.go#L256)
+**📍 Open:** [`internal/api/application_handler.go:259`](../../internal/api/application_handler.go#L259)
 
 `GET /v1/applications/:id` now returns `answers` (in form order) and
 `events` (oldest first) beside the application. The order of work is the
@@ -333,7 +333,7 @@ point:
 2. `auth.CanViewApplication` decides. A refusal is the same 404 as a missing
    record (D1).
 3. **Only then** `ApplicationHistory` loads answers and events
-   ([`application_handler.go:282`](../../internal/api/application_handler.go#L282)).
+   ([`application_handler.go:285`](../../internal/api/application_handler.go#L285)).
 
 Loading the history before the check would make a refused request do more
 work than a missing one, and the difference in response time would tell an

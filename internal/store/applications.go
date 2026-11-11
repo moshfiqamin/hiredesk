@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/moshfiqamin/hiredesk/internal/domain"
+	"github.com/moshfiqamin/hiredesk/internal/scoring"
 )
 
 // applicationColumns is the column list every query here returns, in the
@@ -413,9 +414,96 @@ func (s *ApplicationStore) ApplicationHistory(ctx context.Context, id string) ([
 	return answers, events, nil
 }
 
+// ScoreCard returns the stored score of the application with this ID: every
+// score row of its latest rubric version, each with its criterion and its
+// evidence, in rubric order. It returns an error matching domain.ErrNotScored
+// if the application has no scores.
+//
+// It does not check that the application exists, nor who may see its score:
+// call it only after GetApplication and auth.CanViewScore.
+func (s *ApplicationStore) ScoreCard(ctx context.Context, id string) (*domain.ScoreCard, error) {
+	const op = "score card"
+
+	// One statement for the whole card, however many criteria the rubric
+	// has. Each join is on a primary key, so each adds one index lookup per
+	// score row, and scores_application_id_idx finds the rows themselves.
+	//
+	// Both evidence joins are LEFT: a score with no evidence answer must
+	// still appear, and an inner join on questions would drop it again, since
+	// q's join condition reads aa.
+	//
+	// The subquery keeps the card to one version. A rescore replaces the
+	// rows, so there should only ever be one, but a card mixing two rubrics
+	// would add up points from criteria that never coexisted.
+	const query = `
+		SELECT ` + criterionColumns + `,
+			s.earned, s.available, s.detail, s.rubric_version,
+			aa.id::text, q.prompt, aa.answer_text
+		FROM scores s
+		JOIN rubric_criteria rc ON rc.id = s.criterion_id
+		LEFT JOIN application_answers aa ON aa.id = s.evidence_answer_id
+		LEFT JOIN questions q ON q.id = aa.question_id
+		WHERE s.application_id = $1::text::uuid
+		  AND s.rubric_version = (
+			SELECT max(latest.rubric_version) FROM scores latest
+			WHERE latest.application_id = $1::text::uuid)
+		ORDER BY rc.position`
+
+	rows, err := s.db.Query(ctx, query, id)
+	if err != nil {
+		return nil, translate(op, err)
+	}
+	entries, err := pgx.CollectRows(rows, scanScoreEntry)
+	if err != nil {
+		return nil, translate(op, err)
+	}
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("%s: %w", op, domain.ErrNotScored)
+	}
+
+	return &domain.ScoreCard{
+		ApplicationID: id,
+		// Every row has the same version: the WHERE clause says so.
+		RubricVersion: entries[0].Criterion.RubricVersion,
+		Entries:       entries,
+	}, nil
+}
+
+// scanScoreEntry reads one row of the ScoreCard query.
+func scanScoreEntry(row pgx.CollectableRow) (domain.ScoreEntry, error) {
+	var (
+		e            domain.ScoreEntry
+		scoreVersion int
+		// The three evidence columns are NULL together when the score has
+		// no evidence answer, so they scan into pointers.
+		answerID, prompt, answerText *string
+	)
+	c := &e.Criterion
+	err := row.Scan(
+		&c.ID, &c.Label, &c.Kind, &c.Weight, &c.Config, &c.QuestionID, &c.RubricVersion,
+		&e.Earned, &e.Available, &e.Detail, &scoreVersion,
+		&answerID, &prompt, &answerText,
+	)
+	if err != nil {
+		return domain.ScoreEntry{}, err
+	}
+	// A score is written with its criterion's version, so the two agree;
+	// the score's own copy is the one that counts if they ever do not.
+	c.RubricVersion = scoreVersion
+
+	if answerID != nil && prompt != nil && answerText != nil {
+		e.Evidence = &domain.ScoreEvidence{AnswerID: *answerID, Question: *prompt, AnswerText: *answerText}
+	}
+	return e, nil
+}
+
 // SubmitApplication validates in against the job post's form and stores it:
-// the application, every answer, and an application.submitted event naming
-// the candidate as the actor. Either all three are written or none is.
+// the application, every answer, one score per criterion of the post's
+// current rubric, and an application.submitted event naming the candidate as
+// the actor. Either all of it is written or none is.
+//
+// A post with no rubric gets an unscored application rather than a refusal;
+// see scoreApplication.
 //
 // It fails with:
 //
@@ -425,7 +513,9 @@ func (s *ApplicationStore) ApplicationHistory(ctx context.Context, id string) ([
 //   - a *domain.SubmissionError listing every problem with the input;
 //   - an error matching domain.ErrAlreadyApplied (and so ErrDuplicate) if the
 //     candidate has already applied to this post, including when the other
-//     application is being submitted at the same moment.
+//     application is being submitted at the same moment;
+//   - an error wrapping a *scoring.CriterionError if the rubric cannot be
+//     applied, which only a rubric changed by hand can cause.
 //
 // On success it returns the stored application with its answers, in the
 // order they were submitted.
@@ -490,16 +580,22 @@ func (s *ApplicationStore) SubmitApplication(ctx context.Context, in domain.NewA
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
+	app.RubricVersion, err = scoreApplication(ctx, tx, app)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
 	// Last, and inside the transaction: an event exists if and only if the
-	// application it describes does.
+	// application it describes does. rubric_version is JSON null when the
+	// application was not scored.
 	const insertEvent = `
 		INSERT INTO application_events (application_id, actor_id, type, payload)
 		VALUES ($1::text::uuid, $2::text::uuid, $3,
-		        jsonb_build_object('job_post_id', $4::text, 'answers', $5::int))`
+		        jsonb_build_object('job_post_id', $4::text, 'answers', $5::int, 'rubric_version', $6::int))`
 
 	// app's IDs, not the input's: the database's canonical lowercase form.
 	if _, err = tx.Exec(ctx, insertEvent, app.ID, app.CandidateID, domain.EventApplicationSubmitted,
-		app.JobPostID, len(app.Answers)); err != nil {
+		app.JobPostID, len(app.Answers), app.RubricVersion); err != nil {
 		return nil, translate(op+": insert event", err)
 	}
 
@@ -507,6 +603,47 @@ func (s *ApplicationStore) SubmitApplication(ctx context.Context, in domain.NewA
 		return nil, translate(op+": commit", err)
 	}
 	return app, nil
+}
+
+// scoreApplication scores app against its post's current rubric and stores
+// one scores row per criterion, inside tx. It returns the rubric version
+// used, or nil if the post has no rubric, in which case nothing is stored.
+//
+// app.Answers must be the answers as stored, with their IDs: the engine
+// copies an answer's ID into the score it was evidence for, and that ID is
+// what evidence_answer_id points at.
+//
+// An error here fails the whole submission. A rubric the engine refuses is a
+// broken rubric, and an application scored against part of one, or not at
+// all while the post claims to have a rubric, is worse than no application.
+func scoreApplication(ctx context.Context, tx pgx.Tx, app *domain.Application) (*int, error) {
+	// The rubric cannot change while this runs: ReplaceRubric's lock waits
+	// for the FOR SHARE that SubmitApplication holds on the post.
+	rubric, err := loadRubric(ctx, tx, app.JobPostID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Opening a post requires a weighted rubric, and a rubric cannot be
+	// replaced by an empty one, so an open post without criteria means its
+	// rows were changed by hand. The candidate is not at fault: the
+	// application is kept, unscored, and rubric_version null in its event
+	// says so. A rescore can score it once the rubric is repaired.
+	if len(rubric.Criteria) == 0 {
+		return nil, nil //nolint:nilnil // nil means "not scored", which is not an error.
+	}
+
+	// The engine sees domain values only: the criteria as loadRubric built
+	// them and the answers as insertAnswers returned them.
+	result, err := scoring.Score(app.Answers, rubric.Criteria)
+	if err != nil {
+		return nil, fmt.Errorf("score against rubric version %d: %w", rubric.Version, err)
+	}
+
+	if err = insertScores(ctx, tx, app.ID, rubric.Version, result.Breakdown); err != nil {
+		return nil, err
+	}
+	return &rubric.Version, nil
 }
 
 // insertAnswers stores every answer of one application in a single statement

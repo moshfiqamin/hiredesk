@@ -30,6 +30,11 @@ type Application struct {
 	// Answers is what the candidate said on the form. Only SubmitApplication
 	// loads it; the list and single reads leave it nil.
 	Answers []Answer
+
+	// RubricVersion is the rubric version the application was scored against
+	// when it was submitted, or nil if its post had no rubric. Only
+	// SubmitApplication sets it.
+	RubricVersion *int
 }
 
 // Answer is one row of the application_answers table.

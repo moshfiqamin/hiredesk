@@ -210,8 +210,8 @@ func TestQuestionStoreUpdateAndDelete(t *testing.T) {
 	t.Run("deleting a question deletes the criteria that score it", func(t *testing.T) {
 		q := f.add(t, post.ID, "Scored", 0)
 		if _, err := f.store.db.Exec(ctx,
-			`INSERT INTO rubric_criteria (job_post_id, label, kind, weight, question_id)
-			 VALUES ($1::text::uuid, 'Depth', 'answer_depth', 1, $2::text::uuid)`, post.ID, q.ID,
+			`INSERT INTO rubric_criteria (job_post_id, label, kind, weight, question_id, position)
+			 VALUES ($1::text::uuid, 'Depth', 'answer_depth', 1, $2::text::uuid, 1)`, post.ID, q.ID,
 		); err != nil {
 			t.Fatalf("add criterion: %v", err)
 		}

@@ -19,19 +19,19 @@ Click the link, read the code, then come back.
 
 | # | Topic | Code |
 |---|---|---|
-| [1](#1-what-a-transaction-is-in-postgresql) | What a transaction is, in PostgreSQL | [`applications.go:435`](../../internal/store/applications.go#L435) |
-| [2](#2-defer-txrollback) | `defer tx.Rollback` | [`applications.go:441`](../../internal/store/applications.go#L441) |
-| [3](#3-what-the-tables-would-hold-without-a-transaction) | What the tables would hold without a transaction | [`applications.go:470`](../../internal/store/applications.go#L470) |
-| [4](#4-the-order-of-work) | The order of work | [`applications.go:432`](../../internal/store/applications.go#L432) |
-| [5](#5-why-the-event-is-inside-the-transaction) | Why the event is inside the transaction | [`applications.go:495`](../../internal/store/applications.go#L495) |
-| [6](#6-many-answers-one-statement) | Many answers, one statement | [`applications.go:518`](../../internal/store/applications.go#L518) |
+| [1](#1-what-a-transaction-is-in-postgresql) | What a transaction is, in PostgreSQL | [`applications.go:525`](../../internal/store/applications.go#L525) |
+| [2](#2-defer-txrollback) | `defer tx.Rollback` | [`applications.go:531`](../../internal/store/applications.go#L531) |
+| [3](#3-what-the-tables-would-hold-without-a-transaction) | What the tables would hold without a transaction | [`applications.go:560`](../../internal/store/applications.go#L560) |
+| [4](#4-the-order-of-work) | The order of work | [`applications.go:522`](../../internal/store/applications.go#L522) |
+| [5](#5-why-the-event-is-inside-the-transaction) | Why the event is inside the transaction | [`applications.go:591`](../../internal/store/applications.go#L591) |
+| [6](#6-many-answers-one-statement) | Many answers, one statement | [`applications.go:655`](../../internal/store/applications.go#L655) |
 | [7](#7-testsubmitrollback) | `TestSubmitRollback` | [`submit_rollback_test.go:90`](../../test/integration/submit_rollback_test.go#L90) |
 
 ---
 
 ## 1. What a transaction is, in PostgreSQL
 
-**📍 Open:** [`internal/store/applications.go:435`](../../internal/store/applications.go#L435)
+**📍 Open:** [`internal/store/applications.go:525`](../../internal/store/applications.go#L525)
 
 `s.db.Begin(ctx)` takes one connection out of the pool and sends `BEGIN` on
 it. Every statement sent through the returned `tx` goes down that same
@@ -73,7 +73,7 @@ Two more facts that matter for the code:
 
 ## 2. `defer tx.Rollback`
 
-**📍 Open:** [`internal/store/applications.go:441`](../../internal/store/applications.go#L441)
+**📍 Open:** [`internal/store/applications.go:531`](../../internal/store/applications.go#L531)
 
 ```go
 tx, err := s.db.Begin(ctx)
@@ -114,7 +114,7 @@ form, and the explicit form shows the pattern this note is about.
 
 ## 3. What the tables would hold without a transaction
 
-**📍 Open:** [`internal/store/applications.go:470`](../../internal/store/applications.go#L470)
+**📍 Open:** [`internal/store/applications.go:560`](../../internal/store/applications.go#L560)
 
 Without `BEGIN`, PostgreSQL runs each statement in its own transaction and
 commits it the moment it finishes ("autocommit"). Suppose the answers insert
@@ -147,7 +147,7 @@ they were. The candidate's retry is a fresh first attempt.
 
 ## 4. The order of work
 
-**📍 Open:** [`internal/store/applications.go:432`](../../internal/store/applications.go#L432)
+**📍 Open:** [`internal/store/applications.go:522`](../../internal/store/applications.go#L522)
 
 | Step | Statement | Why here |
 |---|---|---|
@@ -179,7 +179,7 @@ note explains for this exact constraint.
 
 ## 5. Why the event is inside the transaction
 
-**📍 Open:** [`internal/store/applications.go:495`](../../internal/store/applications.go#L495)
+**📍 Open:** [`internal/store/applications.go:591`](../../internal/store/applications.go#L591)
 
 `application_events` is the audit trail: append-only, and the record a
 recruiter or a candidate's data request is answered from. It must say that
@@ -217,7 +217,7 @@ exactly as the `users` table does.
 
 ## 6. Many answers, one statement
 
-**📍 Open:** [`internal/store/applications.go:518`](../../internal/store/applications.go#L518)
+**📍 Open:** [`internal/store/applications.go:655`](../../internal/store/applications.go#L655)
 
 The naive loop sends one `INSERT` per answer: ten answers, ten round trips
 to the database, each waiting for the last. Inside a transaction that is
@@ -225,7 +225,7 @@ correct but slow, and the time spent holds the `FOR SHARE` lock.
 
 ### What was built: `unnest`
 
-**📍 Open:** [`internal/store/applications.go:531`](../../internal/store/applications.go#L531)
+**📍 Open:** [`internal/store/applications.go:668`](../../internal/store/applications.go#L668)
 
 ```sql
 INSERT INTO application_answers (application_id, question_id, answer_text)
@@ -253,7 +253,7 @@ Why this form:
 **`RETURNING` promises no order.** In practice it follows the input, but
 nothing guarantees that, so the rows are put back in submission order with a
 map from question ID to position
-([`applications.go:547`](../../internal/store/applications.go#L547)). Each
+([`applications.go:684`](../../internal/store/applications.go#L684)). Each
 question appears once — the validation and the unique constraint both
 ensure it — so the map is unambiguous.
 

@@ -16,13 +16,13 @@ Click the link, read the code, then come back.
 
 | # | Topic | Code |
 |---|---|---|
-| [1](#1-a-route-with-no-authentication) | A route with no authentication | [`router.go:90`](../../internal/api/router.go#L90) |
+| [1](#1-a-route-with-no-authentication) | A route with no authentication | [`router.go:91`](../../internal/api/router.go#L91) |
 | [2](#2-what-a-listing-shows) | What a listing shows | [`job_listing_handler.go:38`](../../internal/api/job_listing_handler.go#L38) |
 | [3](#3-remaining-vacancies-and-skill-tags-in-sql) | Remaining vacancies and skill tags, in SQL | [`job_listing.go:52`](../../internal/store/job_listing.go#L52) |
 | [4](#4-what-offset-10000-physically-does) | What `OFFSET 10000` physically does | [`000009_job_posts_open_listing_idx.up.sql:16`](../../migrations/000009_job_posts_open_listing_idx.up.sql#L16) |
 | [5](#5-keyset-pagination) | Keyset pagination | [`job_listing.go:56`](../../internal/store/job_listing.go#L56) |
 | [6](#6-the-sort-key-must-never-change-and-never-tie) | The sort key must never change, and never tie | [`job_listing.go:43`](../../internal/domain/job_listing.go#L43) |
-| [7](#7-the-second-offset-bug-skipped-and-repeated-rows) | The second `OFFSET` bug: skipped and repeated rows | [`job_listing_integration_test.go:272`](../../internal/store/job_listing_integration_test.go#L272) |
+| [7](#7-the-second-offset-bug-skipped-and-repeated-rows) | The second `OFFSET` bug: skipped and repeated rows | [`job_listing_integration_test.go:274`](../../internal/store/job_listing_integration_test.go#L274) |
 | [8](#8-the-cursor) | The cursor | [`cursor.go:39`](../../internal/api/cursor.go#L39) |
 | [9](#9-why-limit-is-capped) | Why `limit` is capped | [`job_listing_handler.go:124`](../../internal/api/job_listing_handler.go#L124) |
 | [10](#10-idioms-appearing-for-the-first-time) | Idioms appearing for the first time | [`job_listing.go:103`](../../internal/store/job_listing.go#L103) |
@@ -32,7 +32,7 @@ Click the link, read the code, then come back.
 
 ## 1. A route with no authentication
 
-**📍 Open:** [`internal/api/router.go:90`](../../internal/api/router.go#L90)
+**📍 Open:** [`internal/api/router.go:91`](../../internal/api/router.go#L91)
 
 ```go
 v1.GET("/job-posts", deps.Listings.List)
@@ -282,7 +282,7 @@ would be just as good a sort key. Listed under *Still open*.
 
 ## 7. The second `OFFSET` bug: skipped and repeated rows
 
-**📍 Open:** [`internal/store/job_listing_integration_test.go:272`](../../internal/store/job_listing_integration_test.go#L272)
+**📍 Open:** [`internal/store/job_listing_integration_test.go:274`](../../internal/store/job_listing_integration_test.go#L274)
 
 `OFFSET` is a count from the top. If anything above the client's position
 changes between two requests, the count lands somewhere else.
@@ -487,8 +487,8 @@ handler must tell apart: absent is the default, an empty value is an error.
 | [`TestListOpenJobPostsTies`](../../internal/store/job_listing_integration_test.go#L116) | Section 6 |
 | [`TestListOpenJobPostsRemainingVacancies`](../../internal/store/job_listing_integration_test.go#L163) | Only offers count; never below zero |
 | [`TestListOpenJobPostsSkillTags`](../../internal/store/job_listing_integration_test.go#L216) | Normalising, current version only, malformed config ignored |
-| [`TestListOpenJobPostsIsStableWhileDataChanges`](../../internal/store/job_listing_integration_test.go#L272) | Section 7, with the `OFFSET` answers alongside |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L260) | Every caller gets the anonymous response, with no drafts in it |
+| [`TestListOpenJobPostsIsStableWhileDataChanges`](../../internal/store/job_listing_integration_test.go#L274) | Section 7, with the `OFFSET` answers alongside |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L282) | Every caller gets the anonymous response, with no drafts in it |
 
 The store tests share a database with every other test, and the listing is
 global. Each test therefore places its posts in its own year far in the future

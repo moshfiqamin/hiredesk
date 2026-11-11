@@ -20,13 +20,13 @@ Click the link, read the code, then come back.
 | [1](#1-what-a-state-machine-is) | What a state machine is | [`job_post.go:26`](../../internal/domain/job_post.go#L26) |
 | [2](#2-why-a-map-beats-a-chain-of-if-statements) | Why a map beats a chain of `if` statements | [`job_post.go:35`](../../internal/domain/job_post.go#L35) |
 | [3](#3-the-rest-of-the-lifecycle-api) | The rest of the lifecycle API | [`job_post.go:43`](../../internal/domain/job_post.go#L43) |
-| [4](#4-one-route-per-transition) | One route per transition | [`router.go:123`](../../internal/api/router.go#L123) |
+| [4](#4-one-route-per-transition) | One route per transition | [`router.go:129`](../../internal/api/router.go#L129) |
 | [5](#5-check-and-write-under-one-lock) | Check and write under one lock | [`job_posts.go:205`](../../internal/store/job_posts.go#L205) |
-| [6](#6-why-409-and-not-400-or-422) | Why 409, and not 400 or 422 | [`errors.go:81`](../../internal/api/errors.go#L81) |
+| [6](#6-why-409-and-not-400-or-422) | Why 409, and not 400 or 422 | [`errors.go:82`](../../internal/api/errors.go#L82) |
 | [7](#7-why-a-post-cannot-open-without-a-rubric) | Why a post cannot open without a rubric | [`job_post.go:110`](../../internal/domain/job_post.go#L110) |
 | [8](#8-where-job-post-history-lives) | Where job post history lives | [`000007_job_post_events.up.sql:11`](../../migrations/000007_job_post_events.up.sql#L11) |
 | [9](#9-details-becomes-mapstringany) | `details` becomes `map[string]any` | [`errors.go:53`](../../internal/api/errors.go#L53) |
-| [10](#10-go-idioms-appearing-for-the-first-time) | Go idioms appearing for the first time | [`errors.go:129`](../../internal/api/errors.go#L129) |
+| [10](#10-go-idioms-appearing-for-the-first-time) | Go idioms appearing for the first time | [`errors.go:130`](../../internal/api/errors.go#L130) |
 | [11](#11-the-tests) | The tests | [`job_post_lifecycle_test.go:12`](../../internal/domain/job_post_lifecycle_test.go#L12) |
 
 ---
@@ -167,7 +167,7 @@ did not happen, or need a special case to skip it.
 
 ## 4. One route per transition
 
-**📍 Open:** [`internal/api/router.go:123`](../../internal/api/router.go#L123)
+**📍 Open:** [`internal/api/router.go:129`](../../internal/api/router.go#L129)
 
 ```
 POST /v1/job-posts/:id/open
@@ -216,7 +216,7 @@ RequireRole → handler` and a non-admin is refused before the ID is read.
 read `draft`, both pass step 2, both write `open`, and the log records two
 "draft to open" events for one change. With it, the second waits at step 1,
 then reads `open` and is refused at step 2.
-[`TestJobPostStoreTransitionConcurrently`](../../internal/store/job_post_lifecycle_integration_test.go#L224)
+[`TestJobPostStoreTransitionConcurrently`](../../internal/store/job_post_lifecycle_integration_test.go#L226)
 races two opens twenty times; with `FOR UPDATE` removed it fails on the first
 round.
 
@@ -249,7 +249,7 @@ and calls them while holding the lock. That is the module 3 pattern of
 
 ## 6. Why 409, and not 400 or 422
 
-**📍 Open:** [`internal/api/errors.go:81`](../../internal/api/errors.go#L81)
+**📍 Open:** [`internal/api/errors.go:82`](../../internal/api/errors.go#L82)
 
 Each status answers a different question about *who must change what* before
 the request can succeed:
@@ -401,7 +401,7 @@ reported" would always pass.
 
 ## 10. Go idioms appearing for the first time
 
-**📍 Open:** [`internal/api/errors.go:129`](../../internal/api/errors.go#L129)
+**📍 Open:** [`internal/api/errors.go:130`](../../internal/api/errors.go#L130)
 
 **`errors.As` with an interface target.** Module 3 used `errors.As(err,
 &invalid)` where `invalid` is a `*domain.ValidationError`: "find an error of
@@ -452,9 +452,9 @@ so a post with no rubric gets counts of 0 rather than `pgx.ErrNoRows`.
 | [`TestJobPostTransitions`](../../internal/api/job_post_handler_test.go#L854) | Every route against every state: 200s, 409 `invalid_transition` with the exact allowed list, 404 |
 | [`TestOpenJobPostRefusesAnUnreadyPost`](../../internal/api/job_post_handler_test.go#L915) | 409 `not_ready`, with exactly the missing keys in `details` |
 | [`TestJobPostTransitionsAreAdminOnly`](../../internal/api/job_post_handler_test.go#L964) | 403 / 401, and 400 for a malformed ID, all before the store |
-| [`TestJobPostStoreLifecycle`](../../internal/store/job_post_lifecycle_integration_test.go#L89) | Real SQL: the full lifecycle with one event per move and none per refusal; readiness including rubric versions |
-| [`TestJobPostStoreTransitionConcurrently`](../../internal/store/job_post_lifecycle_integration_test.go#L224) | Section 5's race |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L260) | Three new columns: open a ready draft, open an unready one, close an open post, for every caller |
+| [`TestJobPostStoreLifecycle`](../../internal/store/job_post_lifecycle_integration_test.go#L91) | Real SQL: the full lifecycle with one event per move and none per refusal; readiness including rubric versions |
+| [`TestJobPostStoreTransitionConcurrently`](../../internal/store/job_post_lifecycle_integration_test.go#L226) | Section 5's race |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L282) | Three new columns: open a ready draft, open an unready one, close an open post, for every caller |
 
 ---
 
