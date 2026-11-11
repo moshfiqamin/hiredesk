@@ -16,7 +16,7 @@ git clone https://github.com/moshfiqamin/hiredesk.git && cd hiredesk && make up
 ```
 
 That generates `.env` with a random `JWT_SECRET`, builds the image, starts
-Postgres, waits for it to pass its healthcheck, **applies all seven schema
+Postgres, waits for it to pass its healthcheck, **applies all eight schema
 migrations**, then starts the API.
 
 ```bash
@@ -59,6 +59,11 @@ Run `make` at any time to list every command.
 | `PATCH` | `/v1/job-posts/:id` | **Admin only.** Partial update: only the fields present in the body change, and a field sent as `""` is stored as empty. `null` is treated as not sent. The rules are checked against the post as it would be after the change. |
 | `POST` | `/v1/job-posts/:id/open` | **Admin only.** Draft to open. Refused with 409 `not_ready` unless the post has at least one question and a rubric with a positive weight; `details` names what is missing. |
 | `POST` | `/v1/job-posts/:id/close` | **Admin only.** Open to closed, which is final. Any move the lifecycle does not allow is a 409 `invalid_transition` listing `allowed_next_statuses`. |
+| `GET` | `/v1/job-posts/:id/questions` | **Admin only.** The post's application form in order, whatever its status. Everyone else gets the form inside `GET /v1/job-posts/:id`. |
+| `POST` | `/v1/job-posts/:id/questions` | **Admin only, draft only.** Add a question. Body: `prompt`, `kind` (`text`, `number`, `boolean`, `choice`), `choices` (required for `choice`, absent otherwise), `min_length` (text only), `required` (default true), `position` (default: after the last). |
+| `PATCH` | `/v1/job-posts/:id/questions/:questionID` | **Admin only, draft only.** Partial update. Send `"choices":[]` to clear choices when changing the kind. |
+| `DELETE` | `/v1/job-posts/:id/questions/:questionID` | **Admin only, draft only.** Returns 204. |
+| `PUT` | `/v1/job-posts/:id/questions/order` | **Admin only, draft only.** Body: `question_ids`, every question of the post exactly once, in the new order. Applied in one transaction. |
 
 Create the development accounts, then try it:
 
@@ -158,6 +163,7 @@ allowed next statuses when a status change is refused.
 | 409 | `duplicate` | A record with the same unique key exists |
 | 409 | `invalid_transition` | That status change is not allowed from the current status |
 | 409 | `not_ready` | The resource lacks something the new status needs; see `details` |
+| 409 | `form_locked` | The job post is no longer a draft, so its questions cannot change |
 | 409 | `conflict` | Valid, but not in the resource's current state |
 | 422 | `validation_failed` | One or more fields are invalid; see `details` |
 | 500 | `internal_error` | Unexpected; the cause is logged, never returned |
@@ -203,7 +209,7 @@ make build && DATABASE_URL="postgres://localhost:5432/hiredesk?sslmode=disable" 
 
 ## Schema
 
-Twelve tables across seven migrations, applied automatically when the stack
+Twelve tables across eight migrations, applied automatically when the stack
 starts. Browse them at the Adminer link above, or:
 
 ```bash

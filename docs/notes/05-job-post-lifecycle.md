@@ -20,13 +20,13 @@ Click the link, read the code, then come back.
 | [1](#1-what-a-state-machine-is) | What a state machine is | [`job_post.go:26`](../../internal/domain/job_post.go#L26) |
 | [2](#2-why-a-map-beats-a-chain-of-if-statements) | Why a map beats a chain of `if` statements | [`job_post.go:35`](../../internal/domain/job_post.go#L35) |
 | [3](#3-the-rest-of-the-lifecycle-api) | The rest of the lifecycle API | [`job_post.go:43`](../../internal/domain/job_post.go#L43) |
-| [4](#4-one-route-per-transition) | One route per transition | [`router.go:111`](../../internal/api/router.go#L111) |
+| [4](#4-one-route-per-transition) | One route per transition | [`router.go:112`](../../internal/api/router.go#L112) |
 | [5](#5-check-and-write-under-one-lock) | Check and write under one lock | [`job_posts.go:205`](../../internal/store/job_posts.go#L205) |
 | [6](#6-why-409-and-not-400-or-422) | Why 409, and not 400 or 422 | [`errors.go:76`](../../internal/api/errors.go#L76) |
 | [7](#7-why-a-post-cannot-open-without-a-rubric) | Why a post cannot open without a rubric | [`job_post.go:110`](../../internal/domain/job_post.go#L110) |
 | [8](#8-where-job-post-history-lives) | Where job post history lives | [`000007_job_post_events.up.sql:11`](../../migrations/000007_job_post_events.up.sql#L11) |
 | [9](#9-details-becomes-mapstringany) | `details` becomes `map[string]any` | [`errors.go:52`](../../internal/api/errors.go#L52) |
-| [10](#10-go-idioms-appearing-for-the-first-time) | Go idioms appearing for the first time | [`errors.go:122`](../../internal/api/errors.go#L122) |
+| [10](#10-go-idioms-appearing-for-the-first-time) | Go idioms appearing for the first time | [`errors.go:123`](../../internal/api/errors.go#L123) |
 | [11](#11-the-tests) | The tests | [`job_post_lifecycle_test.go:12`](../../internal/domain/job_post_lifecycle_test.go#L12) |
 
 ---
@@ -167,14 +167,14 @@ did not happen, or need a special case to skip it.
 
 ## 4. One route per transition
 
-**📍 Open:** [`internal/api/router.go:111`](../../internal/api/router.go#L111)
+**📍 Open:** [`internal/api/router.go:112`](../../internal/api/router.go#L112)
 
 ```
 POST /v1/job-posts/:id/open
 POST /v1/job-posts/:id/close
 ```
 
-Both go to [`transition`](../../internal/api/job_post_handler.go#L334), which
+Both go to [`transition`](../../internal/api/job_post_handler.go#L311), which
 takes the target status from the route, never from the body.
 
 **Rejected:** a writable `status` field on `PATCH`. It looks simpler and is
@@ -401,7 +401,7 @@ reported" would always pass.
 
 ## 10. Go idioms appearing for the first time
 
-**📍 Open:** [`internal/api/errors.go:122`](../../internal/api/errors.go#L122)
+**📍 Open:** [`internal/api/errors.go:123`](../../internal/api/errors.go#L123)
 
 **`errors.As` with an interface target.** Module 3 used `errors.As(err,
 &invalid)` where `invalid` is a `*domain.ValidationError`: "find an error of
@@ -449,12 +449,12 @@ so a post with no rubric gets counts of 0 rather than `pgx.ErrNoRows`.
 | [`TestLifecycleCoversEveryStatus`](../../internal/domain/job_post_lifecycle_test.go#L66) | The map has exactly the three statuses, and every destination is itself a status |
 | [`TestAllowedTransitions`](../../internal/domain/job_post_lifecycle_test.go#L91) | The lists, non-nil for `closed`, and that mutating a result does not change the lifecycle |
 | [`TestCheckReadyToOpen`](../../internal/domain/job_post_lifecycle_test.go#L142) | Each combination of missing questions, missing rubric and zero weights |
-| [`TestJobPostTransitions`](../../internal/api/job_post_handler_test.go#L846) | Every route against every state: 200s, 409 `invalid_transition` with the exact allowed list, 404 |
-| [`TestOpenJobPostRefusesAnUnreadyPost`](../../internal/api/job_post_handler_test.go#L907) | 409 `not_ready`, with exactly the missing keys in `details` |
-| [`TestJobPostTransitionsAreAdminOnly`](../../internal/api/job_post_handler_test.go#L956) | 403 / 401, and 400 for a malformed ID, all before the store |
+| [`TestJobPostTransitions`](../../internal/api/job_post_handler_test.go#L848) | Every route against every state: 200s, 409 `invalid_transition` with the exact allowed list, 404 |
+| [`TestOpenJobPostRefusesAnUnreadyPost`](../../internal/api/job_post_handler_test.go#L909) | 409 `not_ready`, with exactly the missing keys in `details` |
+| [`TestJobPostTransitionsAreAdminOnly`](../../internal/api/job_post_handler_test.go#L958) | 403 / 401, and 400 for a malformed ID, all before the store |
 | [`TestJobPostStoreLifecycle`](../../internal/store/job_post_lifecycle_integration_test.go#L89) | Real SQL: the full lifecycle with one event per move and none per refusal; readiness including rubric versions |
 | [`TestJobPostStoreTransitionConcurrently`](../../internal/store/job_post_lifecycle_integration_test.go#L224) | Section 5's race |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L219) | Three new columns: open a ready draft, open an unready one, close an open post, for every caller |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L240) | Three new columns: open a ready draft, open an unready one, close an open post, for every caller |
 
 ---
 
@@ -490,17 +490,15 @@ so a post with no rubric gets counts of 0 rather than `pgx.ErrNoRows`.
 
 ## Still open
 
-- **No API can make a post ready to open.** There is no endpoint yet to add
-  questions or rubric criteria, so today a post can only be opened after
-  rows are inserted by hand. The readiness rule is correct, and it currently
-  blocks every post created through the API. This is the next thing to build.
+- **No API can make a post ready to open.** Module 6 added the question
+  endpoints; rubric criteria still have none, so a rubric row must be
+  inserted by hand before a post can open.
 - **An open or closed post can still be edited** through `PATCH`, including
   its title and salary after applications have arrived. Whether to freeze
   fields on opening is a product decision worth making before applications
   exist.
-- **Deleting a question does not wait for the transition lock**, so one could
-  in theory be deleted between the count and the commit. No endpoint deletes
-  questions; when one is added it should lock the post first.
+- ~~Deleting a question does not wait for the transition lock.~~ Module 6's
+  delete takes the post's lock and is refused once the post is open.
 - **Nothing reads `job_post_events`.** A `GET /v1/job-posts/:id/events` for
   admins would be the natural first reader.
 - **Neither events table is protected from `UPDATE` or `DELETE`.** The

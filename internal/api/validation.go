@@ -109,6 +109,19 @@ func isUUID(s string) bool {
 	return true
 }
 
+// mergeValidation adds the field problems in err, if it is a
+// *domain.ValidationError, to invalid. It does nothing when err is nil, so a
+// handler can collect problems found during parsing and the domain's in one
+// set, and report all of them in one response.
+func mergeValidation(invalid *domain.ValidationError, err error) {
+	var found *domain.ValidationError
+	if errors.As(err, &found) {
+		for field, problem := range found.Fields {
+			invalid.Add(field, problem)
+		}
+	}
+}
+
 // validateStruct checks v against its validate tags and returns a
 // *domain.ValidationError naming every field that failed, or nil.
 func validateStruct(v any) error {

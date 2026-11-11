@@ -48,6 +48,10 @@ var (
 	// lacks something the new status depends on. Use a *NotReadyError to say
 	// what.
 	ErrNotReady = errors.New("not ready for this status")
+
+	// ErrFormLocked means a job post's questions cannot be changed because
+	// the post is no longer a draft. Use a *FormLockedError to say why.
+	ErrFormLocked = errors.New("application form is locked")
 )
 
 // ValidationError is an ErrValidation that names each offending field.

@@ -125,32 +125,14 @@ func newJobPostResponse(p *domain.JobPost) jobPostResponse {
 		CreatedAt:      p.CreatedAt.UTC(),
 		UpdatedAt:      p.UpdatedAt.UTC(),
 
-		// Length 0, not nil: a post with no questions sends [] and not null.
-		Questions: make([]questionResponse, 0, len(p.Questions)),
+		// Never nil: a post with no questions sends [] and not null.
+		Questions: newQuestionList(p.Questions),
 	}
 
 	if p.ClosesAt != nil {
 		// A new variable, so the response does not share a pointer with p.
 		closesAt := p.ClosesAt.UTC()
 		out.ClosesAt = &closesAt
-	}
-
-	for i := range p.Questions {
-		q := &p.Questions[i]
-
-		choices := q.Choices
-		if choices == nil {
-			choices = []string{}
-		}
-		out.Questions = append(out.Questions, questionResponse{
-			ID:        q.ID,
-			Prompt:    q.Prompt,
-			Kind:      q.Kind,
-			Choices:   choices,
-			Required:  q.Required,
-			MinLength: q.MinLength,
-			Position:  q.Position,
-		})
 	}
 
 	return out
@@ -216,14 +198,9 @@ func (h *JobPostHandler) Create(c *gin.Context) {
 		in.Vacancies = *req.Vacancies
 	}
 
-	// The domain's findings are merged into the same set as the parse
-	// failures above. errors.As is false when Validate returned nil.
-	var broken *domain.ValidationError
-	if errors.As(in.Validate(), &broken) {
-		for field, problem := range broken.Fields {
-			invalid.Add(field, problem)
-		}
-	}
+	// The domain's findings join the parse failures above, so all of them
+	// are reported together.
+	mergeValidation(&invalid, in.Validate())
 	if err := invalid.Err(); err != nil {
 		Respond(c, err)
 		return

@@ -354,11 +354,11 @@ func listQuestions(ctx context.Context, db queryer, jobPostID string) ([]domain.
 	}
 
 	questions, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Question, error) {
-		var q domain.Question
-
-		// choices is a nullable text[]: pgx leaves the slice nil for NULL.
-		scanErr := row.Scan(&q.ID, &q.JobPostID, &q.Prompt, &q.Kind, &q.Choices, &q.Required, &q.MinLength, &q.Position)
-		return q, scanErr
+		q, scanErr := scanQuestion(row)
+		if scanErr != nil {
+			return domain.Question{}, scanErr
+		}
+		return *q, nil
 	})
 	if err != nil {
 		return nil, translate("list questions", err)

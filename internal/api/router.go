@@ -17,6 +17,7 @@ type Deps struct {
 	Auth         *AuthHandler
 	Applications *ApplicationHandler
 	JobPosts     *JobPostHandler
+	Questions    *QuestionHandler
 
 	// Tokens verifies the access token on every protected route, and Users
 	// loads the user it names.
@@ -35,9 +36,9 @@ type Deps struct {
 func NewRouter(deps Deps) (*gin.Engine, error) {
 	// Checked here, at startup, because a nil Users would otherwise surface as
 	// a panic on the first authenticated request.
-	if deps.Auth == nil || deps.Applications == nil || deps.JobPosts == nil ||
+	if deps.Auth == nil || deps.Applications == nil || deps.JobPosts == nil || deps.Questions == nil ||
 		deps.Tokens == nil || deps.Users == nil || deps.DB == nil {
-		return nil, errors.New("build router: Auth, Applications, JobPosts, Tokens, Users and DB are all required")
+		return nil, errors.New("build router: Auth, Applications, JobPosts, Questions, Tokens, Users and DB are all required")
 	}
 
 	// gin.Default() with one substitution: its recovery middleware answers a
@@ -110,6 +111,15 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 			// in the access log. The lifecycle itself is in domain.
 			admin.POST("/job-posts/:id/open", deps.JobPosts.Open)
 			admin.POST("/job-posts/:id/close", deps.JobPosts.Close)
+
+			// The application form. Everyone else sees it inside GET
+			// /v1/job-posts/:id; these routes are for building it, and every
+			// write is refused once the post leaves draft.
+			admin.GET("/job-posts/:id/questions", deps.Questions.List)
+			admin.POST("/job-posts/:id/questions", deps.Questions.Create)
+			admin.PUT("/job-posts/:id/questions/order", deps.Questions.Reorder)
+			admin.PATCH("/job-posts/:id/questions/:questionID", deps.Questions.Update)
+			admin.DELETE("/job-posts/:id/questions/:questionID", deps.Questions.Delete)
 		}
 	}
 

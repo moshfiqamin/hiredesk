@@ -28,8 +28,10 @@ type fakeJobPosts struct {
 	// from the post itself.
 	readiness map[string]domain.OpenReadiness
 
-	// lastActor is the actor the most recent TransitionJobPost call received.
-	lastActor string
+	// lastActor is the actor the most recent TransitionJobPost call received,
+	// and lastQuestionPatch the patch the most recent UpdateQuestion did.
+	lastActor         string
+	lastQuestionPatch domain.QuestionPatch
 
 	// lastPatch is the patch the most recent UpdateJobPost call received, and
 	// calls counts every call to any method.
@@ -207,8 +209,8 @@ func newPostFixture(t *testing.T) *postFixture {
 		ID: openPostID, Title: "Data Analyst", Vacancies: 1,
 		Status: domain.JobStatusOpen, CreatedBy: &f.adminID, CreatedAt: created, UpdatedAt: created,
 		Questions: []domain.Question{
-			{ID: "q-1", JobPostID: openPostID, Prompt: "Why this role?", Kind: "text", Required: true, MinLength: 50, Position: 1},
-			{ID: "q-2", JobPostID: openPostID, Prompt: "Preferred office", Kind: "choice", Choices: []string{"Dhaka", "Remote"}, Position: 2},
+			{ID: qOne, JobPostID: openPostID, Prompt: "Why this role?", Kind: "text", Required: true, MinLength: 50, Position: 1},
+			{ID: qTwo, JobPostID: openPostID, Prompt: "Preferred office", Kind: "choice", Choices: []string{"Dhaka", "Remote"}, Position: 2},
 		},
 	}
 	f.posts.byID[f.draft.ID] = f.draft

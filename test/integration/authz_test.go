@@ -54,6 +54,13 @@ const (
 	readyDraftID   = "11111111-0000-4000-8000-000000000003"
 	closablePostID = "11111111-0000-4000-8000-000000000004"
 
+	// formPostID is a draft with three questions, which the admin edits,
+	// reorders and then deletes from, in that order.
+	formPostID = "11111111-0000-4000-8000-000000000005"
+	formQ1     = "33333333-0000-4000-8000-000000000001"
+	formQ2     = "33333333-0000-4000-8000-000000000002"
+	formQ3     = "33333333-0000-4000-8000-000000000003"
+
 	// missingPost is a well-formed UUID that no row has.
 	missingPost = "11111111-0000-4000-8000-0000000000ff"
 
@@ -133,7 +140,13 @@ func seed(t *testing.T, pool *pgxpool.Pool) {
 			('` + postID + `',      'Backend Engineer', 'open',  '` + adminID + `'),
 			('` + draftPostID + `', 'Data Analyst',     'draft', '` + adminID + `'),
 			('` + readyDraftID + `', 'Ready to Open',   'draft', '` + adminID + `'),
-			('` + closablePostID + `', 'To Be Closed',  'open',  '` + adminID + `');
+			('` + closablePostID + `', 'To Be Closed',  'open',  '` + adminID + `'),
+			('` + formPostID + `',     'Form Building', 'draft', '` + adminID + `');
+
+		INSERT INTO questions (id, job_post_id, prompt, kind, position) VALUES
+			('` + formQ1 + `', '` + formPostID + `', 'First',  'text', 1),
+			('` + formQ2 + `', '` + formPostID + `', 'Second', 'text', 2),
+			('` + formQ3 + `', '` + formPostID + `', 'Third',  'text', 3);
 
 		INSERT INTO questions (job_post_id, prompt, kind, position)
 		VALUES ('` + readyDraftID + `', 'Why this role?', 'text', 1);
@@ -164,6 +177,7 @@ func newRouter(t *testing.T, pool *pgxpool.Pool, tokens *auth.TokenManager) *gin
 		Auth:         api.NewAuthHandler(users, store.NewTokenStore(pool), tokens),
 		Applications: api.NewApplicationHandler(store.NewApplicationStore(pool)),
 		JobPosts:     api.NewJobPostHandler(store.NewJobPostStore(pool)),
+		Questions:    api.NewQuestionHandler(store.NewQuestionStore(pool)),
 		Tokens:       tokens,
 		Users:        users,
 		DB:           pool,
@@ -177,15 +191,18 @@ func newRouter(t *testing.T, pool *pgxpool.Pool, tokens *auth.TokenManager) *gin
 
 // endpoint is one protected route, with a concrete path to request.
 type endpoint struct {
-	name    string
-	method  string
-	route   string // the pattern registered with Gin, e.g. /v1/applications/:id
-	path    string
-	body    string // sent as JSON when not empty
-	appID   string // for single-application endpoints: which one is requested
-	postID  string // for single-post endpoints that answer with the post
-	isList  bool
-	cellFor func(callerRow) int
+	name   string
+	method string
+	route  string // the pattern registered with Gin, e.g. /v1/applications/:id
+	path   string
+	body   string // sent as JSON when not empty
+	appID  string // for single-application endpoints: which one is requested
+	postID string // for single-post endpoints that answer with the post
+
+	// conflictCode is the error code a 409 from this endpoint must carry.
+	conflictCode string
+	isList       bool
+	cellFor      func(callerRow) int
 }
 
 // callerRow is one row of the matrix: who is calling, and the status each
@@ -206,6 +223,10 @@ type callerRow struct {
 	// The lifecycle routes: opening a ready draft, opening a draft with no
 	// questions or rubric, and closing an open post.
 	postOpenReady, postOpenUnready, postClose int
+
+	// The application form: list, add, add to an open post (locked), edit,
+	// reorder and delete.
+	qList, qCreate, qCreateLocked, qUpdate, qReorder, qDelete int
 
 	// listed is exactly which applications GET /v1/applications must return,
 	// for callers that get a 200.
@@ -230,6 +251,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		unau = http.StatusUnauthorized
 		forb = http.StatusForbidden
 		conf = http.StatusConflict
+		gone = http.StatusNoContent
 		nf   = http.StatusNotFound
 	)
 
@@ -238,42 +260,49 @@ func TestAuthorizationMatrix(t *testing.T) {
 		{caller: "anonymous", me: unau, list: unau, getA: unau, getB: unau, getMissing: unau, getMalformed: unau,
 			postOpen: unau, postDraft: unau, postMissing: unau, postMalformed: unau,
 			postCreate: unau, postPatch: unau, postPatchMalformed: unau,
-			postOpenReady: unau, postOpenUnready: unau, postClose: unau},
+			postOpenReady: unau, postOpenUnready: unau, postClose: unau,
+			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau},
 		{caller: "ghost (token for a deleted user)", userID: ghostID, role: domain.RoleAdmin,
 			me: unau, list: unau, getA: unau, getB: unau, getMissing: unau, getMalformed: unau,
 			postOpen: unau, postDraft: unau, postMissing: unau, postMalformed: unau,
 			postCreate: unau, postPatch: unau, postPatchMalformed: unau,
-			postOpenReady: unau, postOpenUnready: unau, postClose: unau},
+			postOpenReady: unau, postOpenUnready: unau, postClose: unau,
+			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau},
 
 		{caller: "admin", userID: adminID, role: domain.RoleAdmin,
 			me: ok, list: ok, getA: ok, getB: ok, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: ok, postMissing: nf, postMalformed: bad,
 			postCreate: made, postPatch: ok, postPatchMalformed: bad,
 			postOpenReady: ok, postOpenUnready: conf, postClose: ok,
+			qList: ok, qCreate: made, qCreateLocked: conf, qUpdate: ok, qReorder: ok, qDelete: gone,
 			listed: []string{appA, appB}},
 		{caller: "interviewer assigned to A", userID: interviewerID, role: domain.RoleInterviewer,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
+			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listed: []string{appA}},
 		{caller: "interviewer assigned to nothing", userID: outsideInterviewerID, role: domain.RoleInterviewer,
 			me: ok, list: ok, getA: nf, getB: nf, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
+			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listed: []string{}},
 		{caller: "candidate who owns A", userID: candidateID, role: domain.RoleCandidate,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
+			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listed: []string{appA}},
 		{caller: "candidate who owns B", userID: otherCandidateID, role: domain.RoleCandidate,
 			me: ok, list: ok, getA: nf, getB: ok, getMissing: nf, getMalformed: nf,
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
+			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listed: []string{appB}},
 
 		// The token claims admin; the database says candidate. The database
@@ -283,6 +312,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
+			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listed: []string{appA}},
 	}
 
@@ -320,9 +350,24 @@ func TestAuthorizationMatrix(t *testing.T) {
 		{name: "POST open a ready draft", method: http.MethodPost, route: "/v1/job-posts/:id/open", path: "/v1/job-posts/" + readyDraftID + "/open",
 			postID: readyDraftID, cellFor: func(r callerRow) int { return r.postOpenReady }},
 		{name: "POST open an unready draft", method: http.MethodPost, route: "/v1/job-posts/:id/open", path: "/v1/job-posts/" + draftPostID + "/open",
-			cellFor: func(r callerRow) int { return r.postOpenUnready }},
+			conflictCode: "not_ready", cellFor: func(r callerRow) int { return r.postOpenUnready }},
 		{name: "POST close an open post", method: http.MethodPost, route: "/v1/job-posts/:id/close", path: "/v1/job-posts/" + closablePostID + "/close",
 			postID: closablePostID, cellFor: func(r callerRow) int { return r.postClose }},
+
+		// The form endpoints run in this order for the admin: the reorder
+		// must name all three questions, so it comes before the delete.
+		{name: "GET questions", method: http.MethodGet, route: "/v1/job-posts/:id/questions", path: "/v1/job-posts/" + formPostID + "/questions",
+			cellFor: func(r callerRow) int { return r.qList }},
+		{name: "POST question to a draft", method: http.MethodPost, route: "/v1/job-posts/:id/questions", path: "/v1/job-posts/" + draftPostID + "/questions",
+			body: `{"prompt":"Added by the matrix","kind":"text"}`, cellFor: func(r callerRow) int { return r.qCreate }},
+		{name: "POST question to an open post", method: http.MethodPost, route: "/v1/job-posts/:id/questions", path: "/v1/job-posts/" + postID + "/questions",
+			body: `{"prompt":"Too late","kind":"text"}`, conflictCode: "form_locked", cellFor: func(r callerRow) int { return r.qCreateLocked }},
+		{name: "PATCH question", method: http.MethodPatch, route: "/v1/job-posts/:id/questions/:questionID", path: "/v1/job-posts/" + formPostID + "/questions/" + formQ1,
+			body: `{"prompt":"First, reworded"}`, cellFor: func(r callerRow) int { return r.qUpdate }},
+		{name: "PUT question order", method: http.MethodPut, route: "/v1/job-posts/:id/questions/order", path: "/v1/job-posts/" + formPostID + "/questions/order",
+			body: `{"question_ids":["` + formQ3 + `","` + formQ1 + `","` + formQ2 + `"]}`, cellFor: func(r callerRow) int { return r.qReorder }},
+		{name: "DELETE question", method: http.MethodDelete, route: "/v1/job-posts/:id/questions/:questionID", path: "/v1/job-posts/" + formPostID + "/questions/" + formQ3,
+			cellFor: func(r callerRow) int { return r.qDelete }},
 	}
 
 	assertEveryProtectedRouteIsInTheMatrix(t, router, endpoints)
@@ -378,9 +423,14 @@ func TestAuthorizationMatrix(t *testing.T) {
 					}
 
 				case want == conf:
-					// Refused by the lifecycle rules, never a 500.
-					if got := errorCode(t, rec.Body.Bytes()); got != "not_ready" {
-						t.Errorf("code = %q, want not_ready", got)
+					// Refused by a domain rule, never a 500.
+					if got := errorCode(t, rec.Body.Bytes()); got != ep.conflictCode {
+						t.Errorf("code = %q, want %q", got, ep.conflictCode)
+					}
+
+				case want == gone:
+					if rec.Body.Len() != 0 {
+						t.Errorf("204 with a body: %s", rec.Body)
 					}
 
 				case want == nf:

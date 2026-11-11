@@ -18,6 +18,7 @@ func TestSentinelsAreDistinct(t *testing.T) {
 		"ErrConflict":           ErrConflict,
 		"ErrInvalidTransition":  ErrInvalidTransition,
 		"ErrNotReady":           ErrNotReady,
+		"ErrFormLocked":         ErrFormLocked,
 	}
 
 	for name, sentinel := range sentinels {

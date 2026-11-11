@@ -83,6 +83,7 @@ func run(cfg *config.Config) error {
 		Auth:         api.NewAuthHandler(users, store.NewTokenStore(pool), tokens),
 		Applications: api.NewApplicationHandler(store.NewApplicationStore(pool)),
 		JobPosts:     api.NewJobPostHandler(store.NewJobPostStore(pool)),
+		Questions:    api.NewQuestionHandler(store.NewQuestionStore(pool)),
 		Tokens:       tokens,
 		Users:        users,
 		DB:           pool,

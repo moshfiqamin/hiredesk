@@ -81,6 +81,7 @@ func TestReadyzReportsAnUnreachableDatabase(t *testing.T) {
 		Auth:         NewAuthHandler(users, nil, nil),
 		Applications: NewApplicationHandler(newFakeApplications()),
 		JobPosts:     NewJobPostHandler(newFakeJobPosts()),
+		Questions:    NewQuestionHandler(newFakeJobPosts()),
 		Tokens:       auth.NewTokenManager(testJWTSecret),
 		Users:        users,
 		DB:           downPinger{},
