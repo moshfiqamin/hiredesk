@@ -40,7 +40,7 @@ Click the link, read the code, then come back.
 | [21](#21-why-the-status-codes-live-in-api-and-not-in-domain) | Why the status codes live in `api`, not `domain` | [`api/errors.go:68`](../../internal/api/errors.go#L68) |
 | [22](#22-unexpected-errors-log-everything-say-nothing) | Unexpected errors: log everything, say nothing | [`api/errors.go:103`](../../internal/api/errors.go#L103) |
 | [23](#23-validation-errors-that-name-each-field) | Validation errors that name each field | [`domain/errors.go:66`](../../internal/domain/errors.go#L66) |
-| [24](#24-errors-that-never-reach-a-handler) | Errors that never reach a handler | [`router.go:45`](../../internal/api/router.go#L45) |
+| [24](#24-errors-that-never-reach-a-handler) | Errors that never reach a handler | [`router.go:46`](../../internal/api/router.go#L46) |
 | [25](#25-more-go-idioms-appearing-for-the-first-time) | A nil pointer that is not a nil error, `errors.As`, `TestMain` | [`domain/errors.go:87`](../../internal/domain/errors.go#L87) |
 | [26](#26-one-request-three-layers) | One request, three layers | [`auth_handler.go:23`](../../internal/api/auth_handler.go#L23) |
 | [27](#27-hand-written-sql-with-pgx) | Hand-written SQL with pgx | [`users.go:47`](../../internal/store/users.go#L47) |
@@ -50,7 +50,7 @@ Click the link, read the code, then come back.
 | [31](#31-why-the-response-is-its-own-struct) | Why the response is its own struct | [`auth_handler.go:92`](../../internal/api/auth_handler.go#L92) |
 | [32](#32-registration) | Registration | [`auth_handler.go:142`](../../internal/api/auth_handler.go#L142) |
 | [33](#33-login-and-user-enumeration) | Login, and user enumeration | [`auth_handler.go:192`](../../internal/api/auth_handler.go#L192) |
-| [34](#34-the-router-and-v1) | The router, and `/v1` | [`router.go:68`](../../internal/api/router.go#L68) |
+| [34](#34-the-router-and-v1) | The router, and `/v1` | [`router.go:69`](../../internal/api/router.go#L69) |
 | [35](#35-go-idioms-appearing-for-the-first-time-in-the-handlers) | Interfaces, build tags, functions that return functions | [`health.go:14`](../../internal/api/health.go#L14) |
 | [36](#36-two-tokens-two-jobs) | Two tokens, two jobs | [`refresh.go:15`](../../internal/auth/refresh.go#L15) |
 | [37](#37-why-mathrand-is-dangerous-for-tokens) | Why `math/rand` is dangerous for tokens | [`refresh.go:33`](../../internal/auth/refresh.go#L33) |
@@ -62,7 +62,7 @@ Click the link, read the code, then come back.
 | [43](#43-the-auth-middleware-and-v1me) | The auth middleware, and `/v1/me` | [`middleware.go:42`](../../internal/api/middleware.go#L42) |
 | [44](#44-the-seed-command) | The seed command | [`cmd/seed/main.go:95`](../../cmd/seed/main.go#L95) |
 | [45](#45-go-idioms-appearing-for-the-first-time-in-the-session-code) | Transactions, nullable columns, arrays and slices, goroutines | [`tokens.go:108`](../../internal/store/tokens.go#L108) |
-| [46](#46-what-middleware-is-and-how-gin-chains-it) | What middleware is, and how Gin chains it | [`router.go:87`](../../internal/api/router.go#L87) |
+| [46](#46-what-middleware-is-and-how-gin-chains-it) | What middleware is, and how Gin chains it | [`router.go:94`](../../internal/api/router.go#L94) |
 | [47](#47-cnext-and-cabort) | `c.Next()` and `c.Abort()` | [`errors.go:161`](../../internal/api/errors.go#L161) |
 | [48](#48-forgetting-abort-what-actually-goes-wrong) | Forgetting `Abort`: what actually goes wrong | [`middleware_test.go:132`](../../internal/api/middleware_test.go#L132) |
 | [49](#49-a-typed-context-key-and-currentuser) | A typed context key, and `CurrentUser` | [`middleware.go:19`](../../internal/api/middleware.go#L19) |
@@ -78,7 +78,7 @@ Click the link, read the code, then come back.
 | [59](#59-two-encodings-of-one-rule-and-the-check-that-they-agree) | Two encodings of one rule, and the check that they agree | [`application_handler.go:113`](../../internal/api/application_handler.go#L113) |
 | [60](#60-403-or-404) | 403 or 404 | [`decisions.md`](../decisions.md) |
 | [61](#61-testcontainers-go-and-why-a-real-postgresql-beats-a-mock) | testcontainers-go, and why a real PostgreSQL beats a mock | [`authz_test.go:79`](../../test/integration/authz_test.go#L79) |
-| [62](#62-testauthorizationmatrix) | `TestAuthorizationMatrix`; generics, spreading a slice, package build tags | [`authz_test.go:259`](../../test/integration/authz_test.go#L259) |
+| [62](#62-testauthorizationmatrix) | `TestAuthorizationMatrix`; generics, spreading a slice, package build tags | [`authz_test.go:267`](../../test/integration/authz_test.go#L267) |
 
 ---
 
@@ -1210,7 +1210,7 @@ lists of problems per field. Nothing needs them yet, and a client can rely on
 
 ## 24. Errors that never reach a handler
 
-**📍 Open:** [`internal/api/router.go:45`](../../internal/api/router.go#L45)
+**📍 Open:** [`internal/api/router.go:46`](../../internal/api/router.go#L46)
 
 `Respond` only runs when a handler calls it. Three failures happen where no
 handler is involved, and Gin's defaults for all three break the one-shape rule:
@@ -1228,7 +1228,7 @@ for the second. `gin.CustomRecovery` still does the important part — it catche
 the panic, logs the value and a stack trace, and keeps the process alive — and
 only the response body is ours.
 
-`HandleMethodNotAllowed` at [`router.go:50`](../../internal/api/router.go#L50) is off in
+`HandleMethodNotAllowed` at [`router.go:51`](../../internal/api/router.go#L51) is off in
 Gin by default. Left off, `DELETE /healthz` is reported as "no such endpoint",
 which is untrue and sends a client looking for a typo in the URL.
 
@@ -1328,7 +1328,7 @@ against a real Postgres in
 [`users_integration_test.go`](../../internal/store/users_integration_test.go#L113).
 
 **Everything is assembled in one place.**
-[`main.go:82`](../../cmd/api/main.go#L82) builds the pool, the store, the token
+[`main.go:83`](../../cmd/api/main.go#L83) builds the pool, the store, the token
 manager and the handler, and hands them down. Nothing below `main` reads
 configuration or opens a connection.
 
@@ -1604,7 +1604,7 @@ It works today. It was rejected for five reasons:
 5. **It puts JSON in the domain.** `domain.User` has no tags at all, by the
    same reasoning that kept HTTP status codes out of `domain` in section 21.
 
-**What breaks without it.** [`TestRegister`](../../internal/api/auth_handler_test.go#L200)
+**What breaks without it.** [`TestRegister`](../../internal/api/auth_handler_test.go#L201)
 asserts the response has *exactly* five keys, and that neither the hash, the
 password, nor the words `password` or `hash` appear anywhere in the body.
 Adding a field to `domain.User` cannot change that; adding one to
@@ -1703,7 +1703,7 @@ Measured on the running server, real bcrypt, real Postgres:
 | Correct password | 200 | 372.4 ms |
 
 **What breaks without that one line.**
-[`TestLoginFailuresAreIndistinguishable`](../../internal/api/auth_handler_test.go#L434)
+[`TestLoginFailuresAreIndistinguishable`](../../internal/api/auth_handler_test.go#L435)
 compares status, body and headers, and then counts password comparisons. With
 the line deleted the bodies still match and the test fails on the count: one
 comparison for two requests.
@@ -1731,7 +1731,7 @@ proxy keeps a copy of the token.
 
 ## 34. The router, and `/v1`
 
-**📍 Open:** [`internal/api/router.go:68`](../../internal/api/router.go#L68)
+**📍 Open:** [`internal/api/router.go:69`](../../internal/api/router.go#L69)
 
 `router.Group("/v1")` returns an object with the same `GET`/`POST` methods as
 the engine, which prefixes every path registered on it. Groups nest, so
@@ -1790,7 +1790,7 @@ well. So `readyz(db, timeout)` is called once at startup and *returns* the
 handler; the returned function keeps `db` and `timeout` alive for as long as
 it exists. That is a closure, already met as the injected clock in section 17.
 
-**Method values.** [`router.go:74`](../../internal/api/router.go#L74)
+**Method values.** [`router.go:75`](../../internal/api/router.go#L75)
 
 `deps.Auth.Register` with no parentheses is not a call. It is a function value
 with the receiver already bound — a `func(*gin.Context)` that remembers which
@@ -2208,7 +2208,7 @@ token with the `TokenManager` from section 11, and either answers 401 or
 leaves the authenticated user on the request for the handler.
 
 It is attached to a **group**
-([`router.go:87`](../../internal/api/router.go#L87)), not to a route. Every
+([`router.go:94`](../../internal/api/router.go#L94)), not to a route. Every
 route registered on `protected` is guarded, so protecting the next endpoint is
 adding a line inside the braces, and forgetting to protect it is impossible.
 
@@ -2356,7 +2356,7 @@ loop variable needed.
 
 ## 46. What middleware is, and how Gin chains it
 
-**📍 Open:** [`internal/api/router.go:87`](../../internal/api/router.go#L87)
+**📍 Open:** [`internal/api/router.go:94`](../../internal/api/router.go#L94)
 
 A Gin route is not one function. It is a **list** of `gin.HandlerFunc`, and
 each one has the same signature, `func(c *gin.Context)`. "Middleware" is
@@ -2367,8 +2367,8 @@ The list is built from three places, outermost first:
 
 | Registered with | Applies to | Here |
 |---|---|---|
-| `router.Use(…)` | every route on the engine | `gin.Logger()`, `Recovery()` ([`router.go:46`](../../internal/api/router.go#L46)) |
-| `v1.Group("", …)` | every route registered on that group | `RequireAuth` ([`router.go:87`](../../internal/api/router.go#L87)) |
+| `router.Use(…)` | every route on the engine | `gin.Logger()`, `Recovery()` ([`router.go:47`](../../internal/api/router.go#L47)) |
+| `v1.Group("", …)` | every route registered on that group | `RequireAuth` ([`router.go:94`](../../internal/api/router.go#L94)) |
 | the route itself | that route only | `deps.Auth.Me` |
 
 So a request for `GET /v1/me` runs this list:
@@ -3050,7 +3050,7 @@ a post see its applications" to the policy and forgets the query. The symptom
 is a list showing rows that then 404 when opened, or the reverse.
 
 `TestAuthorizationMatrix` checks the two against each other for every caller
-([`authz_test.go:464`](../../test/integration/authz_test.go#L464)): an
+([`authz_test.go:499`](../../test/integration/authz_test.go#L499)): an
 application is in the list **if and only if** fetching it alone returns 200.
 
 **`Get` needs two facts, fetched in one query.**
@@ -3151,7 +3151,7 @@ needs nothing.
 
 ## 62. `TestAuthorizationMatrix`
 
-**📍 Open:** [`test/integration/authz_test.go:259`](../../test/integration/authz_test.go#L259)
+**📍 Open:** [`test/integration/authz_test.go:267`](../../test/integration/authz_test.go#L267)
 
 **The shape.** One row per caller, one column per endpoint, the expected
 status in each cell — readable as a matrix:
@@ -3181,7 +3181,7 @@ per caller who can list) = 54 subtests.
 - a **single fetch** returns the application asked for.
 
 **The matrix cannot fall behind the router.**
-[`assertEveryProtectedRouteIsInTheMatrix`](../../test/integration/authz_test.go#L480)
+[`assertEveryProtectedRouteIsInTheMatrix`](../../test/integration/authz_test.go#L515)
 reads the router's registered routes and fails if any `/v1` route outside
 `/v1/auth` has no column. Adding an endpoint without deciding who may call it
 turns the test red.

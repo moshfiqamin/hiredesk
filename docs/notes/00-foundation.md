@@ -286,7 +286,7 @@ router, err := api.NewRouter(api.Deps{ /* ... */ })
 
 **Order matters.** The engine reads the mode as it installs middleware, so
 setting it afterwards leaves debug behaviour in production. The engine itself
-is built in [`internal/api/router.go:45`](../../internal/api/router.go#L45),
+is built in [`internal/api/router.go:46`](../../internal/api/router.go#L46),
 where the routes moved in module 3.
 
 `gin.Default()` is `gin.New()` plus two middlewares: a request logger, and a
@@ -296,7 +296,7 @@ the two out, because module 3 swaps the recovery handler for one that answers
 in the API's error format — see
 [module 3, section 24](03-auth.md#24-errors-that-never-reach-a-handler).
 
-**📍 Open:** [`internal/api/router.go:56`](../../internal/api/router.go#L56)
+**📍 Open:** [`internal/api/router.go:57`](../../internal/api/router.go#L57)
 
 ```go
 if err := router.SetTrustedProxies(nil); err != nil {

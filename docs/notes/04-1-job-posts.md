@@ -1,4 +1,4 @@
-# Module 4 — Job posts
+# Module 4, part 1 — Job posts
 
 This note covers creating, reading and updating job posts: the routes and who
 may call them (section 1), telling "field absent" from "field set to empty" in
@@ -16,11 +16,11 @@ Click the link, read the code, then come back.
 
 | # | Topic | Code |
 |---|---|---|
-| [1](#1-three-routes-two-guards) | Three routes, two guards | [`router.go:99`](../../internal/api/router.go#L99) |
+| [1](#1-three-routes-two-guards) | Three routes, two guards | [`router.go:106`](../../internal/api/router.go#L106) |
 | [2](#2-the-trap-a-string-has-no-value-that-means-not-sent) | The trap: a `string` has no value that means "not sent" | [`job_post_handler.go:72`](../../internal/api/job_post_handler.go#L72) |
 | [3](#3-the-pointer-field-approach) | The pointer-field approach | [`job_post_handler.go:72`](../../internal/api/job_post_handler.go#L72) |
 | [4](#4-from-request-to-patch-to-row) | From request, to patch, to row | [`job_post.go:264`](../../internal/domain/job_post.go#L264) |
-| [5](#5-the-third-state-pointers-cannot-express-null) | The third state pointers cannot express: `null` | [`job_post_handler_test.go:641`](../../internal/api/job_post_handler_test.go#L641) |
+| [5](#5-the-third-state-pointers-cannot-express-null) | The third state pointers cannot express: `null` | [`job_post_handler_test.go:647`](../../internal/api/job_post_handler_test.go#L647) |
 | [6](#6-the-same-trap-on-post) | The same trap on `POST` | [`job_post_handler.go:49`](../../internal/api/job_post_handler.go#L49) |
 | [7](#7-a-partial-update-cannot-be-validated-on-its-own) | A partial update cannot be validated on its own | [`job_post.go:297`](../../internal/domain/job_post.go#L297) |
 | [8](#8-read-merge-check-write-in-one-transaction) | Read, merge, check, write — in one transaction | [`job_posts.go:122`](../../internal/store/job_posts.go#L122) |
@@ -28,13 +28,13 @@ Click the link, read the code, then come back.
 | [10](#10-money-without-floats) | Money without floats | [`money.go:22`](../../internal/domain/money.go#L22) |
 | [11](#11-drafts-are-hidden-by-the-query) | Drafts are hidden by the query | [`job_posts.go:90`](../../internal/store/job_posts.go#L90) |
 | [12](#12-go-idioms-appearing-for-the-first-time) | Go idioms appearing for the first time | [`job_post.go:257`](../../internal/domain/job_post.go#L257) |
-| [13](#13-the-tests) | The tests | [`job_post_handler_test.go:548`](../../internal/api/job_post_handler_test.go#L548) |
+| [13](#13-the-tests) | The tests | [`job_post_handler_test.go:554`](../../internal/api/job_post_handler_test.go#L554) |
 
 ---
 
 ## 1. Three routes, two guards
 
-**📍 Open:** [`internal/api/router.go:99`](../../internal/api/router.go#L99)
+**📍 Open:** [`internal/api/router.go:106`](../../internal/api/router.go#L106)
 
 | Route | Who | Handler |
 |---|---|---|
@@ -44,7 +44,7 @@ Click the link, read the code, then come back.
 
 `GET` is registered on `protected`, so it runs `RequireAuth` and then the
 handler. The two writes are registered on a nested group, at
-[`router.go:104`](../../internal/api/router.go#L104):
+[`router.go:111`](../../internal/api/router.go#L111):
 
 ```go
 admin := protected.Group("", RequireRole(domain.RoleAdmin))
@@ -205,7 +205,7 @@ different questions — which is exactly what section 5 runs into.
 
 ## 5. The third state pointers cannot express: `null`
 
-**📍 Open:** [`internal/api/job_post_handler_test.go:641`](../../internal/api/job_post_handler_test.go#L641)
+**📍 Open:** [`internal/api/job_post_handler_test.go:647`](../../internal/api/job_post_handler_test.go#L647)
 
 JSON has three states for a key, and a pointer has two values:
 
@@ -550,20 +550,20 @@ what stops minor units being mistaken for whole ones.
 
 ## 13. The tests
 
-**📍 Open:** [`internal/api/job_post_handler_test.go:548`](../../internal/api/job_post_handler_test.go#L548)
+**📍 Open:** [`internal/api/job_post_handler_test.go:554`](../../internal/api/job_post_handler_test.go#L554)
 
 | Test | What it pins |
 |---|---|
-| [`TestUpdateJobPostAbsentVersusEmpty`](../../internal/api/job_post_handler_test.go#L548) | Sections 2–6, end to end: an absent key is nil in the patch and unchanged in the store; `""` and `0` are non-nil and written; `vacancies: 0` is a 422 where an absent `vacancies` is a 200; `null` is absent; `{}` changes nothing |
+| [`TestUpdateJobPostAbsentVersusEmpty`](../../internal/api/job_post_handler_test.go#L554) | Sections 2–6, end to end: an absent key is nil in the patch and unchanged in the store; `""` and `0` are non-nil and written; `vacancies: 0` is a 422 where an absent `vacancies` is a 200; `null` is absent; `{}` changes nothing |
 | [`TestJobPostApply`](../../internal/domain/job_post_test.go#L98) | The same, on `Apply` alone, with no HTTP |
-| [`TestJobPostIDMustBeAUUID`](../../internal/api/job_post_handler_test.go#L490) | Nine malformed IDs get 400 `invalid_id` on `GET` and `PATCH`, the ID is not echoed, and **the store is called zero times** |
-| [`TestJobPostWritesAreAdminOnly`](../../internal/api/job_post_handler_test.go#L740) | 403 for the other roles and 401 for no token, before the ID or body is read |
-| [`TestCreateJobPostValidation`](../../internal/api/job_post_handler_test.go#L333) | Each rule, and that several failures are reported together |
+| [`TestJobPostIDMustBeAUUID`](../../internal/api/job_post_handler_test.go#L496) | Nine malformed IDs get 400 `invalid_id` on `GET` and `PATCH`, the ID is not echoed, and **the store is called zero times** |
+| [`TestJobPostWritesAreAdminOnly`](../../internal/api/job_post_handler_test.go#L746) | 403 for the other roles and 401 for no token, before the ID or body is read |
+| [`TestCreateJobPostValidation`](../../internal/api/job_post_handler_test.go#L339) | Each rule, and that several failures are reported together |
 | [`TestNewJobPostValidate`](../../internal/domain/job_post_test.go#L16) | The boundaries: 200 and 201 characters, 200 characters that are 400 bytes, min equal to max |
 | [`TestParseMoney`](../../internal/domain/money_test.go#L8) | What is and is not an amount |
 | [`TestJobPostStoreUpdateConcurrently`](../../internal/store/job_posts_integration_test.go#L331) | Section 8's race, against PostgreSQL |
 | [`TestJobPostStoreUpdate`](../../internal/store/job_posts_integration_test.go#L217) | Partial updates in real SQL; a refused patch writes nothing, including its valid fields |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L240) | Seven new columns: every caller against every job post route |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L248) | Seven new columns: every caller against every job post route |
 
 The handler tests use a fake store that records the patch it was given, so
 they can assert on *nil versus non-nil* directly rather than inferring it
@@ -610,7 +610,7 @@ columns.
 - **`null` cannot clear a field** (section 5). A salary, a closing date, a
   location or an employment type, once set, cannot be returned to `NULL`
   through `PATCH`. The fix is the `Optional[T]` type sketched there.
-- ~~`status` cannot be changed.~~ Module 5 added `POST …/open` and
+- ~~`status` cannot be changed.~~ Part 2 added `POST …/open` and
   `POST …/close`. `"status"` in a `PATCH` body is still ignored.
 - **No list endpoint.** `ListJobPosts` exists and is tested, and nothing calls
   it. It has no `LIMIT`; pagination should arrive with the endpoint.

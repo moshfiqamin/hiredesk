@@ -1,4 +1,4 @@
-# Module 5 — The job post lifecycle
+# Module 4, part 2 — The job post lifecycle
 
 This note covers moving a job post from draft to open to closed: what a state
 machine is and why the rules are a map (sections 1–3), the two routes and the
@@ -20,7 +20,7 @@ Click the link, read the code, then come back.
 | [1](#1-what-a-state-machine-is) | What a state machine is | [`job_post.go:26`](../../internal/domain/job_post.go#L26) |
 | [2](#2-why-a-map-beats-a-chain-of-if-statements) | Why a map beats a chain of `if` statements | [`job_post.go:35`](../../internal/domain/job_post.go#L35) |
 | [3](#3-the-rest-of-the-lifecycle-api) | The rest of the lifecycle API | [`job_post.go:43`](../../internal/domain/job_post.go#L43) |
-| [4](#4-one-route-per-transition) | One route per transition | [`router.go:112`](../../internal/api/router.go#L112) |
+| [4](#4-one-route-per-transition) | One route per transition | [`router.go:119`](../../internal/api/router.go#L119) |
 | [5](#5-check-and-write-under-one-lock) | Check and write under one lock | [`job_posts.go:205`](../../internal/store/job_posts.go#L205) |
 | [6](#6-why-409-and-not-400-or-422) | Why 409, and not 400 or 422 | [`errors.go:76`](../../internal/api/errors.go#L76) |
 | [7](#7-why-a-post-cannot-open-without-a-rubric) | Why a post cannot open without a rubric | [`job_post.go:110`](../../internal/domain/job_post.go#L110) |
@@ -167,7 +167,7 @@ did not happen, or need a special case to skip it.
 
 ## 4. One route per transition
 
-**📍 Open:** [`internal/api/router.go:112`](../../internal/api/router.go#L112)
+**📍 Open:** [`internal/api/router.go:119`](../../internal/api/router.go#L119)
 
 ```
 POST /v1/job-posts/:id/open
@@ -190,7 +190,7 @@ not:
   closing will one day reject pending applications. A route per transition
   gives each rule an obvious home.
 
-`PATCH` still ignores `"status"` in its body, as it did in module 4.
+`PATCH` still ignores `"status"` in its body, as it did in part 1.
 
 Both routes are on the `admin` group, so the chain is `RequireAuth →
 RequireRole → handler` and a non-admin is refused before the ID is read.
@@ -243,7 +243,7 @@ strings in Go.
 **Why the domain decides and the store enforces.** The rules are pure
 functions in `domain`; the store gathers the facts (the status, the counts)
 and calls them while holding the lock. That is the module 3 pattern of
-`CanViewApplication`, and the module 4 pattern of `Validate` after `Apply`.
+`CanViewApplication`, and the part 1 pattern of `Validate` after `Apply`.
 
 ---
 
@@ -449,12 +449,12 @@ so a post with no rubric gets counts of 0 rather than `pgx.ErrNoRows`.
 | [`TestLifecycleCoversEveryStatus`](../../internal/domain/job_post_lifecycle_test.go#L66) | The map has exactly the three statuses, and every destination is itself a status |
 | [`TestAllowedTransitions`](../../internal/domain/job_post_lifecycle_test.go#L91) | The lists, non-nil for `closed`, and that mutating a result does not change the lifecycle |
 | [`TestCheckReadyToOpen`](../../internal/domain/job_post_lifecycle_test.go#L142) | Each combination of missing questions, missing rubric and zero weights |
-| [`TestJobPostTransitions`](../../internal/api/job_post_handler_test.go#L848) | Every route against every state: 200s, 409 `invalid_transition` with the exact allowed list, 404 |
-| [`TestOpenJobPostRefusesAnUnreadyPost`](../../internal/api/job_post_handler_test.go#L909) | 409 `not_ready`, with exactly the missing keys in `details` |
-| [`TestJobPostTransitionsAreAdminOnly`](../../internal/api/job_post_handler_test.go#L958) | 403 / 401, and 400 for a malformed ID, all before the store |
+| [`TestJobPostTransitions`](../../internal/api/job_post_handler_test.go#L854) | Every route against every state: 200s, 409 `invalid_transition` with the exact allowed list, 404 |
+| [`TestOpenJobPostRefusesAnUnreadyPost`](../../internal/api/job_post_handler_test.go#L915) | 409 `not_ready`, with exactly the missing keys in `details` |
+| [`TestJobPostTransitionsAreAdminOnly`](../../internal/api/job_post_handler_test.go#L964) | 403 / 401, and 400 for a malformed ID, all before the store |
 | [`TestJobPostStoreLifecycle`](../../internal/store/job_post_lifecycle_integration_test.go#L89) | Real SQL: the full lifecycle with one event per move and none per refusal; readiness including rubric versions |
 | [`TestJobPostStoreTransitionConcurrently`](../../internal/store/job_post_lifecycle_integration_test.go#L224) | Section 5's race |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L240) | Three new columns: open a ready draft, open an unready one, close an open post, for every caller |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L248) | Three new columns: open a ready draft, open an unready one, close an open post, for every caller |
 
 ---
 
@@ -490,14 +490,14 @@ so a post with no rubric gets counts of 0 rather than `pgx.ErrNoRows`.
 
 ## Still open
 
-- **No API can make a post ready to open.** Module 6 added the question
+- **No API can make a post ready to open.** Part 3 added the question
   endpoints; rubric criteria still have none, so a rubric row must be
   inserted by hand before a post can open.
 - **An open or closed post can still be edited** through `PATCH`, including
   its title and salary after applications have arrived. Whether to freeze
   fields on opening is a product decision worth making before applications
   exist.
-- ~~Deleting a question does not wait for the transition lock.~~ Module 6's
+- ~~Deleting a question does not wait for the transition lock.~~ Part 3's
   delete takes the post's lock and is refused once the post is open.
 - **Nothing reads `job_post_events`.** A `GET /v1/job-posts/:id/events` for
   admins would be the natural first reader.

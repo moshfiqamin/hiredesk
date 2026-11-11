@@ -1,4 +1,4 @@
-# Module 6 — Application questions
+# Module 4, part 3 — Application questions
 
 This note covers building a job post's application form: the endpoints
 (section 1), the rule that the form is locked once a post leaves draft, and
@@ -16,7 +16,7 @@ Click the link, read the code, then come back.
 
 | # | Topic | Code |
 |---|---|---|
-| [1](#1-the-endpoints) | The endpoints | [`router.go:118`](../../internal/api/router.go#L118) |
+| [1](#1-the-endpoints) | The endpoints | [`router.go:125`](../../internal/api/router.go#L125) |
 | [2](#2-the-form-locks-when-the-post-opens) | The form locks when the post opens | [`question.go:46`](../../internal/domain/question.go#L46) |
 | [3](#3-why-the-lock-is-a-domain-decision) | Why the lock is a domain decision | [`question.go:46`](../../internal/domain/question.go#L46) |
 | [4](#4-making-the-lock-hold-under-concurrency) | Making the lock hold under concurrency | [`questions.go:293`](../../internal/store/questions.go#L293) |
@@ -32,7 +32,7 @@ Click the link, read the code, then come back.
 
 ## 1. The endpoints
 
-**📍 Open:** [`internal/api/router.go:118`](../../internal/api/router.go#L118)
+**📍 Open:** [`internal/api/router.go:125`](../../internal/api/router.go#L125)
 
 | Route | Does | Answers |
 |---|---|---|
@@ -86,7 +86,7 @@ closed post answers:
   "details":{"current_status":"open","reason":"Questions can only be changed while the job post is a draft. …"}}}
 ```
 
-It is a **409** for the reason module 5 gave: the request is valid, and the
+It is a **409** for the reason part 2 gave: the request is valid, and the
 post's current state refuses it. The same `PATCH` succeeded a minute ago, while
 the post was a draft.
 
@@ -190,7 +190,7 @@ on: "next free position" reads `max(position)` and inserts after it, and a
 reorder reads the set of questions and rewrites all their positions. Neither
 may be overtaken.
 
-This also closes an item module 5 left open: deleting a question did not wait
+This also closes an item part 2 left open: deleting a question did not wait
 for the transition lock. Every delete now takes it.
 
 ---
@@ -211,7 +211,7 @@ for the transition lock. Every delete now takes it.
 **"Absent" includes an empty list.** At
 [`question.go:182`](../../internal/domain/question.go#L182), a non-choice
 question is refused only if it has *some* choices. `[]` is accepted as "none".
-That is deliberate, and it comes from module 4's lesson about `null`: to turn a
+That is deliberate, and it comes from part 1's lesson about `null`: to turn a
 choice question into a text one, a client must clear the choices, and `null`
 decodes to the same nil as an absent key, so it cannot. An empty list can,
 because `Choices` in the patch is `*[]string` (section 10). A client sends
@@ -236,7 +236,7 @@ uses 0 to mean "after the last". The request field is `*int`, and the handler
 refuses a sent 0 at
 [`question_handler.go:167`](../../internal/api/question_handler.go#L167)
 before it can quietly become the default — absent and zero again, as in
-module 4.
+part 1.
 
 **A taken position is a 422, not a 409.** The unique constraint would refuse
 it as a duplicate, which `translate` maps to a 409 with no field named. The
@@ -515,7 +515,7 @@ ordinary value: `id IS DISTINCT FROM NULL` is true for every real id. With
 | [`TestQuestionStoreReorderConcurrently`](../../internal/store/questions_integration_test.go#L319) | Section 8 |
 | [`TestQuestionStoreLockedOutsideDraft`](../../internal/store/questions_integration_test.go#L361) | The lock against real SQL, including a missing question on a locked form |
 | [`TestQuestionEditWaitsForAnOpeningInProgress`](../../internal/store/questions_integration_test.go#L410) | Section 4 |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L240) | Six new columns: list, create, create on an open post (409 `form_locked`), update, reorder, delete (204) |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L248) | Six new columns: list, create, create on an open post (409 `form_locked`), update, reorder, delete (204) |
 
 ---
 

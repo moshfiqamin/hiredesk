@@ -16,7 +16,7 @@ git clone https://github.com/moshfiqamin/hiredesk.git && cd hiredesk && make up
 ```
 
 That generates `.env` with a random `JWT_SECRET`, builds the image, starts
-Postgres, waits for it to pass its healthcheck, **applies all eight schema
+Postgres, waits for it to pass its healthcheck, **applies all nine schema
 migrations**, then starts the API.
 
 ```bash
@@ -54,6 +54,7 @@ Run `make` at any time to list every command.
 | `GET` | `/v1/me` | The current user. Requires `Authorization: Bearer <access token>`. |
 | `GET` | `/v1/applications` | The applications the caller may see: all of them for an admin, their own for a candidate, assigned ones for an interviewer. Body: `{"data":[…]}`. |
 | `GET` | `/v1/applications/:id` | One application. An application the caller may not see is a 404, identical to one that does not exist — see [`docs/decisions.md`](docs/decisions.md). |
+| `GET` | `/v1/job-posts` | **Public, no token needed.** Open posts, newest first: `id`, `title`, `location`, `employment_type`, `skill_tags`, `remaining_vacancies`. Keyset-paginated: `?limit=20&after=<next_cursor>`, `limit` capped at 100. Body: `{"data":[…],"next_cursor":"…"}`, `null` on the last page. |
 | `POST` | `/v1/job-posts` | **Admin only.** Create a job post, always as a draft. Body: `title` (1–200 characters), and optionally `description`, `employment_type`, `location`, `vacancies` (default 1), `salary_min`, `salary_max`, `closes_at`. Returns 201 and the post. |
 | `GET` | `/v1/job-posts/:id` | One job post with its questions. A draft is visible to admins only; to anyone else it is a 404. |
 | `PATCH` | `/v1/job-posts/:id` | **Admin only.** Partial update: only the fields present in the body change, and a field sent as `""` is stored as empty. `null` is treated as not sent. The rules are checked against the post as it would be after the change. |
@@ -85,7 +86,13 @@ run when `ENV=production`, and is safe to run more than once.
 curl -s -X POST localhost:8080/v1/auth/login -d '{"email":"admin@hiredesk.test","password":"admin-password"}'
 ```
 
-Or register a candidate of your own:
+Browse the open jobs, with no account at all:
+
+```bash
+curl -s "localhost:8080/v1/job-posts?limit=20"
+```
+
+Register a candidate of your own:
 
 ```bash
 curl -s -X POST localhost:8080/v1/auth/register -d '{"email":"demo@example.com","password":"correct horse","full_name":"Demo User"}'
@@ -153,6 +160,7 @@ allowed next statuses when a status change is refused.
 |---|---|---|
 | 400 | `malformed_request` | The body is not a JSON object |
 | 400 | `invalid_id` | The ID in the URL is not a UUID |
+| 400 | `invalid_cursor` | The `after` parameter is not a cursor this API issued; start from the first page |
 | 401 | `invalid_credentials` | Login failed |
 | 401 | `token_expired` | The access token has expired; refresh and retry |
 | 401 | `unauthenticated` | No usable access or refresh token |
@@ -209,7 +217,7 @@ make build && DATABASE_URL="postgres://localhost:5432/hiredesk?sslmode=disable" 
 
 ## Schema
 
-Twelve tables across eight migrations, applied automatically when the stack
+Twelve tables across nine migrations, applied automatically when the stack
 starts. Browse them at the Adminer link above, or:
 
 ```bash
