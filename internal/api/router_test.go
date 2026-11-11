@@ -44,6 +44,11 @@ func TestRoutes(t *testing.T) {
 		{"me is under /v1 and protected", http.MethodGet, "/v1/me", http.StatusUnauthorized},
 		{"me without the version", http.MethodGet, "/me", http.StatusNotFound},
 
+		{"job post is under /v1 and protected", http.MethodGet, "/v1/job-posts/not-checked-before-auth", http.StatusUnauthorized},
+		{"creating a job post is protected", http.MethodPost, "/v1/job-posts", http.StatusUnauthorized},
+		{"updating a job post is protected", http.MethodPatch, "/v1/job-posts/not-checked-before-auth", http.StatusUnauthorized},
+		{"PUT on a PATCH route", http.MethodPut, "/v1/job-posts/not-checked-before-auth", http.StatusMethodNotAllowed},
+
 		{"register without the version", http.MethodPost, "/auth/register", http.StatusNotFound},
 		{"a version that does not exist", http.MethodPost, "/v2/auth/register", http.StatusNotFound},
 		{"probes are not under /v1", http.MethodGet, "/v1/healthz", http.StatusNotFound},
@@ -72,6 +77,7 @@ func TestReadyzReportsAnUnreachableDatabase(t *testing.T) {
 	engine, err := NewRouter(Deps{
 		Auth:         NewAuthHandler(users, nil, nil),
 		Applications: NewApplicationHandler(newFakeApplications()),
+		JobPosts:     NewJobPostHandler(newFakeJobPosts()),
 		Tokens:       auth.NewTokenManager(testJWTSecret),
 		Users:        users,
 		DB:           downPinger{},

@@ -40,17 +40,17 @@ Click the link, read the code, then come back.
 | [21](#21-why-the-status-codes-live-in-api-and-not-in-domain) | Why the status codes live in `api`, not `domain` | [`api/errors.go:57`](../../internal/api/errors.go#L57) |
 | [22](#22-unexpected-errors-log-everything-say-nothing) | Unexpected errors: log everything, say nothing | [`api/errors.go:89`](../../internal/api/errors.go#L89) |
 | [23](#23-validation-errors-that-name-each-field) | Validation errors that name each field | [`domain/errors.go:52`](../../internal/domain/errors.go#L52) |
-| [24](#24-errors-that-never-reach-a-handler) | Errors that never reach a handler | [`router.go:41`](../../internal/api/router.go#L41) |
+| [24](#24-errors-that-never-reach-a-handler) | Errors that never reach a handler | [`router.go:44`](../../internal/api/router.go#L44) |
 | [25](#25-more-go-idioms-appearing-for-the-first-time) | A nil pointer that is not a nil error, `errors.As`, `TestMain` | [`domain/errors.go:73`](../../internal/domain/errors.go#L73) |
 | [26](#26-one-request-three-layers) | One request, three layers | [`auth_handler.go:23`](../../internal/api/auth_handler.go#L23) |
 | [27](#27-hand-written-sql-with-pgx) | Hand-written SQL with pgx | [`users.go:47`](../../internal/store/users.go#L47) |
 | [28](#28-reading-the-postgresql-error-code-with-errorsas) | Reading the PostgreSQL error code with `errors.As` | [`users.go:123`](../../internal/store/users.go#L123) |
 | [29](#29-struct-tags-and-how-two-packages-read-the-same-field) | Struct tags, and how two packages read the same field | [`auth_handler.go:74`](../../internal/api/auth_handler.go#L74) |
-| [30](#30-validation-decode-clean-check-report) | Validation: decode, clean, check, report | [`validation.go:64`](../../internal/api/validation.go#L64) |
+| [30](#30-validation-decode-clean-check-report) | Validation: decode, clean, check, report | [`validation.go:114`](../../internal/api/validation.go#L114) |
 | [31](#31-why-the-response-is-its-own-struct) | Why the response is its own struct | [`auth_handler.go:92`](../../internal/api/auth_handler.go#L92) |
 | [32](#32-registration) | Registration | [`auth_handler.go:142`](../../internal/api/auth_handler.go#L142) |
 | [33](#33-login-and-user-enumeration) | Login, and user enumeration | [`auth_handler.go:192`](../../internal/api/auth_handler.go#L192) |
-| [34](#34-the-router-and-v1) | The router, and `/v1` | [`router.go:64`](../../internal/api/router.go#L64) |
+| [34](#34-the-router-and-v1) | The router, and `/v1` | [`router.go:67`](../../internal/api/router.go#L67) |
 | [35](#35-go-idioms-appearing-for-the-first-time-in-the-handlers) | Interfaces, build tags, functions that return functions | [`health.go:14`](../../internal/api/health.go#L14) |
 | [36](#36-two-tokens-two-jobs) | Two tokens, two jobs | [`refresh.go:15`](../../internal/auth/refresh.go#L15) |
 | [37](#37-why-mathrand-is-dangerous-for-tokens) | Why `math/rand` is dangerous for tokens | [`refresh.go:33`](../../internal/auth/refresh.go#L33) |
@@ -62,7 +62,7 @@ Click the link, read the code, then come back.
 | [43](#43-the-auth-middleware-and-v1me) | The auth middleware, and `/v1/me` | [`middleware.go:42`](../../internal/api/middleware.go#L42) |
 | [44](#44-the-seed-command) | The seed command | [`cmd/seed/main.go:95`](../../cmd/seed/main.go#L95) |
 | [45](#45-go-idioms-appearing-for-the-first-time-in-the-session-code) | Transactions, nullable columns, arrays and slices, goroutines | [`tokens.go:108`](../../internal/store/tokens.go#L108) |
-| [46](#46-what-middleware-is-and-how-gin-chains-it) | What middleware is, and how Gin chains it | [`router.go:83`](../../internal/api/router.go#L83) |
+| [46](#46-what-middleware-is-and-how-gin-chains-it) | What middleware is, and how Gin chains it | [`router.go:86`](../../internal/api/router.go#L86) |
 | [47](#47-cnext-and-cabort) | `c.Next()` and `c.Abort()` | [`errors.go:145`](../../internal/api/errors.go#L145) |
 | [48](#48-forgetting-abort-what-actually-goes-wrong) | Forgetting `Abort`: what actually goes wrong | [`middleware_test.go:132`](../../internal/api/middleware_test.go#L132) |
 | [49](#49-a-typed-context-key-and-currentuser) | A typed context key, and `CurrentUser` | [`middleware.go:19`](../../internal/api/middleware.go#L19) |
@@ -77,8 +77,8 @@ Click the link, read the code, then come back.
 | [58](#58-filtering-in-sql-not-in-go) | Filtering in SQL, not in Go | [`applications.go:46`](../../internal/store/applications.go#L46) |
 | [59](#59-two-encodings-of-one-rule-and-the-check-that-they-agree) | Two encodings of one rule, and the check that they agree | [`application_handler.go:113`](../../internal/api/application_handler.go#L113) |
 | [60](#60-403-or-404) | 403 or 404 | [`decisions.md`](../decisions.md) |
-| [61](#61-testcontainers-go-and-why-a-real-postgresql-beats-a-mock) | testcontainers-go, and why a real PostgreSQL beats a mock | [`authz_test.go:60`](../../test/integration/authz_test.go#L60) |
-| [62](#62-testauthorizationmatrix) | `TestAuthorizationMatrix`; generics, spreading a slice, package build tags | [`authz_test.go:199`](../../test/integration/authz_test.go#L199) |
+| [61](#61-testcontainers-go-and-why-a-real-postgresql-beats-a-mock) | testcontainers-go, and why a real PostgreSQL beats a mock | [`authz_test.go:66`](../../test/integration/authz_test.go#L66) |
+| [62](#62-testauthorizationmatrix) | `TestAuthorizationMatrix`; generics, spreading a slice, package build tags | [`authz_test.go:218`](../../test/integration/authz_test.go#L218) |
 
 ---
 
@@ -1210,7 +1210,7 @@ lists of problems per field. Nothing needs them yet, and a client can rely on
 
 ## 24. Errors that never reach a handler
 
-**📍 Open:** [`internal/api/router.go:41`](../../internal/api/router.go#L41)
+**📍 Open:** [`internal/api/router.go:44`](../../internal/api/router.go#L44)
 
 `Respond` only runs when a handler calls it. Three failures happen where no
 handler is involved, and Gin's defaults for all three break the one-shape rule:
@@ -1228,7 +1228,7 @@ for the second. `gin.CustomRecovery` still does the important part — it catche
 the panic, logs the value and a stack trace, and keeps the process alive — and
 only the response body is ours.
 
-`HandleMethodNotAllowed` at [`router.go:46`](../../internal/api/router.go#L46) is off in
+`HandleMethodNotAllowed` at [`router.go:49`](../../internal/api/router.go#L49) is off in
 Gin by default. Left off, `DELETE /healthz` is reported as "no such endpoint",
 which is untrue and sends a client looking for a typo in the URL.
 
@@ -1485,7 +1485,7 @@ tags. Both libraries do this the first time they see a type:
 | `validator` | `field.Tag.Get("validate")` | "must be present, an email address, at most 254 characters" |
 
 This project does the same thing by hand in one place.
-[`validation.go:35`](../../internal/api/validation.go#L35) registers a function
+[`validation.go:43`](../../internal/api/validation.go#L43) registers a function
 with the validator that reads the **json** tag of a failing field, so the error
 says `full_name` — the name the client sent — and not `FullName`, the Go name
 the client has never seen.
@@ -1514,16 +1514,16 @@ fields. A field named `email` with a perfect tag is silently skipped by JSON.
 
 ## 30. Validation: decode, clean, check, report
 
-**📍 Open:** [`internal/api/validation.go:64`](../../internal/api/validation.go#L64)
+**📍 Open:** [`internal/api/validation.go:114`](../../internal/api/validation.go#L114)
 
 Every handler that takes a body does the same four steps, and each has its own
 failure:
 
 | Step | Where | Failure |
 |---|---|---|
-| Decode the JSON | [`decodeJSON`](../../internal/api/validation.go#L49) | 400 `malformed_request` |
+| Decode the JSON | [`decodeJSON`](../../internal/api/validation.go#L57) | 400 `malformed_request` |
 | Clean the values | in the handler | — |
-| Check the rules | [`validateStruct`](../../internal/api/validation.go#L64) | 422 `validation_failed`, with `details` |
+| Check the rules | [`validateStruct`](../../internal/api/validation.go#L114) | 422 `validation_failed`, with `details` |
 | Do the work | the handler | whatever the store reports |
 
 **Clean before checking.** `" Alice@Example.com "` is a valid address with
@@ -1538,7 +1538,7 @@ would lock the user out.
 
 **From the validator's error to the envelope.** `validate.Struct` returns a
 `validator.ValidationErrors` — a slice with one entry per failed field.
-[`validation.go:73`](../../internal/api/validation.go#L73) gets at it with
+[`validation.go:123`](../../internal/api/validation.go#L123) gets at it with
 `errors.As` (section 28), and each entry becomes one line of the
 `domain.ValidationError` from section 23:
 
@@ -1549,7 +1549,7 @@ would lock the user out.
 ```
 
 That is real output from the running server. The wording is ours
-([`problemFor`](../../internal/api/validation.go#L86)): the validator's own
+([`problemFor`](../../internal/api/validation.go#L136)): the validator's own
 message is `Key: 'registerRequest.Password' Error:Field validation for
 'Password' failed on the 'min' tag`, which names a Go type.
 
@@ -1565,7 +1565,7 @@ as a validation error on `password`, since it is still the client's input at
 fault.
 
 **The body is capped at 1 MB**
-([`validation.go:50`](../../internal/api/validation.go#L50)). Without a cap the
+([`validation.go:58`](../../internal/api/validation.go#L58)). Without a cap the
 decoder reads whatever a client sends.
 
 ---
@@ -1604,7 +1604,7 @@ It works today. It was rejected for five reasons:
 5. **It puts JSON in the domain.** `domain.User` has no tags at all, by the
    same reasoning that kept HTTP status codes out of `domain` in section 21.
 
-**What breaks without it.** [`TestRegister`](../../internal/api/auth_handler_test.go#L187)
+**What breaks without it.** [`TestRegister`](../../internal/api/auth_handler_test.go#L199)
 asserts the response has *exactly* five keys, and that neither the hash, the
 password, nor the words `password` or `hash` appear anywhere in the body.
 Adding a field to `domain.User` cannot change that; adding one to
@@ -1703,7 +1703,7 @@ Measured on the running server, real bcrypt, real Postgres:
 | Correct password | 200 | 372.4 ms |
 
 **What breaks without that one line.**
-[`TestLoginFailuresAreIndistinguishable`](../../internal/api/auth_handler_test.go#L421)
+[`TestLoginFailuresAreIndistinguishable`](../../internal/api/auth_handler_test.go#L433)
 compares status, body and headers, and then counts password comparisons. With
 the line deleted the bodies still match and the test fails on the count: one
 comparison for two requests.
@@ -1731,7 +1731,7 @@ proxy keeps a copy of the token.
 
 ## 34. The router, and `/v1`
 
-**📍 Open:** [`internal/api/router.go:64`](../../internal/api/router.go#L64)
+**📍 Open:** [`internal/api/router.go:67`](../../internal/api/router.go#L67)
 
 `router.Group("/v1")` returns an object with the same `GET`/`POST` methods as
 the engine, which prefixes every path registered on it. Groups nest, so
@@ -1752,7 +1752,7 @@ the API's contract and do not change when it does.
 to one, so every route in it is protected by one line (section 46).
 
 **The routes moved out of `main`.** `NewRouter` takes a
-[`Deps`](../../internal/api/router.go#L15) struct and returns a finished
+[`Deps`](../../internal/api/router.go#L16) struct and returns a finished
 engine, so a test can build the same router the server runs —
 [`TestRoutes`](../../internal/api/router_test.go#L22) does, and checks that
 `/auth/register` without the version is a 404.
@@ -1790,7 +1790,7 @@ well. So `readyz(db, timeout)` is called once at startup and *returns* the
 handler; the returned function keeps `db` and `timeout` alive for as long as
 it exists. That is a closure, already met as the injected clock in section 17.
 
-**Method values.** [`router.go:70`](../../internal/api/router.go#L70)
+**Method values.** [`router.go:73`](../../internal/api/router.go#L73)
 
 `deps.Auth.Register` with no parentheses is not a call. It is a function value
 with the receiver already bound — a `func(*gin.Context)` that remembers which
@@ -2208,7 +2208,7 @@ token with the `TokenManager` from section 11, and either answers 401 or
 leaves the authenticated user on the request for the handler.
 
 It is attached to a **group**
-([`router.go:83`](../../internal/api/router.go#L83)), not to a route. Every
+([`router.go:86`](../../internal/api/router.go#L86)), not to a route. Every
 route registered on `protected` is guarded, so protecting the next endpoint is
 adding a line inside the braces, and forgetting to protect it is impossible.
 
@@ -2356,7 +2356,7 @@ loop variable needed.
 
 ## 46. What middleware is, and how Gin chains it
 
-**📍 Open:** [`internal/api/router.go:83`](../../internal/api/router.go#L83)
+**📍 Open:** [`internal/api/router.go:86`](../../internal/api/router.go#L86)
 
 A Gin route is not one function. It is a **list** of `gin.HandlerFunc`, and
 each one has the same signature, `func(c *gin.Context)`. "Middleware" is
@@ -2367,8 +2367,8 @@ The list is built from three places, outermost first:
 
 | Registered with | Applies to | Here |
 |---|---|---|
-| `router.Use(…)` | every route on the engine | `gin.Logger()`, `Recovery()` ([`router.go:42`](../../internal/api/router.go#L42)) |
-| `v1.Group("", …)` | every route registered on that group | `RequireAuth` ([`router.go:83`](../../internal/api/router.go#L83)) |
+| `router.Use(…)` | every route on the engine | `gin.Logger()`, `Recovery()` ([`router.go:45`](../../internal/api/router.go#L45)) |
+| `v1.Group("", …)` | every route registered on that group | `RequireAuth` ([`router.go:86`](../../internal/api/router.go#L86)) |
 | the route itself | that route only | `deps.Auth.Me` |
 
 So a request for `GET /v1/me` runs this list:
@@ -2868,7 +2868,7 @@ function and a few cells of the table.
 - **Exact role comparison.** `"Admin"` is not `"admin"`. The database stores
   lowercase and its `CHECK` enforces it; a case-insensitive match would only
   widen the door.
-- **Empty IDs never match** ([`policy.go:71`](../../internal/auth/policy.go#L71)).
+- **Empty IDs never match** ([`policy.go:81`](../../internal/auth/policy.go#L81)).
   A zero-value `User` and a zero-value `Application` both have ID `""`, and
   `"" == ""` is true. Without the guard, a handler that forgot to load the user
   would grant a candidate ownership of an application that failed to load.
@@ -3050,7 +3050,7 @@ a post see its applications" to the policy and forgets the query. The symptom
 is a list showing rows that then 404 when opened, or the reverse.
 
 `TestAuthorizationMatrix` checks the two against each other for every caller
-([`authz_test.go:307`](../../test/integration/authz_test.go#L307)): an
+([`authz_test.go:374`](../../test/integration/authz_test.go#L374)): an
 application is in the list **if and only if** fetching it alone returns 200.
 
 **`Get` needs two facts, fetched in one query.**
@@ -3093,7 +3093,7 @@ view but not change.
 
 ## 61. testcontainers-go, and why a real PostgreSQL beats a mock
 
-**📍 Open:** [`test/integration/authz_test.go:60`](../../test/integration/authz_test.go#L60)
+**📍 Open:** [`test/integration/authz_test.go:66`](../../test/integration/authz_test.go#L66)
 
 **How it works.** testcontainers-go is a Go library that talks to the Docker
 daemon's API — the same API the `docker` command uses. `postgres.Run`:
@@ -3102,10 +3102,10 @@ daemon's API — the same API the `docker` command uses. `postgres.Run`:
    from it, publishing port 5432 on a **random free port** of the host, so
    parallel test runs never collide;
 2. copies the six `*.up.sql` migrations into `/docker-entrypoint-initdb.d`
-   ([`:78`](../../test/integration/authz_test.go#L78)), which the official
+   ([`:84`](../../test/integration/authz_test.go#L84)), which the official
    image runs with `psql`, in order, the first time it initialises — the same
    files, applied the same way, as production;
-3. **waits** ([`:82`](../../test/integration/authz_test.go#L82)) until the
+3. **waits** ([`:88`](../../test/integration/authz_test.go#L88)) until the
    server has logged "ready to accept connections" twice (the image restarts
    once after running init scripts) and the port accepts connections. Without
    a wait strategy, the test would race the database's startup;
@@ -3113,7 +3113,7 @@ daemon's API — the same API the `docker` command uses. `postgres.Run`:
    port filled in.
 
 **Cleanup has two layers.** `testcontainers.CleanupContainer`
-([`:87`](../../test/integration/authz_test.go#L87)) removes the container when
+([`:93`](../../test/integration/authz_test.go#L93)) removes the container when
 the test ends. If the test process is killed before that can run, a small
 companion container called **Ryuk** — started automatically by the library —
 notices the test process's connection drop and removes everything it started.
@@ -3151,7 +3151,7 @@ needs nothing.
 
 ## 62. `TestAuthorizationMatrix`
 
-**📍 Open:** [`test/integration/authz_test.go:199`](../../test/integration/authz_test.go#L199)
+**📍 Open:** [`test/integration/authz_test.go:218`](../../test/integration/authz_test.go#L218)
 
 **The shape.** One row per caller, one column per endpoint, the expected
 status in each cell — readable as a matrix:
@@ -3181,7 +3181,7 @@ per caller who can list) = 54 subtests.
 - a **single fetch** returns the application asked for.
 
 **The matrix cannot fall behind the router.**
-[`assertEveryProtectedRouteIsInTheMatrix`](../../test/integration/authz_test.go#L323)
+[`assertEveryProtectedRouteIsInTheMatrix`](../../test/integration/authz_test.go#L390)
 reads the router's registered routes and fails if any `/v1` route outside
 `/v1/auth` has no column. Adding an endpoint without deciding who may call it
 turns the test red.
@@ -3446,13 +3446,12 @@ provide Docker, which is all testcontainers needs.
 - **A refusal is not logged as one.** The access log shows a 404 and the path,
   the same as a miss. Support cannot tell "not yours" from "not there"
   without a deliberate log line, which would need to stay out of the response.
-- **`TestAuthorizationMatrix` covers read endpoints only**, because those are
-  the only protected ones. The route-completeness check forces a column for
-  each new one.
+- ~~`TestAuthorizationMatrix` covers read endpoints only.~~ Module 4 added
+  the job post routes, two of which write.
 - **`assigned` is trusted.** The policy cannot check that the caller looked up
   the assignment for the right user and application.
-- **`RequireRole` guards no route yet.** It exists and is tested; job posts
-  will be the first endpoints to use it.
+- ~~`RequireRole` guards no route yet.~~ It guards creating and updating job
+  posts as of module 4.
 - **The token still carries a `role` claim** that nothing reads for
   decisions. Removing it would make the token smaller and remove a value that
   looks authoritative and is not.

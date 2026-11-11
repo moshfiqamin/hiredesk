@@ -43,7 +43,13 @@ const (
 	otherCandidateID     = "00000000-0000-4000-8000-00000000000e"
 	ghostID              = "00000000-0000-4000-8000-00000000000f" // valid token, no row
 
-	postID = "11111111-0000-4000-8000-000000000001"
+	// postID is open, and the applications below are for it. draftPostID is
+	// a draft, which only an admin may see.
+	postID      = "11111111-0000-4000-8000-000000000001"
+	draftPostID = "11111111-0000-4000-8000-000000000002"
+
+	// missingPost is a well-formed UUID that no row has.
+	missingPost = "11111111-0000-4000-8000-0000000000ff"
 
 	// appA is the candidate's own application, and the interviewer is
 	// assigned to it. appB belongs to the other candidate, and nobody is
@@ -117,8 +123,9 @@ func seed(t *testing.T, pool *pgxpool.Pool) {
 			('` + candidateID + `',          'candidate@test',          'unused', 'Candidate',            'candidate'),
 			('` + otherCandidateID + `',     'other@test',              'unused', 'Other Candidate',      'candidate');
 
-		INSERT INTO job_posts (id, title, status, created_by)
-		VALUES ('` + postID + `', 'Backend Engineer', 'open', '` + adminID + `');
+		INSERT INTO job_posts (id, title, status, created_by) VALUES
+			('` + postID + `',      'Backend Engineer', 'open',  '` + adminID + `'),
+			('` + draftPostID + `', 'Data Analyst',     'draft', '` + adminID + `');
 
 		INSERT INTO applications (id, job_post_id, candidate_id, cv_url, submitted_at) VALUES
 			('` + appA + `', '` + postID + `', '` + candidateID + `',      'https://cv.test/a.pdf', '2026-03-02T09:00:00Z'),
@@ -142,6 +149,7 @@ func newRouter(t *testing.T, pool *pgxpool.Pool, tokens *auth.TokenManager) *gin
 	router, err := api.NewRouter(api.Deps{
 		Auth:         api.NewAuthHandler(users, store.NewTokenStore(pool), tokens),
 		Applications: api.NewApplicationHandler(store.NewApplicationStore(pool)),
+		JobPosts:     api.NewJobPostHandler(store.NewJobPostStore(pool)),
 		Tokens:       tokens,
 		Users:        users,
 		DB:           pool,
@@ -159,7 +167,9 @@ type endpoint struct {
 	method  string
 	route   string // the pattern registered with Gin, e.g. /v1/applications/:id
 	path    string
+	body    string // sent as JSON when not empty
 	appID   string // for single-application endpoints: which one is requested
+	postID  string // for single-post endpoints that answer with the post
 	isList  bool
 	cellFor func(callerRow) int
 }
@@ -172,6 +182,12 @@ type callerRow struct {
 	role   string // the role put in the token
 
 	me, list, getA, getB, getMissing, getMalformed int
+
+	// The job post endpoints. Reading an open post is allowed to every role
+	// and a draft to admins only; writing is for admins only, and is refused
+	// before the ID is looked at.
+	postOpen, postDraft, postMissing, postMalformed int
+	postCreate, postPatch, postPatchMalformed       int
 
 	// listed is exactly which applications GET /v1/applications must return,
 	// for callers that get a 200.
@@ -191,36 +207,55 @@ func TestAuthorizationMatrix(t *testing.T) {
 
 	const (
 		ok   = http.StatusOK
+		made = http.StatusCreated
+		bad  = http.StatusBadRequest
 		unau = http.StatusUnauthorized
+		forb = http.StatusForbidden
 		nf   = http.StatusNotFound
 	)
 
 	// The matrix. Read across: what one caller gets from every endpoint.
 	matrix := []callerRow{
-		{caller: "anonymous", me: unau, list: unau, getA: unau, getB: unau, getMissing: unau, getMalformed: unau},
+		{caller: "anonymous", me: unau, list: unau, getA: unau, getB: unau, getMissing: unau, getMalformed: unau,
+			postOpen: unau, postDraft: unau, postMissing: unau, postMalformed: unau,
+			postCreate: unau, postPatch: unau, postPatchMalformed: unau},
 		{caller: "ghost (token for a deleted user)", userID: ghostID, role: domain.RoleAdmin,
-			me: unau, list: unau, getA: unau, getB: unau, getMissing: unau, getMalformed: unau},
+			me: unau, list: unau, getA: unau, getB: unau, getMissing: unau, getMalformed: unau,
+			postOpen: unau, postDraft: unau, postMissing: unau, postMalformed: unau,
+			postCreate: unau, postPatch: unau, postPatchMalformed: unau},
 
 		{caller: "admin", userID: adminID, role: domain.RoleAdmin,
 			me: ok, list: ok, getA: ok, getB: ok, getMissing: nf, getMalformed: nf,
+			postOpen: ok, postDraft: ok, postMissing: nf, postMalformed: bad,
+			postCreate: made, postPatch: ok, postPatchMalformed: bad,
 			listed: []string{appA, appB}},
 		{caller: "interviewer assigned to A", userID: interviewerID, role: domain.RoleInterviewer,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
+			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
+			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			listed: []string{appA}},
 		{caller: "interviewer assigned to nothing", userID: outsideInterviewerID, role: domain.RoleInterviewer,
 			me: ok, list: ok, getA: nf, getB: nf, getMissing: nf, getMalformed: nf,
+			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
+			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			listed: []string{}},
 		{caller: "candidate who owns A", userID: candidateID, role: domain.RoleCandidate,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
+			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
+			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			listed: []string{appA}},
 		{caller: "candidate who owns B", userID: otherCandidateID, role: domain.RoleCandidate,
 			me: ok, list: ok, getA: nf, getB: ok, getMissing: nf, getMalformed: nf,
+			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
+			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			listed: []string{appB}},
 
 		// The token claims admin; the database says candidate. The database
 		// wins on every endpoint, including the list's choice of query.
 		{caller: "candidate with a forged admin claim", userID: candidateID, role: domain.RoleAdmin,
 			me: ok, list: ok, getA: ok, getB: nf, getMissing: nf, getMalformed: nf,
+			postOpen: ok, postDraft: nf, postMissing: nf, postMalformed: bad,
+			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			listed: []string{appA}},
 	}
 
@@ -237,13 +272,30 @@ func TestAuthorizationMatrix(t *testing.T) {
 			appID: missingApp, cellFor: func(r callerRow) int { return r.getMissing }},
 		{name: "GET malformed ID", method: http.MethodGet, route: "/v1/applications/:id", path: "/v1/applications/not-a-uuid",
 			appID: "not-a-uuid", cellFor: func(r callerRow) int { return r.getMalformed }},
+
+		{name: "GET open job post", method: http.MethodGet, route: "/v1/job-posts/:id", path: "/v1/job-posts/" + postID,
+			postID: postID, cellFor: func(r callerRow) int { return r.postOpen }},
+		{name: "GET draft job post", method: http.MethodGet, route: "/v1/job-posts/:id", path: "/v1/job-posts/" + draftPostID,
+			postID: draftPostID, cellFor: func(r callerRow) int { return r.postDraft }},
+		{name: "GET missing job post", method: http.MethodGet, route: "/v1/job-posts/:id", path: "/v1/job-posts/" + missingPost,
+			cellFor: func(r callerRow) int { return r.postMissing }},
+		{name: "GET malformed job post ID", method: http.MethodGet, route: "/v1/job-posts/:id", path: "/v1/job-posts/not-a-uuid",
+			cellFor: func(r callerRow) int { return r.postMalformed }},
+		{name: "POST job post", method: http.MethodPost, route: "/v1/job-posts", path: "/v1/job-posts",
+			body: `{"title":"Created by the matrix"}`, cellFor: func(r callerRow) int { return r.postCreate }},
+		// The patch sets the description, which nothing else in the matrix
+		// reads, so the order the cells run in does not matter.
+		{name: "PATCH job post", method: http.MethodPatch, route: "/v1/job-posts/:id", path: "/v1/job-posts/" + draftPostID,
+			body: `{"description":"Patched by the matrix"}`, postID: draftPostID, cellFor: func(r callerRow) int { return r.postPatch }},
+		{name: "PATCH malformed job post ID", method: http.MethodPatch, route: "/v1/job-posts/:id", path: "/v1/job-posts/not-a-uuid",
+			body: `{"description":"x"}`, cellFor: func(r callerRow) int { return r.postPatchMalformed }},
 	}
 
 	assertEveryProtectedRouteIsInTheMatrix(t, router, endpoints)
 
-	send := func(method, path, header string) *httptest.ResponseRecorder {
+	send := func(method, path, header, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(method, path, nil)
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
 		if header != "" {
 			req.Header.Set("Authorization", header)
 		}
@@ -263,13 +315,13 @@ func TestAuthorizationMatrix(t *testing.T) {
 
 		// What this caller gets for an ID that certainly does not exist. Every
 		// refusal below must be byte-for-byte the same.
-		absent := send(http.MethodGet, "/v1/applications/"+missingApp, header)
+		absent := send(http.MethodGet, "/v1/applications/"+missingApp, header, "")
 
 		for _, ep := range endpoints {
 			want := ep.cellFor(row)
 
 			t.Run(row.caller+" → "+ep.name, func(t *testing.T) {
-				rec := send(ep.method, ep.path, header)
+				rec := send(ep.method, ep.path, header, ep.body)
 
 				if rec.Code != want {
 					t.Fatalf("status = %d, want %d; body = %s", rec.Code, want, rec.Body)
@@ -279,6 +331,16 @@ func TestAuthorizationMatrix(t *testing.T) {
 				case want == unau:
 					if got := errorCode(t, rec.Body.Bytes()); got != "unauthenticated" {
 						t.Errorf("code = %q, want unauthenticated", got)
+					}
+
+				case want == forb:
+					if got := errorCode(t, rec.Body.Bytes()); got != "forbidden" {
+						t.Errorf("code = %q, want forbidden", got)
+					}
+
+				case want == bad:
+					if got := errorCode(t, rec.Body.Bytes()); got != "invalid_id" {
+						t.Errorf("code = %q, want invalid_id", got)
 					}
 
 				case want == nf:
@@ -296,6 +358,11 @@ func TestAuthorizationMatrix(t *testing.T) {
 					if got := singleID(t, rec.Body.Bytes()); got != ep.appID {
 						t.Errorf("returned application %q, want %q", got, ep.appID)
 					}
+
+				case ep.postID != "":
+					if got := singleID(t, rec.Body.Bytes()); got != ep.postID {
+						t.Errorf("returned job post %q, want %q", got, ep.postID)
+					}
 				}
 			})
 		}
@@ -307,7 +374,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			t.Run(row.caller+" → list agrees with single fetch", func(t *testing.T) {
 				for _, id := range []string{appA, appB} {
 					inList := slices.Contains(row.listed, id)
-					opens := send(http.MethodGet, "/v1/applications/"+id, header).Code == ok
+					opens := send(http.MethodGet, "/v1/applications/"+id, header, "").Code == ok
 					if inList != opens {
 						t.Errorf("application %s: in list = %v, opens = %v", id, inList, opens)
 					}
@@ -381,7 +448,7 @@ func singleID(t *testing.T, body []byte) string {
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(body, &app); err != nil {
-		t.Fatalf("body is not an application: %v\n%s", err, body)
+		t.Fatalf("body is not a single record: %v\n%s", err, body)
 	}
 	return app.ID
 }

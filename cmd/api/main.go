@@ -82,6 +82,7 @@ func run(cfg *config.Config) error {
 	router, err := api.NewRouter(api.Deps{
 		Auth:         api.NewAuthHandler(users, store.NewTokenStore(pool), tokens),
 		Applications: api.NewApplicationHandler(store.NewApplicationStore(pool)),
+		JobPosts:     api.NewJobPostHandler(store.NewJobPostStore(pool)),
 		Tokens:       tokens,
 		Users:        users,
 		DB:           pool,

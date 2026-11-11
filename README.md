@@ -54,6 +54,9 @@ Run `make` at any time to list every command.
 | `GET` | `/v1/me` | The current user. Requires `Authorization: Bearer <access token>`. |
 | `GET` | `/v1/applications` | The applications the caller may see: all of them for an admin, their own for a candidate, assigned ones for an interviewer. Body: `{"data":[…]}`. |
 | `GET` | `/v1/applications/:id` | One application. An application the caller may not see is a 404, identical to one that does not exist — see [`docs/decisions.md`](docs/decisions.md). |
+| `POST` | `/v1/job-posts` | **Admin only.** Create a job post, always as a draft. Body: `title` (1–200 characters), and optionally `description`, `employment_type`, `location`, `vacancies` (default 1), `salary_min`, `salary_max`, `closes_at`. Returns 201 and the post. |
+| `GET` | `/v1/job-posts/:id` | One job post with its questions. A draft is visible to admins only; to anyone else it is a 404. |
+| `PATCH` | `/v1/job-posts/:id` | **Admin only.** Partial update: only the fields present in the body change, and a field sent as `""` is stored as empty. `null` is treated as not sent. The rules are checked against the post as it would be after the change. |
 
 Create the development accounts, then try it:
 
@@ -141,6 +144,7 @@ always an object, and names each bad field when validation fails.
 | Status | `code` | Meaning |
 |---|---|---|
 | 400 | `malformed_request` | The body is not a JSON object |
+| 400 | `invalid_id` | The ID in the URL is not a UUID |
 | 401 | `invalid_credentials` | Login failed |
 | 401 | `token_expired` | The access token has expired; refresh and retry |
 | 401 | `unauthenticated` | No usable access or refresh token |

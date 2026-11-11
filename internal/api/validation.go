@@ -14,7 +14,15 @@ import (
 	"github.com/moshfiqamin/hiredesk/internal/domain"
 )
 
-const codeMalformedRequest = "malformed_request"
+// Machine-readable codes for requests refused before any rule is checked.
+const (
+	codeMalformedRequest = "malformed_request"
+	codeInvalidID        = "invalid_id"
+)
+
+// uuidLength is the length of a UUID in its canonical text form:
+// 32 hexadecimal digits and 4 hyphens.
+const uuidLength = 36
 
 // maxBodyBytes caps a request body. Every body this API accepts is a small
 // JSON object; without a cap a client could send gigabytes and have the
@@ -55,6 +63,48 @@ func decodeJSON(c *gin.Context, dst any) bool {
 		// quotes fragments of the input and names Go types.
 		write(c, http.StatusBadRequest, codeMalformedRequest, "The request body must be a valid JSON object.", nil)
 		return false
+	}
+	return true
+}
+
+// pathUUID returns the path parameter called name if it is a UUID. Otherwise
+// it writes a 400 and returns false, and the handler should return without
+// writing anything else.
+func pathUUID(c *gin.Context, name string) (string, bool) {
+	id := c.Param(name)
+	if !isUUID(id) {
+		// 400, not 404: the request itself is wrong, and will be wrong however
+		// many times it is retried. The value is not echoed back.
+		write(c, http.StatusBadRequest, codeInvalidID, "The ID in the URL must be a UUID.", nil)
+		return "", false
+	}
+	return id, true
+}
+
+// isUUID reports whether s is a UUID in the canonical 8-4-4-4-12 form, such
+// as "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed", in either case.
+//
+// It checks the shape only. PostgreSQL's uuid type accepts any 128 bits, so
+// requiring a particular version here would reject IDs the database can hold.
+func isUUID(s string) bool {
+	if len(s) != uuidLength {
+		return false
+	}
+
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+
+		switch i {
+		case 8, 13, 18, 23:
+			if ch != '-' {
+				return false
+			}
+		default:
+			isHex := (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')
+			if !isHex {
+				return false
+			}
+		}
 	}
 	return true
 }

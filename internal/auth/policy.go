@@ -2,7 +2,7 @@ package auth
 
 import "github.com/moshfiqamin/hiredesk/internal/domain"
 
-// The policy functions below decide what a user may do to one application.
+// The policy functions below decide what a user may see and do.
 //
 // Each is pure: the answer depends only on its arguments, it reads no clock,
 // database or request, and it changes nothing. The caller gathers the facts
@@ -61,6 +61,16 @@ func CanChangeApplicationStatus(u domain.User, _ domain.Application, _ bool) boo
 	// signature so that all three functions are called the same way, and so
 	// a future rule, such as "not once an offer is accepted", needs no change
 	// at any call site.
+	return u.Role == domain.RoleAdmin
+}
+
+// CanViewDraftJobPosts reports whether u may see job posts that have not been
+// published. Only an admin may: a draft is unfinished work, and to everyone
+// else it does not exist yet.
+//
+// Open and closed posts need no rule here, since every signed-in user may
+// read them.
+func CanViewDraftJobPosts(u domain.User) bool {
 	return u.Role == domain.RoleAdmin
 }
 

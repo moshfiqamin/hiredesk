@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/moshfiqamin/hiredesk/internal/auth"
+	"github.com/moshfiqamin/hiredesk/internal/domain"
 )
 
 // Deps is everything the router needs from outside this package. main builds
@@ -15,6 +16,7 @@ import (
 type Deps struct {
 	Auth         *AuthHandler
 	Applications *ApplicationHandler
+	JobPosts     *JobPostHandler
 
 	// Tokens verifies the access token on every protected route, and Users
 	// loads the user it names.
@@ -33,8 +35,9 @@ type Deps struct {
 func NewRouter(deps Deps) (*gin.Engine, error) {
 	// Checked here, at startup, because a nil Users would otherwise surface as
 	// a panic on the first authenticated request.
-	if deps.Auth == nil || deps.Applications == nil || deps.Tokens == nil || deps.Users == nil || deps.DB == nil {
-		return nil, errors.New("build router: Auth, Applications, Tokens, Users and DB are all required")
+	if deps.Auth == nil || deps.Applications == nil || deps.JobPosts == nil ||
+		deps.Tokens == nil || deps.Users == nil || deps.DB == nil {
+		return nil, errors.New("build router: Auth, Applications, JobPosts, Tokens, Users and DB are all required")
 	}
 
 	// gin.Default() with one substitution: its recovery middleware answers a
@@ -89,6 +92,19 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 		// decided per row, by the store's query and auth.CanViewApplication.
 		protected.GET("/applications", deps.Applications.List)
 		protected.GET("/applications/:id", deps.Applications.Get)
+
+		// Every role may read a post. Whether a draft is visible to the
+		// caller is decided by auth.CanViewDraftJobPosts.
+		protected.GET("/job-posts/:id", deps.JobPosts.Get)
+
+		// A group with an empty path adds middleware without adding a URL
+		// segment. These routes run RequireAuth, then RequireRole, then the
+		// handler, so a non-admin is refused before the body is read.
+		admin := protected.Group("", RequireRole(domain.RoleAdmin))
+		{
+			admin.POST("/job-posts", deps.JobPosts.Create)
+			admin.PATCH("/job-posts/:id", deps.JobPosts.Update)
+		}
 	}
 
 	return router, nil

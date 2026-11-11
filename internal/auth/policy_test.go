@@ -247,3 +247,15 @@ func TestPolicyZeroValuesGrantNothing(t *testing.T) {
 		}
 	}
 }
+
+func TestCanViewDraftJobPosts(t *testing.T) {
+	t.Parallel()
+
+	for _, role := range testRoles {
+		want := role == domain.RoleAdmin
+
+		if got := CanViewDraftJobPosts(domain.User{ID: userID, Role: role}); got != want {
+			t.Errorf("CanViewDraftJobPosts(role %q) = %v, want %v", role, got, want)
+		}
+	}
+}
