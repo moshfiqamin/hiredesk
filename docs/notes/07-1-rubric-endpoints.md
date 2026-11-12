@@ -23,7 +23,7 @@ Click the link, read the code, then come back.
 
 | # | Topic | Code |
 |---|---|---|
-| [1](#1-draft-only-or-editable-later-the-decision) | Draft only, or editable later? The decision | [`router.go:210`](../../internal/api/router.go#L210) |
+| [1](#1-draft-only-or-editable-later-the-decision) | Draft only, or editable later? The decision | [`router.go:221`](../../internal/api/router.go#L221) |
 | [2](#2-why-version-instead-of-overwrite) | **Why version instead of overwrite** | [`000003_rubric.up.sql:46`](../../migrations/000003_rubric.up.sql#L46) |
 | [3](#3-why-the-old-rows-must-be-kept) | **Why the old rows must be kept** | [`000005_scores_events.up.sql:14`](../../migrations/000005_scores_events.up.sql#L14) |
 | [4](#4-the-replace-transaction) | The replace transaction | [`rubric.go:90`](../../internal/store/rubric.go#L90) |
@@ -39,7 +39,7 @@ Click the link, read the code, then come back.
 
 ## 1. Draft only, or editable later? The decision
 
-**📍 Open:** [`internal/api/router.go:210`](../../internal/api/router.go#L210)
+**📍 Open:** [`internal/api/router.go:221`](../../internal/api/router.go#L221)
 
 The brief offered two rules: a rubric editable only while the post is a
 draft, or editable later with an explicit rescore. **Recommended and built:

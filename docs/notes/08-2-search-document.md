@@ -15,7 +15,7 @@ ever does go wrong.
 | [2](#2-why-denormalise-here-instead-of-joining) | **Why denormalise here instead of joining** | — |
 | [3](#3-what-goes-in-the-document) | What goes in the document | [`search.go:48`](../../internal/domain/search.go#L48) |
 | [4](#4-should-the-candidates-name-be-in-it) | **Should the candidate's name be in it?** | — |
-| [5](#5-written-inside-the-submit-transaction) | Written inside the submit transaction | [`applications.go:810`](../../internal/store/applications.go#L810) |
+| [5](#5-written-inside-the-submit-transaction) | Written inside the submit transaction | [`applications.go:823`](../../internal/store/applications.go#L823) |
 | [6](#6-nothing-else-blanks-it) | Nothing else blanks it | [`search_test.go:297`](../../test/integration/search_test.go#L297) |
 | [7](#7-the-repair-command) | **The repair command, and why it is worth having** | [`search.go:166`](../../internal/store/search.go#L166) |
 | [8](#8-one-rule-two-languages) | One rule, two languages | [`search_test.go:339`](../../test/integration/search_test.go#L339) |
@@ -141,7 +141,7 @@ My view: **no**, and the code leaves it out. Four reasons:
 
 ## 5. Written inside the submit transaction
 
-**📍 Open:** [`internal/store/applications.go:810`](../../internal/store/applications.go#L810)
+**📍 Open:** [`internal/store/applications.go:823`](../../internal/store/applications.go#L823)
 
 The document is built from `clean.Answers` (validated, canonical, empty
 answers removed) and `form` (already loaded, in display order), and passed

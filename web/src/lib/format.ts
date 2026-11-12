@@ -31,3 +31,19 @@ export const employmentTypes = [
 export function employmentTypeLabel(value: string): string {
   return employmentTypes.find((t) => t.value === value)?.label ?? value;
 }
+
+const moneyFormat = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 });
+
+/** salaryRange renders "45,000 – 60,000", "from 45,000", "up to 60,000", or null when neither is set. */
+export function salaryRange(min: number | null, max: number | null): string | null {
+  if (min !== null && max !== null) return `${moneyFormat.format(min)} – ${moneyFormat.format(max)}`;
+  if (min !== null) return `from ${moneyFormat.format(min)}`;
+  if (max !== null) return `up to ${moneyFormat.format(max)}`;
+  return null;
+}
+
+/** placesLeft says how many vacancies are still open, in words. */
+export function placesLeft(n: number): string {
+  if (n <= 0) return "All places offered";
+  return n === 1 ? "1 place left" : `${n} places left`;
+}

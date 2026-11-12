@@ -31,13 +31,13 @@ MIGRATE     := $(COMPOSE) run --rm migrate -path=/migrations -database="$(MIGRAT
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up down logs build docker-build test test-integration lint fmt psql seed env reset ps \
+.PHONY: help up down logs build docker-build test test-integration e2e a11y lint fmt psql seed env reset ps \
         migrate-up migrate-down migrate-create migrate-version adminer seed-bulk reindex-search
 
 help: ## Show this help
 	@echo "HireDesk — available commands:"
 	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(firstword $(MAKEFILE_LIST)) \
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(firstword $(MAKEFILE_LIST)) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 
@@ -83,6 +83,16 @@ test: ## Run all tests with the race detector and coverage
 test-integration: .env ## Run the database tests (needs `make up`, and Docker for the authorization matrix)
 	DATABASE_URL="postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$${POSTGRES_PORT:-5432}/$(POSTGRES_DB)?sslmode=disable" \
 		go test -race -count=1 -tags integration ./internal/store/... ./test/...
+
+# The browser tests drive the stack a reviewer runs (`make up && make seed`)
+# rather than starting servers of their own. Playwright's Chromium is
+# installed on first use. Both spend a few of the API's ten sign-ins a minute
+# per address, so run them a minute apart.
+e2e: ## Run the end-to-end flow in a browser (needs `make up && make seed`)
+	cd web && npx playwright install chromium && npm run test:e2e
+
+a11y: ## Audit every page for WCAG 2.2 AA, sideways scrolling and focus, at 375/768/1280px in both themes
+	cd web && npx playwright install chromium && npm run contrast && npm run audit
 
 lint: ## Run golangci-lint
 	@command -v golangci-lint >/dev/null 2>&1 \

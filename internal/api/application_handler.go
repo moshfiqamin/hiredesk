@@ -165,6 +165,10 @@ type applicationListItem struct {
 	// else the key is left out: omitempty drops a nil pointer, not an empty
 	// slice behind one.
 	Assignees *[]assigneeResponse `json:"assignees,omitempty"`
+
+	// ReviewedByMe is present for an interviewer only: whether they have
+	// filed their own review. It says nothing about anyone else's.
+	ReviewedByMe *bool `json:"reviewed_by_me,omitempty"`
 }
 
 type listedScoreResponse struct {
@@ -198,6 +202,7 @@ func newApplicationListItem(a *domain.Application) applicationListItem {
 		list := newAssigneeList(a.Assignees)
 		item.Assignees = &list
 	}
+	item.ReviewedByMe = a.ReviewedByMe
 	return item
 }
 

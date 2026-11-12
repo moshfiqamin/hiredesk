@@ -19,11 +19,15 @@ export function useJobPosts() {
   });
 }
 
-/** useJobPost is one post with its application form. */
-export function useJobPost(id: string) {
+/**
+ * useJobPost is one post with its application form. enabled lets a caller
+ * wait until it knows the ID, such as the post an application belongs to.
+ */
+export function useJobPost(id: string, { enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.jobPosts.detail(id),
     queryFn: ({ signal }) => api<JobPost>(`/v1/job-posts/${id}`, { signal }),
+    enabled,
   });
 }
 

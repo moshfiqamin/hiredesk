@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -18,6 +19,12 @@ export default function LoginPage() {
           <ThemeToggle />
         </div>
         <LoginForm />
+        <p className="mt-6 text-sm text-text-secondary">
+          New here?{" "}
+          <Link href="/register" className="font-medium text-foreground underline-offset-2 hover:underline">
+            Create a candidate account
+          </Link>
+        </p>
       </div>
       <p className="max-w-sm text-center text-sm text-muted-foreground">
         Running locally? <code className="font-mono">make seed</code> creates an admin account; its

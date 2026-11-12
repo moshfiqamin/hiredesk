@@ -271,9 +271,39 @@ function ResultsTable({ rows, view, searching, stale }: { rows: Row[]; view: Vie
       {selected.size > 0 && (
         <BulkBar rows={rows.filter((r) => selected.has(r.id))} onDone={() => setSelected(new Set())} />
       )}
+      {/* Below xl the main column is narrower than the table's 56rem, so
+          the rows become cards; the table is kept for widths it fits. */}
+      <ul aria-label="Applications" aria-busy={stale} className={`flex flex-col gap-2 xl:hidden ${stale ? "opacity-60" : ""}`}>
+        {rows.map((row, i) => (
+          <li key={row.id} className="flex gap-3 rounded-lg border bg-surface p-3 has-data-checked:bg-surface-selected">
+            <Checkbox
+              className="mt-0.5"
+              aria-label={`Select ${row.name}`}
+              checked={selected.has(row.id)}
+              onCheckedChange={(on) => toggle(row.id, on)}
+            />
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Link href={`/admin/applications/${row.id}`} className="font-medium hover:underline">
+                  {ranked && <span className="mr-1.5 font-mono text-xs text-muted-foreground tabular-nums">#{formatNumber(firstRank + i)}</span>}
+                  {row.name}
+                </Link>
+                <ApplicationStatusBadge status={row.status} />
+              </div>
+              <ScoreCell percentage={row.percentage} />
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm text-text-secondary">
+                <span className="min-w-0 truncate">
+                  {row.role} · <time dateTime={row.submittedAt}>{formatDate(row.submittedAt)}</time>
+                </span>
+                <AssigneeAvatars assignees={row.assignees} />
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
       <div
         aria-busy={stale}
-        className={`overflow-x-auto rounded-lg border bg-surface transition-opacity ${stale ? "opacity-60" : ""}`}
+        className={`hidden overflow-x-auto rounded-lg border bg-surface transition-opacity xl:block ${stale ? "opacity-60" : ""}`}
       >
         <table className="w-full min-w-[56rem] text-sm">
           <caption className="sr-only">

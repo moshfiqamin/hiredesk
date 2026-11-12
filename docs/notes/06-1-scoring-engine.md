@@ -96,7 +96,7 @@ store will load rows; this package only does arithmetic on them.
   part 2 added one ([06-2 §1](06-2-depth-and-validation.md#1-answer_depth)).
 
 **`Answer` was not redefined.** `domain.Answer` already exists
-([`application.go:74`](../../internal/domain/application.go#L74)) with `ID`,
+([`application.go:78`](../../internal/domain/application.go#L78)) with `ID`,
 `QuestionID` and `Text` — exactly the fields asked for — and it is what the
 store already returns. A second `Answer` type would need converting between
 the two at every call.

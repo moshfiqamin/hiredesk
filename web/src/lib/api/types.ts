@@ -138,6 +138,8 @@ export interface ApplicationListItem {
   score?: { percentage: number | null };
   /** Admins only. */
   assignees?: Assignee[];
+  /** Interviewers only: whether they have filed their own review. */
+  reviewed_by_me?: boolean;
 }
 
 export interface ApplicationPage {
@@ -261,4 +263,50 @@ export interface ScoreBreakdown {
   percentage: number;
   rubric_version: number;
   breakdown: ScoreEntry[];
+}
+
+/** InterviewerLoad is one row of GET /v1/admin/interviewers. */
+export interface InterviewerLoad {
+  id: string;
+  full_name: string;
+  email: string;
+  /** Assignments to applications still in progress. */
+  open_assignments: number;
+  /** The part of open_assignments not reviewed yet. */
+  pending_reviews: number;
+}
+
+/** JobListing is one card of the public listing, GET /v1/job-posts. */
+export interface JobListing {
+  id: string;
+  title: string;
+  location: string | null;
+  employment_type: string | null;
+  skill_tags: string[];
+  remaining_vacancies: number;
+}
+
+export interface JobListingPage {
+  data: JobListing[];
+  next_cursor: string | null;
+}
+
+/** JobListingDetail is GET /v1/job-posts/:id/listing: an open post's public page. */
+export interface JobListingDetail extends JobListing {
+  description: string | null;
+  salary_min: number | null;
+  salary_max: number | null;
+  closes_at: string | null;
+  questions: Question[];
+}
+
+/** AnswerProblem is one entry of a submission 422's details.answers. */
+export interface AnswerProblem {
+  question_id: string;
+  code: string;
+  message: string;
+  index?: number;
+  min_length?: number;
+  got?: number;
+  choices?: string[];
 }

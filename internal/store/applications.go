@@ -227,9 +227,18 @@ func applicationPageQuery(viewer domain.User, filter domain.ApplicationFilter, p
 		) asg ON true`
 	}
 
+	// Whether the viewing interviewer has reviewed each row: the one fact
+	// their worklist sorts by. Answered from the unique index on
+	// (application_id, interviewer_id) in reviews.
+	reviewedColumn := `NULL::bool`
+	if viewer.Role == domain.RoleInterviewer {
+		reviewedColumn = `EXISTS (SELECT 1 FROM reviews r WHERE r.application_id = a.id AND r.interviewer_id = ` +
+			page.arg(viewer.ID) + `::text::uuid)`
+	}
+
 	query := `
 		WITH page AS (` + inner + `)
-		SELECT ` + applicationColumns + `, u.full_name, p.title, ` + scoreColumn + `, ` + assigneesColumn + `
+		SELECT ` + applicationColumns + `, u.full_name, p.title, ` + scoreColumn + `, ` + assigneesColumn + `, ` + reviewedColumn + `
 		FROM page a
 		JOIN users u ON u.id = a.candidate_id
 		JOIN job_posts p ON p.id = a.job_post_id` + scoreJoin + assigneesJoin + `
@@ -246,6 +255,7 @@ func scanListedApplication(row pgx.CollectableRow, role string) (domain.Applicat
 		a          domain.Application
 		percentage *float64
 		assignees  []domain.Assignee
+		reviewed   *bool
 	)
 	// pgx decodes a jsonb column into a Go value with encoding/json, so the
 	// aggregated [{"id":…,"name":…}] arrives as a slice of structs; NULL
@@ -256,7 +266,7 @@ func scanListedApplication(row pgx.CollectableRow, role string) (domain.Applicat
 	}
 	var raw []assigneeJSON
 	err := row.Scan(&a.ID, &a.JobPostID, &a.CandidateID, &a.Status, &a.CVURL, &a.SubmittedAt, &a.UpdatedAt,
-		&a.CandidateName, &a.JobPostTitle, &percentage, &raw)
+		&a.CandidateName, &a.JobPostTitle, &percentage, &raw, &reviewed)
 	if err != nil {
 		return domain.Application{}, err
 	}
@@ -270,6 +280,9 @@ func scanListedApplication(row pgx.CollectableRow, role string) (domain.Applicat
 			assignees = append(assignees, domain.Assignee(r))
 		}
 		a.Assignees = assignees
+	}
+	if role == domain.RoleInterviewer {
+		a.ReviewedByMe = reviewed
 	}
 	return a, nil
 }

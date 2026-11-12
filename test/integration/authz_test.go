@@ -272,8 +272,13 @@ type callerRow struct {
 	// reorder and delete.
 	qList, qCreate, qCreateLocked, qUpdate, qReorder, qDelete int
 
-	// The public listing, which every caller gets, identically.
-	listing int
+	// The public listing, and one open post's public page: every caller
+	// gets each, identically.
+	listing, listingDetail int
+
+	// The interviewer directory with workloads, for the assignment picker:
+	// admins only.
+	interviewers int
 
 	// Submitting an application, to a closed post: candidates pass the role
 	// check and are refused by the first rule; everyone else is refused first.
@@ -346,7 +351,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postCreate: unau, postPatch: unau, postPatchMalformed: unau,
 			postOpenReady: unau, postOpenUnready: unau, postClose: unau,
 			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau,
-			listing: ok, submit: unau, statusChange: unau,
+			listing: ok, listingDetail: ok, interviewers: unau, submit: unau, statusChange: unau,
 			rubricGet: unau, rubricPut: unau, scoreA: unau,
 			rescoreB: unau, rescoreAll: unau, ranking: unau, search: unau, adminPosts: unau,
 			assignList: unau, assignRepeat: unau, assignCandidate: unau, unassign: unau,
@@ -357,7 +362,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postCreate: unau, postPatch: unau, postPatchMalformed: unau,
 			postOpenReady: unau, postOpenUnready: unau, postClose: unau,
 			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau,
-			listing: ok, submit: unau, statusChange: unau,
+			listing: ok, listingDetail: ok, interviewers: unau, submit: unau, statusChange: unau,
 			rubricGet: unau, rubricPut: unau, scoreA: unau,
 			rescoreB: unau, rescoreAll: unau, ranking: unau, search: unau, adminPosts: unau,
 			assignList: unau, assignRepeat: unau, assignCandidate: unau, unassign: unau,
@@ -369,7 +374,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postCreate: made, postPatch: ok, postPatchMalformed: bad,
 			postOpenReady: ok, postOpenUnready: conf, postClose: ok,
 			qList: ok, qCreate: made, qCreateLocked: conf, qUpdate: ok, qReorder: ok, qDelete: gone,
-			listing: ok, submit: forb, statusChange: ok,
+			listing: ok, listingDetail: ok, interviewers: ok, submit: forb, statusChange: ok,
 			rubricGet: ok, rubricPut: ok, scoreA: ok,
 			rescoreB: ok, rescoreAll: ok, ranking: ok, search: ok, adminPosts: ok,
 			assignList: ok, assignRepeat: ok, assignCandidate: unpr, unassign: gone,
@@ -381,7 +386,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
-			listing: ok, submit: forb, statusChange: forb,
+			listing: ok, listingDetail: ok, interviewers: forb, submit: forb, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: ok,
 			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb, adminPosts: forb,
 			assignList: forb, assignRepeat: forb, assignCandidate: forb, unassign: forb,
@@ -393,7 +398,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
-			listing: ok, submit: forb, statusChange: forb,
+			listing: ok, listingDetail: ok, interviewers: forb, submit: forb, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: nf,
 			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb, adminPosts: forb,
 			assignList: forb, assignRepeat: forb, assignCandidate: forb, unassign: forb,
@@ -405,7 +410,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
-			listing: ok, submit: conf, statusChange: forb,
+			listing: ok, listingDetail: ok, interviewers: forb, submit: conf, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: forb,
 			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb, adminPosts: forb,
 			assignList: forb, assignRepeat: forb, assignCandidate: forb, unassign: forb,
@@ -417,7 +422,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
-			listing: ok, submit: conf, statusChange: forb,
+			listing: ok, listingDetail: ok, interviewers: forb, submit: conf, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: nf,
 			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb, adminPosts: forb,
 			assignList: forb, assignRepeat: forb, assignCandidate: forb, unassign: forb,
@@ -432,7 +437,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			postCreate: forb, postPatch: forb, postPatchMalformed: forb,
 			postOpenReady: forb, postOpenUnready: forb, postClose: forb,
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
-			listing: ok, submit: conf, statusChange: forb,
+			listing: ok, listingDetail: ok, interviewers: forb, submit: conf, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: forb,
 			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb, adminPosts: forb,
 			assignList: forb, assignRepeat: forb, assignCandidate: forb, unassign: forb,
@@ -483,6 +488,10 @@ func TestAuthorizationMatrix(t *testing.T) {
 		// disturb it.
 		{name: "GET public listing", method: http.MethodGet, route: "/v1/job-posts", path: "/v1/job-posts?limit=100",
 			public: true, cellFor: func(r callerRow) int { return r.listing }},
+		{name: "GET public job post page", method: http.MethodGet, route: "/v1/job-posts/:id/listing", path: "/v1/job-posts/" + postID + "/listing",
+			public: true, cellFor: func(r callerRow) int { return r.listingDetail }},
+		{name: "GET interviewer directory", method: http.MethodGet, route: "/v1/admin/interviewers", path: "/v1/admin/interviewers",
+			cellFor: func(r callerRow) int { return r.interviewers }},
 		{name: "GET admin job post list", method: http.MethodGet, route: "/v1/admin/job-posts", path: "/v1/admin/job-posts",
 			cellFor: func(r callerRow) int { return r.adminPosts }},
 

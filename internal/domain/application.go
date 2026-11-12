@@ -51,6 +51,10 @@ type Application struct {
 	// review the application is not the candidate's or another
 	// interviewer's business.
 	Assignees []Assignee
+
+	// ReviewedByMe is nil unless the viewer is an interviewer: whether that
+	// interviewer has filed their review of this application.
+	ReviewedByMe *bool
 }
 
 // ListedScore is an application's latest total as a percentage, as the

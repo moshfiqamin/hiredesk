@@ -283,7 +283,9 @@ function RolesTable({ rows, sort, onSort }: { rows: JobPostSummary[]; sort: Sort
   return (
     // Hidden below md (768px), where the cards take over; a seven-column
     // table at 375px would scroll sideways, hiding columns off-screen.
-    <div className="hidden overflow-hidden rounded-lg border bg-surface md:block">
+    // xl, not md: beside the 14rem sidebar the main column is narrower than
+    // the table until about 1280px, and the cards read better until then.
+    <div className="hidden overflow-hidden rounded-lg border bg-surface xl:block">
       <table className="w-full text-sm">
         <caption className="sr-only">Roles, sorted by {sort.key}, {sort.dir === "asc" ? "ascending" : "descending"}</caption>
         <thead className="border-b bg-surface-sunken/60">
@@ -336,7 +338,7 @@ function RolesTable({ rows, sort, onSort }: { rows: JobPostSummary[]; sort: Sort
 
 function RolesCards({ rows }: { rows: JobPostSummary[] }) {
   return (
-    <ul className="flex flex-col gap-2 md:hidden" aria-label="Roles">
+    <ul className="flex flex-col gap-2 xl:hidden" aria-label="Roles">
       {rows.map((post) => (
         <li key={post.id} className="rounded-lg border bg-surface p-3">
           <div className="flex items-start justify-between gap-2">
@@ -508,7 +510,7 @@ function RolesSkeleton() {
         <Skeleton className="h-8 w-72" />
         <Skeleton className="h-8 md:w-72" />
       </div>
-      <div className="hidden overflow-hidden rounded-lg border bg-surface md:block">
+      <div className="hidden overflow-hidden rounded-lg border bg-surface xl:block">
         <div className="flex h-9 items-center gap-6 border-b bg-surface-sunken/60 px-3">
           {["w-16", "w-12", "w-16", "ml-auto w-16", "w-20", "w-14"].map((w, i) => (
             <Skeleton key={i} className={`h-3 ${w}`} />
@@ -529,7 +531,7 @@ function RolesSkeleton() {
           </div>
         ))}
       </div>
-      <div className="flex flex-col gap-2 md:hidden">
+      <div className="flex flex-col gap-2 xl:hidden">
         {widths.slice(0, 3).map((w, i) => (
           <Skeleton key={i} className="h-36 rounded-lg" />
         ))}

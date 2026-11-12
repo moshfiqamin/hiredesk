@@ -10,16 +10,8 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import type { TokenPair } from "@/lib/api/types";
+import { homeFor, safeNext } from "@/lib/auth/home";
 import { sessionFromTokens, setSession } from "@/lib/auth/session";
-
-/** safeNext returns a same-site path to go to after signing in. */
-function safeNext(): string {
-  const next = new URLSearchParams(window.location.search).get("next");
-  // Only a path on this site. "//evil.example" is a protocol-relative URL to
-  // another host, so a leading "//" is refused as well: an open redirect
-  // would let a phishing link bounce through this login page.
-  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/admin/roles";
-}
 
 /** LoginForm signs in with email and password. */
 export function LoginForm() {
@@ -32,7 +24,8 @@ export function LoginForm() {
       api<TokenPair>("/v1/auth/login", { method: "POST", body: { email, password }, auth: false }),
     onSuccess: (tokens) => {
       setSession(sessionFromTokens(tokens));
-      router.replace(safeNext());
+      // Back to where they were going, or to the page their role works from.
+      router.replace(safeNext() ?? homeFor(tokens.user.role));
     },
   });
 

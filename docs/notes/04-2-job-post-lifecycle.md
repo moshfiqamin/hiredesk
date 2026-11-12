@@ -20,7 +20,7 @@ Click the link, read the code, then come back.
 | [1](#1-what-a-state-machine-is) | What a state machine is | [`job_post.go:26`](../../internal/domain/job_post.go#L26) |
 | [2](#2-why-a-map-beats-a-chain-of-if-statements) | Why a map beats a chain of `if` statements | [`job_post.go:35`](../../internal/domain/job_post.go#L35) |
 | [3](#3-the-rest-of-the-lifecycle-api) | The rest of the lifecycle API | [`job_post.go:43`](../../internal/domain/job_post.go#L43) |
-| [4](#4-one-route-per-transition) | One route per transition | [`router.go:180`](../../internal/api/router.go#L180) |
+| [4](#4-one-route-per-transition) | One route per transition | [`router.go:186`](../../internal/api/router.go#L186) |
 | [5](#5-check-and-write-under-one-lock) | Check and write under one lock | [`job_posts.go:205`](../../internal/store/job_posts.go#L205) |
 | [6](#6-why-409-and-not-400-or-422) | Why 409, and not 400 or 422 | [`errors.go:91`](../../internal/api/errors.go#L91) |
 | [7](#7-why-a-post-cannot-open-without-a-rubric) | Why a post cannot open without a rubric | [`job_post.go:110`](../../internal/domain/job_post.go#L110) |
@@ -167,7 +167,7 @@ did not happen, or need a special case to skip it.
 
 ## 4. One route per transition
 
-**📍 Open:** [`internal/api/router.go:180`](../../internal/api/router.go#L180)
+**📍 Open:** [`internal/api/router.go:186`](../../internal/api/router.go#L186)
 
 ```
 POST /v1/job-posts/:id/open
@@ -454,7 +454,7 @@ so a post with no rubric gets counts of 0 rather than `pgx.ErrNoRows`.
 | [`TestJobPostTransitionsAreAdminOnly`](../../internal/api/job_post_handler_test.go#L998) | 403 / 401, and 400 for a malformed ID, all before the store |
 | [`TestJobPostStoreLifecycle`](../../internal/store/job_post_lifecycle_integration_test.go#L91) | Real SQL: the full lifecycle with one event per move and none per refusal; readiness including rubric versions |
 | [`TestJobPostStoreTransitionConcurrently`](../../internal/store/job_post_lifecycle_integration_test.go#L226) | Section 5's race |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L304) | Three new columns: open a ready draft, open an unready one, close an open post, for every caller |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L309) | Three new columns: open a ready draft, open an unready one, close an open post, for every caller |
 
 ---
 

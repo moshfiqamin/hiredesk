@@ -17,16 +17,16 @@ Click the link, read the code, then come back.
 | # | Topic | Code |
 |---|---|---|
 | [1](#1-a-route-with-no-authentication) | A route with no authentication | [`router.go:125`](../../internal/api/router.go#L125) |
-| [2](#2-what-a-listing-shows) | What a listing shows | [`job_listing_handler.go:38`](../../internal/api/job_listing_handler.go#L38) |
-| [3](#3-remaining-vacancies-and-skill-tags-in-sql) | Remaining vacancies and skill tags, in SQL | [`job_listing.go:52`](../../internal/store/job_listing.go#L52) |
+| [2](#2-what-a-listing-shows) | What a listing shows | [`job_listing_handler.go:41`](../../internal/api/job_listing_handler.go#L41) |
+| [3](#3-remaining-vacancies-and-skill-tags-in-sql) | Remaining vacancies and skill tags, in SQL | [`job_listing.go:87`](../../internal/store/job_listing.go#L87) |
 | [4](#4-what-offset-10000-physically-does) | What `OFFSET 10000` physically does | [`000009_job_posts_open_listing_idx.up.sql:16`](../../migrations/000009_job_posts_open_listing_idx.up.sql#L16) |
-| [5](#5-keyset-pagination) | Keyset pagination | [`job_listing.go:56`](../../internal/store/job_listing.go#L56) |
-| [6](#6-the-sort-key-must-never-change-and-never-tie) | The sort key must never change, and never tie | [`job_listing.go:43`](../../internal/domain/job_listing.go#L43) |
+| [5](#5-keyset-pagination) | Keyset pagination | [`job_listing.go:91`](../../internal/store/job_listing.go#L91) |
+| [6](#6-the-sort-key-must-never-change-and-never-tie) | The sort key must never change, and never tie | [`job_listing.go:56`](../../internal/domain/job_listing.go#L56) |
 | [7](#7-the-second-offset-bug-skipped-and-repeated-rows) | The second `OFFSET` bug: skipped and repeated rows | [`job_listing_integration_test.go:274`](../../internal/store/job_listing_integration_test.go#L274) |
 | [8](#8-the-cursor) | The cursor | [`cursor.go:44`](../../internal/api/cursor.go#L44) |
-| [9](#9-why-limit-is-capped) | Why `limit` is capped | [`job_listing_handler.go:124`](../../internal/api/job_listing_handler.go#L124) |
-| [10](#10-idioms-appearing-for-the-first-time) | Idioms appearing for the first time | [`job_listing.go:103`](../../internal/store/job_listing.go#L103) |
-| [11](#11-the-tests) | The tests | [`job_listing_handler_test.go:202`](../../internal/api/job_listing_handler_test.go#L202) |
+| [9](#9-why-limit-is-capped) | Why `limit` is capped | [`job_listing_handler.go:174`](../../internal/api/job_listing_handler.go#L174) |
+| [10](#10-idioms-appearing-for-the-first-time) | Idioms appearing for the first time | [`job_listing.go:111`](../../internal/store/job_listing.go#L111) |
+| [11](#11-the-tests) | The tests | [`job_listing_handler_test.go:223`](../../internal/api/job_listing_handler_test.go#L223) |
 
 ---
 
@@ -66,7 +66,7 @@ working: even a public route has to be in the matrix.
 
 ## 2. What a listing shows
 
-**📍 Open:** [`internal/api/job_listing_handler.go:38`](../../internal/api/job_listing_handler.go#L38)
+**📍 Open:** [`internal/api/job_listing_handler.go:41`](../../internal/api/job_listing_handler.go#L41)
 
 ```json
 {"data":[{"id":"…","title":"Demo SRE","location":"Chittagong","employment_type":"full-time",
@@ -100,7 +100,7 @@ scoring.
 
 ## 3. Remaining vacancies and skill tags, in SQL
 
-**📍 Open:** [`internal/store/job_listing.go:52`](../../internal/store/job_listing.go#L52)
+**📍 Open:** [`internal/store/job_listing.go:87`](../../internal/store/job_listing.go#L87)
 
 The query has three steps:
 
@@ -141,7 +141,7 @@ vacancy open.
 `jsonb_array_elements_text` raises an error if given anything but an array. A
 single criterion with `{"keywords": "go"}` would then turn the whole listing
 into a 500 for every visitor. The `CASE WHEN jsonb_typeof(…) = 'array'` at
-[`job_listing.go:86`](../../internal/store/job_listing.go#L86) reads such a
+[`job_listing.go:32`](../../internal/store/job_listing.go#L32) reads such a
 criterion as having no keywords instead.
 
 ---
@@ -195,7 +195,7 @@ concurrent writers and a cold cache is slower, but the shape is the same.
 
 ## 5. Keyset pagination
 
-**📍 Open:** [`internal/store/job_listing.go:56`](../../internal/store/job_listing.go#L56)
+**📍 Open:** [`internal/store/job_listing.go:91`](../../internal/store/job_listing.go#L91)
 
 Instead of "skip N rows", say **where the last page ended** and ask for what
 comes after:
@@ -251,7 +251,7 @@ infinite-scroll or "next page" job board, neither is missed.
 
 ## 6. The sort key must never change, and never tie
 
-**📍 Open:** [`internal/domain/job_listing.go:43`](../../internal/domain/job_listing.go#L43)
+**📍 Open:** [`internal/domain/job_listing.go:56`](../../internal/domain/job_listing.go#L56)
 
 A cursor is a promise: "everything before this point has been shown". That
 only holds if a row cannot move across the point. So the sort key must be:
@@ -384,7 +384,7 @@ caller's identity checked on every page anyway.
 
 **`next_cursor` is issued only if more rows exist.** The store fetches
 `limit + 1` rows
-([`job_listing.go:103`](../../internal/store/job_listing.go#L103)). If it
+([`job_listing.go:111`](../../internal/store/job_listing.go#L111)). If it
 gets the extra one, there is a next page, and the extra row is dropped. If
 not, `next_cursor` is `null`. Without this, a page of exactly `limit` rows
 would always offer a cursor, and the client would make one more request for
@@ -394,10 +394,10 @@ an empty page. `TestJobListingNoCursorWhenExactlyFull` pins it.
 
 ## 9. Why `limit` is capped
 
-**📍 Open:** [`internal/api/job_listing_handler.go:124`](../../internal/api/job_listing_handler.go#L124)
+**📍 Open:** [`internal/api/job_listing_handler.go:174`](../../internal/api/job_listing_handler.go#L174)
 
 `limit` defaults to 20. Above 100 it is served as 100
-([`job_listing_handler.go:140`](../../internal/api/job_listing_handler.go#L140)),
+([`job_listing_handler.go:190`](../../internal/api/job_listing_handler.go#L190)),
 and anything that is not a whole number of at least 1 is a 422.
 
 **Without a cap, `limit` is a dial anyone can turn to "everything".** This
@@ -436,7 +436,7 @@ negative.
 
 ## 10. Idioms appearing for the first time
 
-**📍 Open:** [`internal/store/job_listing.go:103`](../../internal/store/job_listing.go#L103)
+**📍 Open:** [`internal/store/job_listing.go:111`](../../internal/store/job_listing.go#L111)
 
 **Row-value comparison.** `(created_at, id) < ($1, $2)` compares tuples left
 to right, like words in a dictionary: true if `created_at < $1`, or if they
@@ -474,21 +474,21 @@ handler must tell apart: absent is the default, an empty value is an error.
 
 ## 11. The tests
 
-**📍 Open:** [`internal/api/job_listing_handler_test.go:202`](../../internal/api/job_listing_handler_test.go#L202)
+**📍 Open:** [`internal/api/job_listing_handler_test.go:223`](../../internal/api/job_listing_handler_test.go#L223)
 
 | Test | What it pins |
 |---|---|
-| [`TestJobListingIsPublic`](../../internal/api/job_listing_handler_test.go#L115) | No header, a valid token, a garbage token: all 200, no `WWW-Authenticate` |
-| [`TestJobListingEnvelopeAndFields`](../../internal/api/job_listing_handler_test.go#L135) | Exactly `data` and `next_cursor`; exactly the six fields per item; `[]` and `null` for empty values |
-| [`TestJobListingPagesThroughEverythingOnce`](../../internal/api/job_listing_handler_test.go#L202) | Seven posts in pages of three: every post once, in order, three pages |
-| [`TestJobListingNoCursorWhenExactlyFull`](../../internal/api/job_listing_handler_test.go#L243) | No cursor to an empty page |
-| [`TestJobListingLimit`](../../internal/api/job_listing_handler_test.go#L259) | Default, cap, and every invalid form, without calling the store |
-| [`TestCursorRoundTrip`](../../internal/api/job_listing_handler_test.go#L300) / [`TestInvalidCursors`](../../internal/api/job_listing_handler_test.go#L328) | Microseconds and time zones survive; twelve kinds of bad cursor are refused |
+| [`TestJobListingIsPublic`](../../internal/api/job_listing_handler_test.go#L136) | No header, a valid token, a garbage token: all 200, no `WWW-Authenticate` |
+| [`TestJobListingEnvelopeAndFields`](../../internal/api/job_listing_handler_test.go#L156) | Exactly `data` and `next_cursor`; exactly the six fields per item; `[]` and `null` for empty values |
+| [`TestJobListingPagesThroughEverythingOnce`](../../internal/api/job_listing_handler_test.go#L223) | Seven posts in pages of three: every post once, in order, three pages |
+| [`TestJobListingNoCursorWhenExactlyFull`](../../internal/api/job_listing_handler_test.go#L264) | No cursor to an empty page |
+| [`TestJobListingLimit`](../../internal/api/job_listing_handler_test.go#L280) | Default, cap, and every invalid form, without calling the store |
+| [`TestCursorRoundTrip`](../../internal/api/job_listing_handler_test.go#L321) / [`TestInvalidCursors`](../../internal/api/job_listing_handler_test.go#L349) | Microseconds and time zones survive; twelve kinds of bad cursor are refused |
 | [`TestListOpenJobPostsTies`](../../internal/store/job_listing_integration_test.go#L116) | Section 6 |
 | [`TestListOpenJobPostsRemainingVacancies`](../../internal/store/job_listing_integration_test.go#L163) | Only offers count; never below zero |
 | [`TestListOpenJobPostsSkillTags`](../../internal/store/job_listing_integration_test.go#L216) | Normalising, current version only, malformed config ignored |
 | [`TestListOpenJobPostsIsStableWhileDataChanges`](../../internal/store/job_listing_integration_test.go#L274) | Section 7, with the `OFFSET` answers alongside |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L304) | Every caller gets the anonymous response, with no drafts in it |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L309) | Every caller gets the anonymous response, with no drafts in it |
 
 The store tests share a database with every other test, and the listing is
 global. Each test therefore places its posts in its own year far in the future

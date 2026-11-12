@@ -14,6 +14,27 @@ import (
 	"github.com/moshfiqamin/hiredesk/internal/domain"
 )
 
+// GetOpenJobListing on the fake finds an open post by ID; anything else is
+// not found, as the SQL's status filter makes it.
+func (f *fakeJobPosts) GetOpenJobListing(_ context.Context, id string) (*domain.JobListingDetail, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	p, ok := f.byID[id]
+	if !ok || p.Status != domain.JobStatusOpen {
+		return nil, domain.ErrNotFound
+	}
+	d := &domain.JobListingDetail{
+		JobListing: domain.JobListing{ID: p.ID, Title: p.Title, Location: p.Location, EmploymentType: p.EmploymentType,
+			RemainingVacancies: p.Vacancies, CreatedAt: p.CreatedAt},
+		Description: p.Description, Questions: p.Questions,
+	}
+	if extra, ok := f.listings[p.ID]; ok {
+		d.SkillTags, d.RemainingVacancies = extra.SkillTags, extra.RemainingVacancies
+	}
+	return d, nil
+}
+
 // ListOpenJobPosts on the fake applies the same keyset rule as the SQL, over
 // the fake's open posts, so the handler's paging can be tested end to end.
 // Remaining vacancies and tags come from the listings field when set.
@@ -390,5 +411,59 @@ func TestJobListingStoreFailure(t *testing.T) {
 	rec := f.send(http.MethodGet, "/v1/job-posts", "", "")
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rec.Code)
+	}
+}
+
+func TestJobListingDetail(t *testing.T) {
+	t.Parallel()
+
+	f := newListingFixture(t, 1)
+	const id = "ffffffff-0000-4000-8000-000000000000"
+	post := f.posts.byID[id]
+	post.Questions = []domain.Question{{ID: "q1", Prompt: "Years of Go?", Kind: "number", Required: true}}
+	f.posts.byID[id] = post
+
+	// No Authorization header: the page is for visitors.
+	rec := f.send(http.MethodGet, "/v1/job-posts/"+id+"/listing", "", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d; body %s", rec.Code, rec.Body)
+	}
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for _, key := range []string{"id", "title", "skill_tags", "remaining_vacancies", "description", "salary_min", "closes_at", "questions"} {
+		if _, ok := got[key]; !ok {
+			t.Errorf("missing %q in %s", key, rec.Body)
+		}
+	}
+	if !strings.Contains(string(got["questions"]), `"Years of Go?"`) || string(got["skill_tags"]) != "[]" {
+		t.Errorf("questions = %s, skill_tags = %s", got["questions"], got["skill_tags"])
+	}
+	// Nothing from the admin view, and never the rubric.
+	for _, key := range []string{"status", "created_by", "vacancies", "rubric"} {
+		if _, ok := got[key]; ok {
+			t.Errorf("public detail leaks %q", key)
+		}
+	}
+
+	// A draft and a closed post with well-formed IDs, so the 404 below
+	// comes from the status rule and not from the UUID check.
+	const draftID, closedID = "ffffffff-2222-4000-8000-000000000001", "ffffffff-2222-4000-8000-000000000002"
+	f.posts.byID[draftID] = domain.JobPost{ID: draftID, Title: "Draft", Status: domain.JobStatusDraft}
+	f.posts.byID[closedID] = domain.JobPost{ID: closedID, Title: "Closed", Status: domain.JobStatusClosed}
+
+	for name, tc := range map[string]struct {
+		path string
+		want int
+	}{
+		"draft":     {"/v1/job-posts/" + draftID + "/listing", http.StatusNotFound},
+		"closed":    {"/v1/job-posts/" + closedID + "/listing", http.StatusNotFound},
+		"missing":   {"/v1/job-posts/ffffffff-9999-4000-8000-000000000000/listing", http.StatusNotFound},
+		"malformed": {"/v1/job-posts/nope/listing", http.StatusBadRequest},
+	} {
+		if rec := f.send(http.MethodGet, tc.path, "", ""); rec.Code != tc.want {
+			t.Errorf("%s: status %d, want %d", name, rec.Code, tc.want)
+		}
 	}
 }

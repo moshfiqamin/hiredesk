@@ -2,9 +2,11 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -18,6 +20,7 @@ const codeInvalidCursor = "invalid_cursor"
 // needs. *store.JobPostStore satisfies it.
 type JobListingStore interface {
 	ListOpenJobPosts(ctx context.Context, after *domain.ListingPosition, limit int) (listings []domain.JobListing, more bool, err error)
+	GetOpenJobListing(ctx context.Context, id string) (*domain.JobListingDetail, error)
 }
 
 // JobListingHandler serves the public job listing. Its route needs no
@@ -116,6 +119,53 @@ func (h *JobListingHandler) List(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, page)
+}
+
+// jobListingDetailResponse is one open post on its public page. Like
+// jobListingResponse, its own type, so an admin-only field cannot leak here.
+type jobListingDetailResponse struct {
+	jobListingResponse
+	Description *string            `json:"description"`
+	SalaryMin   *json.Number       `json:"salary_min"`
+	SalaryMax   *json.Number       `json:"salary_max"`
+	ClosesAt    *time.Time         `json:"closes_at"`
+	Questions   []questionResponse `json:"questions"`
+}
+
+// Get handles GET /v1/job-posts/:id/listing: one open post, its description
+// and its application form, for anyone, signed in or not. Anything that is
+// not an open post is a 404.
+func (h *JobListingHandler) Get(c *gin.Context) {
+	id, ok := pathUUID(c, "id")
+	if !ok {
+		return
+	}
+
+	d, err := h.listings.GetOpenJobListing(c.Request.Context(), id)
+	if err != nil {
+		Respond(c, fmt.Errorf("get job listing: %w", err))
+		return
+	}
+
+	tags := d.SkillTags
+	if tags == nil {
+		tags = []string{}
+	}
+	out := jobListingDetailResponse{
+		jobListingResponse: jobListingResponse{
+			ID: d.ID, Title: d.Title, Location: d.Location, EmploymentType: d.EmploymentType,
+			SkillTags: tags, RemainingVacancies: d.RemainingVacancies,
+		},
+		Description: d.Description,
+		SalaryMin:   moneyJSON(d.SalaryMin),
+		SalaryMax:   moneyJSON(d.SalaryMax),
+		Questions:   newQuestionList(d.Questions),
+	}
+	if d.ClosesAt != nil {
+		closes := d.ClosesAt.UTC()
+		out.ClosesAt = &closes
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 // listingLimit reads the limit query parameter. It writes a 422 and returns

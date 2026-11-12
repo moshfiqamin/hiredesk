@@ -75,10 +75,15 @@ PostgreSQL, waits for its healthcheck, applies all 13 migrations, and starts
 the API on port 8080 and the Next.js frontend on port 3000. The first build
 takes a few minutes.
 
-<http://localhost:3000> is the admin console: roles, the application-form and
-rubric builders, and a server-paged applications table that reads as a
-shortlist when sorted by score. Run `make seed`, then sign in as
-`admin@hiredesk.test` / `admin-password` (accounts below).
+<http://localhost:3000> is the whole product. Strangers see the open roles
+and each role's questions without an account, register, and apply through a
+form built from the role's questions, with a draft saved as they type.
+Candidates track their applications through the pipeline. Interviewers get a
+worklist, unreviewed first, and an anchored 1–10 review form. Admins build
+roles, application forms and rubrics, read each score with its evidence, rank
+applicants against the vacancies and assign interviewers by load. Run
+`make seed`, then sign in as `admin@hiredesk.test` / `admin-password`
+(accounts below).
 
 **Do not create `.env` by copying `.env.example`.** Its `JWT_SECRET` is a
 placeholder that is deliberately too short, so a copied file makes the API
@@ -164,13 +169,14 @@ The rule is checked, not just stated: `go list -deps ./internal/domain
 ## Technical highlights
 
 - **Refresh-token rotation with replay detection.** Each refresh issues a new token and kills the old one; presenting a used token revokes every session of that user ([`store/tokens.go`](internal/store/tokens.go), [notes](docs/notes/03-auth.md)).
-- **An authorization matrix test.** Every caller (anonymous, three roles, assigned and unassigned interviewers) against every protected route on a real PostgreSQL: 334 subtests, and a route added without a row fails the build ([`authz_test.go`](test/integration/authz_test.go)).
+- **An authorization matrix test.** Every caller (anonymous, three roles, assigned and unassigned interviewers) against every protected route on a real PostgreSQL: 358 subtests, and a route added without a row fails the build ([`authz_test.go`](test/integration/authz_test.go)).
 - **A concurrent duplicate-application test.** Ten goroutines submit the same candidate's application at once, released by one start gate; exactly one succeeds and the rest get 409 `already_applied`, enforced by a unique constraint rather than a check-then-insert ([`concurrency_test.go`](test/integration/concurrency_test.go)).
 - **An N+1 query, measured.** The ranking endpoint is deliberately naive today: 502 statements for 500 applicants, **53.9 ms median server time** (20 runs, API and PostgreSQL in Docker on one laptop). The single-query fix is designed but **not yet built**, so there is no "after" number yet ([notes](docs/notes/07-5-ranking.md)).
 - **A score you can audit, on screen.** The admin frontend draws each criterion as earned against available on one zero-based axis, highlights the words that matched in the answer (XSS-safe: segments rendered as text, never `dangerouslySetInnerHTML`), and says in a sentence why any criterion scored zero ([`score-breakdown.tsx`](web/src/components/score/score-breakdown.tsx), [notes](docs/notes/13-2-evidence.md)).
 - **Whole-word full-text search on a GIN index.** A generated `tsvector` column with stemming: "testing" finds "tested", "go" does not find "google", and the query is a bound parameter ([`000012_search.up.sql`](migrations/000012_search.up.sql), [decision D7](docs/decisions.md)).
 - **Graceful shutdown, proven.** On SIGTERM a request already in flight finishes with 200, new connections are refused, then the pool closes and the process exits 0. Past the 10-second budget it logs which requests it abandoned and exits 1 ([`cmd/api/main.go`](cmd/api/main.go), [notes](docs/notes/10-4-graceful-shutdown.md)).
 - **Request IDs end to end.** Every response carries `X-Request-ID`, every error body carries `request_id`, and every log line written during the request carries both the ID and the user ID, read from `context.Context` rather than passed down ([notes](docs/notes/10-2-structured-logging.md)).
+- **Accessible and responsive, by test.** An axe audit covers 17 pages at 375, 768 and 1280px in both themes (102 page checks: zero WCAG 2.2 AA violations, no sideways scrolling, one `h1` each, a visible focus indicator on everything Tab reaches), and a contrast script measures every token pair. One Playwright test walks the product end to end through roles and labels only ([notes](docs/notes/14-3-responsive-accessible.md)).
 - **No credentials in the logs, by test.** A full register, login, refresh, replay and logout cycle runs at debug level, and the test fails if any password, token or `Authorization` value appears in the output.
 
 ## Test strategy
@@ -178,10 +184,12 @@ The rule is checked, not just stated: `go list -deps ./internal/domain
 | Layer | What runs | How | Coverage |
 |---|---|---|---|
 | Pure logic | `domain`, `scoring`, `auth` | table-driven unit tests, a fuzz test on the keyword matcher | 96.0%, 97.6%, 96.0% |
-| HTTP | `internal/api` | handlers and middleware against in-memory fakes, via `httptest` | 91.4% |
+| HTTP | `internal/api` | handlers and middleware against in-memory fakes, via `httptest` | 91.2% |
 | Plumbing | `config`, `platform` | env parsing, log redaction, context propagation | 72.5%, 94.3% |
 | SQL | `internal/store` | integration tests against the running PostgreSQL | 83.1% |
 | End to end | `test/integration` | the production router over real stores, on a PostgreSQL started by testcontainers-go | (included below) |
+| Browser | `web/e2e/full-flow.spec.ts` | Playwright against the running stack: admin builds and opens a role, a candidate registers and applies, the admin assigns, an interviewer reviews | one flow, 4 steps |
+| Accessibility | `web/e2e/audit`, `web/scripts/contrast-report.mjs` | axe-core on every page at three widths in both themes, plus sideways-scroll, heading and focus sweeps; WCAG ratios for every token pair | 102 page checks |
 
 Unit-test numbers are statement coverage per package from
 `go test -race -cover ./...`, exactly as CI runs it, with no `.env` present.
@@ -221,6 +229,21 @@ make test-integration
 
 Integration tests. Needs Go, and `make up` running, plus a Docker daemon for
 testcontainers.
+
+```bash
+make e2e
+```
+
+The end-to-end flow in Chromium. Needs Node, and `make up && make seed`
+running; Playwright's browser downloads on first use.
+
+```bash
+make a11y
+```
+
+The contrast report, then the accessibility and responsive audit. Same needs
+as `make e2e`. Each of the two signs in a few times, and the API allows ten
+sign-ins a minute per address, so run them a minute apart.
 
 ## Out of scope, deliberately
 
@@ -263,7 +286,9 @@ rendered at `/docs`. In brief:
 | `GET` | `/v1/me` | any signed-in user |
 | `GET` | `/v1/job-posts` | anyone (open posts only) |
 | `GET` | `/v1/admin/job-posts` | admin (every post, with application counts) |
+| `GET` | `/v1/admin/interviewers` | admin (interviewers only, with their open and pending load) |
 | `POST` | `/v1/job-posts` | admin |
+| `GET` | `/v1/job-posts/:id/listing` | anyone, no token (open posts only; with the questions, never the rubric) |
 | `GET` | `/v1/job-posts/:id` | any signed-in user (drafts: admin only) |
 | `PATCH` | `/v1/job-posts/:id` | admin |
 | `POST` | `/v1/job-posts/:id/open` · `/close` | admin |
@@ -275,7 +300,7 @@ rendered at `/docs`. In brief:
 | `GET` | `/v1/job-posts/:id/applications/search?q=` | admin |
 | `GET` | `/v1/job-posts/:id/ranking` | admin (with each row's per-criterion points) |
 | `POST` | `/v1/job-posts/:id/rescore-all` | admin |
-| `GET` | `/v1/applications?sort=score` | any signed-in user (filtered per role, in SQL); score order for admins and interviewers |
+| `GET` | `/v1/applications?sort=score` | any signed-in user (filtered per role, in SQL); score order for admins and interviewers; `reviewed_by_me` for interviewers |
 | `GET` | `/v1/applications/:id` | admin, assigned interviewer, its candidate (with `allowed_next_statuses`) |
 | `PATCH` | `/v1/applications/:id/status` | admin |
 | `GET` | `/v1/applications/:id/score` | admin, assigned interviewer |
@@ -332,6 +357,8 @@ and every server log line for that request, so quote it in a bug report.
 | `make seed-bulk` | Create one open post with 500 scored applications |
 | `make test` | Unit tests with the race detector and coverage |
 | `make test-integration` | Database and container tests (needs `make up` and Docker) |
+| `make e2e` | The end-to-end flow in a browser (needs `make up && make seed`) |
+| `make a11y` | Contrast report and the accessibility/responsive audit of every page |
 | `make lint` | `golangci-lint` (13 linters) |
 | `make fmt` | Format code and tidy `go.mod` |
 | `make build` | Compile to `./bin` without Docker |

@@ -498,3 +498,25 @@ func TestApplicationStoreFailures(t *testing.T) {
 		t.Errorf("cause logged %d times, want 2; log = %q", n, logged)
 	}
 }
+
+// reviewed_by_me is the interviewer's own flag: present when the store set
+// it, absent otherwise, so no other role's list ever carries the key.
+func TestListReviewedByMe(t *testing.T) {
+	t.Parallel()
+
+	f := newAppFixture(t)
+	yes := true
+	mine := f.mine
+	mine.ReviewedByMe = &yes
+	f.apps.list = []domain.Application{mine}
+
+	rec := f.get("/v1/applications", f.headers["assigned interviewer"])
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"reviewed_by_me":true`) {
+		t.Errorf("interviewer: status %d; body %s", rec.Code, rec.Body)
+	}
+
+	f.apps.list = []domain.Application{f.mine}
+	if rec := f.get("/v1/applications", f.headers["admin"]); strings.Contains(rec.Body.String(), "reviewed_by_me") {
+		t.Errorf("admin list carries reviewed_by_me: %s", rec.Body)
+	}
+}

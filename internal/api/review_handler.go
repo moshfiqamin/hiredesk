@@ -25,6 +25,7 @@ type ReviewStore interface {
 	ListAssignments(ctx context.Context, appID string) ([]domain.Assignment, error)
 	CreateReview(ctx context.Context, appID, interviewerID string, mark int, notes *string) (*domain.Review, error)
 	UpdateReview(ctx context.Context, appID, interviewerID string, patch domain.ReviewPatch) (*domain.Review, error)
+	ListInterviewers(ctx context.Context) ([]domain.InterviewerLoad, error)
 }
 
 // ApplicationGetter loads one application and whether the viewer is assigned
@@ -191,6 +192,35 @@ func (h *ReviewHandler) Assignments(c *gin.Context) {
 	out := listResponse[assignmentResponse]{Data: make([]assignmentResponse, 0, len(assignments))}
 	for _, a := range assignments {
 		out.Data = append(out.Data, newAssignmentResponse(a))
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// interviewerResponse is one row of GET /v1/admin/interviewers.
+type interviewerResponse struct {
+	ID              string `json:"id"`
+	FullName        string `json:"full_name"`
+	Email           string `json:"email"`
+	OpenAssignments int    `json:"open_assignments"`
+	PendingReviews  int    `json:"pending_reviews"`
+}
+
+// Interviewers handles GET /v1/admin/interviewers: every interviewer with
+// their current load, for the assignment picker. The route must be behind
+// RequireRole(domain.RoleAdmin).
+func (h *ReviewHandler) Interviewers(c *gin.Context) {
+	loads, err := h.reviews.ListInterviewers(c.Request.Context())
+	if err != nil {
+		Respond(c, fmt.Errorf("list interviewers: %w", err))
+		return
+	}
+
+	out := listResponse[interviewerResponse]{Data: make([]interviewerResponse, 0, len(loads))}
+	for _, l := range loads {
+		out.Data = append(out.Data, interviewerResponse{
+			ID: l.ID, FullName: l.Name, Email: l.Email,
+			OpenAssignments: l.OpenAssignments, PendingReviews: l.PendingReviews,
+		})
 	}
 	c.JSON(http.StatusOK, out)
 }

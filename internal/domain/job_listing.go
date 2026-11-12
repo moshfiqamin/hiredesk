@@ -33,6 +33,19 @@ type JobListing struct {
 	CreatedAt time.Time
 }
 
+// JobListingDetail is one open job post as a visitor sees it before applying:
+// the listing, plus the full description, pay, closing date and the questions
+// they will be asked. Never the rubric.
+type JobListingDetail struct {
+	JobListing
+
+	Description *string
+	SalaryMin   *Money
+	SalaryMax   *Money
+	ClosesAt    *time.Time
+	Questions   []Question
+}
+
 // ListingPosition is a place in a newest-first listing: the sort key of the
 // last row a client has seen. The next page is every row that sorts after it.
 //

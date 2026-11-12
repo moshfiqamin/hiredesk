@@ -15,14 +15,14 @@ an API client, a signed-in session, and one new API endpoint.
 | 4 | Refetch on window focus: kept on | [`web/src/lib/query/client.ts:55`](../../web/src/lib/query/client.ts#L55) |
 | 5 | Mutations are not retried | [`web/src/lib/query/client.ts:61`](../../web/src/lib/query/client.ts#L61) |
 | 6 | The query key convention | [`web/src/lib/query/keys.ts:4`](../../web/src/lib/query/keys.ts#L4) |
-| 7 | Invalidation, and why mutations need it | [`web/src/hooks/use-job-posts.ts:31`](../../web/src/hooks/use-job-posts.ts#L31) |
+| 7 | Invalidation, and why mutations need it | [`web/src/hooks/use-job-posts.ts:35`](../../web/src/hooks/use-job-posts.ts#L35) |
 | 8 | One pattern for loading, empty and error | [`web/src/components/states/states.tsx:94`](../../web/src/components/states/states.tsx#L94) |
 | 9 | The provider, and devtools in development only | [`web/src/components/providers.tsx:12`](../../web/src/components/providers.tsx#L12) |
 | 10 | The API client and the refresh race | [`web/src/lib/api/client.ts:79`](../../web/src/lib/api/client.ts#L79) |
 | 11 | The session, and where the token lives | [`web/src/lib/auth/session.ts:87`](../../web/src/lib/auth/session.ts#L87) |
-| 12 | A browser-only gate with `use(browser())` | [`web/src/components/layout/admin-shell.tsx:30`](../../web/src/components/layout/admin-shell.tsx#L30) |
+| 12 | A browser-only gate with `use(browser())` | [`web/src/components/layout/admin-shell.tsx:31`](../../web/src/components/layout/admin-shell.tsx#L31) |
 | 13 | Instant-navigation validation, scoped | [`web/next.config.ts:15`](../../web/next.config.ts#L15) |
-| 14 | The open redirect on the login page | [`web/src/app/login/login-form.tsx:16`](../../web/src/app/login/login-form.tsx#L16) |
+| 14 | The open redirect on the login page | [`web/src/lib/auth/home.ts:21`](../../web/src/lib/auth/home.ts#L21) |
 | 15 | The new endpoint: `GET /v1/admin/job-posts` | [`internal/store/job_posts.go:344`](../../internal/store/job_posts.go#L344) |
 | 16 | Embedding a struct to share JSON fields | [`internal/api/job_post_handler.go:91`](../../internal/api/job_post_handler.go#L91) |
 | 17 | Verification | — |
@@ -192,7 +192,7 @@ in a segment is a compile error.
 
 ## 7. Invalidation, and why mutations need it
 
-**📍 Open:** [`web/src/hooks/use-job-posts.ts:31`](../../web/src/hooks/use-job-posts.ts#L31)
+**📍 Open:** [`web/src/hooks/use-job-posts.ts:35`](../../web/src/hooks/use-job-posts.ts#L35)
 
 The cache holds copies of server data. A mutation changes the server, and
 the copies do not know: after creating a role, the cached roles list is
@@ -202,10 +202,10 @@ missing a row, and with a 30-second `staleTime` it would stay that way.
 currently on screen; the rest refetch when next used. `useCreateJobPost`
 does two things on success:
 
-1. `setQueryData` ([line 39](../../web/src/hooks/use-job-posts.ts#L39))
+1. `setQueryData` ([line 43](../../web/src/hooks/use-job-posts.ts#L43))
    writes the response into the new post's detail entry. The response *is*
    the post, so opening it next needs no request.
-2. `invalidateQueries` ([line 43](../../web/src/hooks/use-job-posts.ts#L43))
+2. `invalidateQueries` ([line 47](../../web/src/hooks/use-job-posts.ts#L47))
    on `["jobPosts", "list"]`, because a list's contents depend on things the
    client cannot reproduce exactly (sort order, server-computed counts).
    Splicing the row in by hand would duplicate server logic in the browser.
@@ -311,7 +311,7 @@ out in one tab signs out every tab.
 
 ## 12. A browser-only gate with `use(browser())`
 
-**📍 Open:** [`web/src/components/layout/admin-shell.tsx:30`](../../web/src/components/layout/admin-shell.tsx#L30)
+**📍 Open:** [`web/src/components/layout/admin-shell.tsx:31`](../../web/src/components/layout/admin-shell.tsx#L31)
 
 The admin shell must know whether someone is signed in before it renders
 anything, and only the browser can know. Rendering it on the server too
@@ -324,7 +324,7 @@ renders only in the browser, where its first render already has the real
 session; the server sends the `<Suspense>` fallback from
 [`admin/layout.tsx`](../../web/src/app/admin/layout.tsx#L11) instead. The
 redirect to `/login?next=…` is in an effect
-([line 37](../../web/src/components/layout/admin-shell.tsx#L37)), because
+([line 39](../../web/src/components/layout/admin-shell.tsx#L39)), because
 navigating during render is a side effect React may repeat.
 
 The gate is a convenience, not security. Every admin endpoint checks the
@@ -350,7 +350,7 @@ forgot it would bring the warning back.
 
 ## 14. The open redirect on the login page
 
-**📍 Open:** [`web/src/app/login/login-form.tsx:16`](../../web/src/app/login/login-form.tsx#L16)
+**📍 Open:** [`web/src/lib/auth/home.ts:21`](../../web/src/lib/auth/home.ts#L21)
 
 The shell sends a signed-out visitor to `/login?next=/admin/roles` so they
 land back where they were. Following `next` blindly is an **open redirect**:
@@ -373,7 +373,7 @@ route: `GET /v1/job-posts` is the **public** listing, open posts only, and
 deliberately reads no token at all (module 4.4). Making it role-aware would
 put an auth branch into an endpoint whose safety comes from not having one.
 So the admin list is a separate route, registered at
-[`router.go:173`](../../internal/api/router.go#L173) behind `RequireRole(admin)`.
+[`router.go:179`](../../internal/api/router.go#L179) behind `RequireRole(admin)`.
 
 Each row carries two figures the roles list (11.3) shows: the application
 count and the remaining vacancies. One `LATERAL` subquery per post computes

@@ -29,6 +29,9 @@ type fakeReviews struct {
 	reviewErr  error
 	lastCreate *createCall
 	lastPatch  *domain.ReviewPatch
+
+	// interviewers is what ListInterviewers returns.
+	interviewers []domain.InterviewerLoad
 }
 
 // createCall is one CreateReview call, as the fake received it.
@@ -58,6 +61,12 @@ func (f *fakeReviews) UnassignInterviewer(_ context.Context, appID, interviewerI
 
 	f.lastUnassign = &[3]string{appID, interviewerID, actorID}
 	return true, f.assignErr
+}
+
+func (f *fakeReviews) ListInterviewers(_ context.Context) ([]domain.InterviewerLoad, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.interviewers, nil
 }
 
 func (f *fakeReviews) ListAssignments(_ context.Context, appID string) ([]domain.Assignment, error) {
@@ -476,3 +485,30 @@ func errorCodeOf(t *testing.T, body []byte) string {
 
 // Compile-time check that the fake satisfies the interface.
 var _ ReviewStore = (*fakeReviews)(nil)
+
+func TestInterviewers(t *testing.T) {
+	t.Parallel()
+
+	f := newAppFixture(t)
+	f.reviews.interviewers = []domain.InterviewerLoad{
+		{ID: "i1", Name: "Ivan", Email: "ivan@example.com", OpenAssignments: 3, PendingReviews: 1},
+		{ID: "i2", Name: "Nadia", Email: "nadia@example.com"},
+	}
+
+	rec := f.get("/v1/admin/interviewers", f.headers["admin"])
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d; body %s", rec.Code, rec.Body)
+	}
+	want := `{"data":[{"id":"i1","full_name":"Ivan","email":"ivan@example.com","open_assignments":3,"pending_reviews":1},` +
+		`{"id":"i2","full_name":"Nadia","email":"nadia@example.com","open_assignments":0,"pending_reviews":0}]}`
+	if rec.Body.String() != want {
+		t.Errorf("body = %s\nwant   %s", rec.Body, want)
+	}
+
+	// A staff directory: no other role may read it.
+	for _, caller := range []string{"candidate", "assigned interviewer"} {
+		if rec := f.get("/v1/admin/interviewers", f.headers[caller]); rec.Code != http.StatusForbidden {
+			t.Errorf("%s: status %d, want 403", caller, rec.Code)
+		}
+	}
+}

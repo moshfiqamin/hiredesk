@@ -52,4 +52,14 @@ export const queryKeys = {
     score: (id: string) => [...queryKeys.applications.detail(id), "score"] as const,
     assignments: (id: string) => [...queryKeys.applications.detail(id), "assignments"] as const,
   },
+  // The staff directory, for the assignment picker. Assigning changes the
+  // loads in it, so assignment mutations invalidate it.
+  interviewers: ["interviewers"] as const,
+  // The public pages. Separate from jobPosts: a different endpoint, a
+  // different shape, and readable without a session.
+  listings: {
+    all: ["listings"] as const,
+    list: () => [...queryKeys.listings.all, "list"] as const,
+    detail: (id: string) => [...queryKeys.listings.all, "detail", id] as const,
+  },
 } as const;

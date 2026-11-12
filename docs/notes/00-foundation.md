@@ -27,7 +27,7 @@ full reasoning lives here.
 | [13](#13-depends_on-condition-service_healthy) | `condition: service_healthy` | [`compose:46`](../../docker-compose.yml#L46) |
 | [14](#14-named-volumes) | Named volumes | [`compose:24`](../../docker-compose.yml#L24) |
 | [15](#15-container-to-container-dns) | Container-to-container DNS | [`compose:52`](../../docker-compose.yml#L52) |
-| [16](#16-makefile-mechanics) | Makefile mechanics | [`Makefile:153`](../../Makefile#L153) |
+| [16](#16-makefile-mechanics) | Makefile mechanics | [`Makefile:163`](../../Makefile#L163) |
 | [17](#17-what-ci-is-actually-for) | What CI is actually for | [`ci.yml`](../../.github/workflows/ci.yml) |
 | [18](#18-the-race-detector) | The race detector | [`ci.yml:50`](../../.github/workflows/ci.yml#L50) |
 | [19](#19-the-linters) | The linters | [`.golangci.yml:18`](../../.golangci.yml#L18) |
@@ -586,7 +586,7 @@ permission mismatches because the container's `postgres` user is not your macOS
 UID. Named volumes live on a native filesystem inside the Linux VM.
 
 **To wipe deliberately:** `make reset`
-([`Makefile:161`](../../Makefile#L161)). You will need it after changing
+([`Makefile:171`](../../Makefile#L171)). You will need it after changing
 `POSTGRES_USER`, `POSTGRES_PASSWORD` or `POSTGRES_DB`, since those are read
 **only** while initialising an empty data directory — editing them in `.env`
 appears to do nothing until the volume is destroyed.
@@ -641,7 +641,7 @@ moment a directory named `test` existed, because Make would consider the target
 up to date.
 
 **3. Targets are files, with dependencies.**
-[`Makefile:153`](../../Makefile#L153):
+[`Makefile:163`](../../Makefile#L163):
 
 ```make
 up: .env

@@ -8,11 +8,11 @@ The whole API described in one OpenAPI 3 document, rendered as Swagger UI at
 | # | Section | Open |
 |---|---|---|
 | 1 | What OpenAPI is for, beyond documentation | [`api/openapi.yaml:1`](../../api/openapi.yaml#L1) |
-| 2 | One error envelope, referenced everywhere | [`api/openapi.yaml:1204`](../../api/openapi.yaml#L1204) |
-| 3 | Bearer auth per route, and why Authorize works | [`api/openapi.yaml:1053`](../../api/openapi.yaml#L1053) |
+| 2 | One error envelope, referenced everywhere | [`api/openapi.yaml:1247`](../../api/openapi.yaml#L1247) |
+| 3 | Bearer auth per route, and why Authorize works | [`api/openapi.yaml:1096`](../../api/openapi.yaml#L1096) |
 | 4 | `go:embed` | [`api/embed.go:12`](../../api/embed.go#L12) |
 | 5 | Serving the docs, and a CSP | [`internal/api/docs.go:17`](../../internal/api/docs.go#L17) |
-| 6 | Keeping the spec honest | [`internal/api/docs_test.go:77`](../../internal/api/docs_test.go#L77) |
+| 6 | Keeping the spec honest | [`internal/api/docs_test.go:78`](../../internal/api/docs_test.go#L78) |
 | 7 | Verification | — |
 
 ---
@@ -58,8 +58,8 @@ bought back by the tests in section 6.
 
 ## 2. One error envelope, referenced everywhere
 
-**📍 Open:** [`api/openapi.yaml:1204`](../../api/openapi.yaml#L1204), then the
-shared responses from [`api/openapi.yaml:1136`](../../api/openapi.yaml#L1136)
+**📍 Open:** [`api/openapi.yaml:1247`](../../api/openapi.yaml#L1247), then the
+shared responses from [`api/openapi.yaml:1179`](../../api/openapi.yaml#L1179)
 
 `ErrorEnvelope` is defined once under `components/schemas`. Nine shared
 responses (`BadRequest`, `Unauthorized`, `NotFound`, `Conflict`,
@@ -86,7 +86,7 @@ Why that matters rather than writing the schema out twenty times:
 
 ## 3. Bearer auth per route, and why Authorize works
 
-**📍 Open:** [`api/openapi.yaml:1053`](../../api/openapi.yaml#L1053),
+**📍 Open:** [`api/openapi.yaml:1096`](../../api/openapi.yaml#L1096),
 [`api/swagger-ui/init.js:10`](../../api/swagger-ui/init.js#L10)
 
 ```yaml
@@ -186,15 +186,15 @@ close. `validatorUrl: null` stops Swagger UI from sending the spec to
 
 ## 6. Keeping the spec honest
 
-**📍 Open:** [`internal/api/docs_test.go:77`](../../internal/api/docs_test.go#L77)
+**📍 Open:** [`internal/api/docs_test.go:78`](../../internal/api/docs_test.go#L78)
 
 A hand-written spec drifts. Four tests stop that:
 
 | Test | Fails when |
 |---|---|
 | `TestOpenAPICoversEveryRoute` | a route is served but not documented, or documented but not served (Gin's `:id` is rewritten to `{id}` and compared both ways) |
-| `TestOpenAPISecurityMatchesTheRouter` ([`:109`](../../internal/api/docs_test.go#L109)) | a public route is padlocked, a protected one is not, or a protected one documents no 401 |
-| `TestOpenAPIRefsResolve` ([`:128`](../../internal/api/docs_test.go#L128)) | a `$ref` names a component that does not exist |
+| `TestOpenAPISecurityMatchesTheRouter` ([`:110`](../../internal/api/docs_test.go#L110)) | a public route is padlocked, a protected one is not, or a protected one documents no 401 |
+| `TestOpenAPIRefsResolve` ([`:129`](../../internal/api/docs_test.go#L129)) | a `$ref` names a component that does not exist |
 | `TestErrorEnvelopeIsDefinedOnce` | the envelope is defined twice |
 
 The first one caught a real error while this module was written: an unquoted

@@ -11,11 +11,11 @@ the vacancies run out. Two small API additions make both honest.
 
 | # | Topic | Code |
 |---|---|---|
-| [1](#1-ordering-the-page-for-a-decision) | **Ordering the page for a decision** | [`application-detail.tsx:130`](../../web/src/components/applications/application-detail.tsx#L130) |
-| [2](#2-legal-transitions-without-a-second-copy-of-the-rules) | **Legal transitions without a second copy of the rules** | [`application_handler.go:233`](../../internal/api/application_handler.go#L233) |
-| [3](#3-the-status-buttons) | The status buttons | [`application-detail.tsx:201`](../../web/src/components/applications/application-detail.tsx#L201) |
+| [1](#1-ordering-the-page-for-a-decision) | **Ordering the page for a decision** | [`application-detail.tsx:131`](../../web/src/components/applications/application-detail.tsx#L131) |
+| [2](#2-legal-transitions-without-a-second-copy-of-the-rules) | **Legal transitions without a second copy of the rules** | [`application_handler.go:238`](../../internal/api/application_handler.go#L238) |
+| [3](#3-the-status-buttons) | The status buttons | [`application-detail.tsx:202`](../../web/src/components/applications/application-detail.tsx#L202) |
 | [4](#4-a-timeline-that-reads-as-a-story) | **A timeline that reads as a story** | [`timeline.ts:25`](../../web/src/lib/applications/timeline.ts#L25) |
-| [5](#5-reviews-and-the-visibility-rules) | Reviews and the visibility rules | [`application-detail.tsx:349`](../../web/src/components/applications/application-detail.tsx#L349) |
+| [5](#5-reviews-and-the-visibility-rules) | Reviews and the visibility rules | [`application-detail.tsx:364`](../../web/src/components/applications/application-detail.tsx#L364) |
 | [6](#6-the-leaderboard) | The leaderboard | [`leaderboard.tsx:29`](../../web/src/components/ranking/leaderboard.tsx#L29) |
 | [7](#7-a-breakdown-bar-without-n1) | **A breakdown bar without N+1** | [`ranking_breakdown.go:15`](../../internal/store/ranking_breakdown.go#L15) |
 | [8](#8-verification) | Verification | — |
@@ -24,7 +24,7 @@ the vacancies run out. Two small API additions make both honest.
 
 ## 1. Ordering the page for a decision
 
-**📍 Open:** [`web/src/components/applications/application-detail.tsx:130`](../../web/src/components/applications/application-detail.tsx#L130)
+**📍 Open:** [`web/src/components/applications/application-detail.tsx:131`](../../web/src/components/applications/application-detail.tsx#L131)
 
 An admin opens this page to decide something: shortlist, move on, reject.
 So the order follows the questions they ask, in the order they ask them:
@@ -35,12 +35,12 @@ So the order follows the questions they ask, in the order they ask them:
    the action is visible without scrolling, next to the status it changes.
 3. **Is the score right?** — the score with its evidence, the largest block,
    first in the main column
-   ([line 137](../../web/src/components/applications/application-detail.tsx#L137)).
+   ([line 138](../../web/src/components/applications/application-detail.tsx#L138)).
 4. **What did the people who met them think?** — a review summary (mean
    mark, who has not reviewed yet) and the interviewers, in the side column
-   ([line 152](../../web/src/components/applications/application-detail.tsx#L152)).
+   ([line 153](../../web/src/components/applications/application-detail.tsx#L153)).
 5. **Detail on demand** — answers, reviews and the timeline, in tabs
-   ([line 158](../../web/src/components/applications/application-detail.tsx#L158)),
+   ([line 159](../../web/src/components/applications/application-detail.tsx#L159)),
    so the page is not one long scroll.
 
 The rejected order was the API's: application, answers, events. That is
@@ -50,7 +50,7 @@ ahead of the summaries — still the right priority.
 
 ## 2. Legal transitions without a second copy of the rules
 
-**📍 Open:** [`internal/api/application_handler.go:233`](../../internal/api/application_handler.go#L233)
+**📍 Open:** [`internal/api/application_handler.go:238`](../../internal/api/application_handler.go#L238)
 
 The pipeline (submitted → shortlisted → interview → offer, rejected from
 anywhere, final) is written once, in Go:
@@ -68,7 +68,7 @@ Three options:
 - **Ask the server.** Chosen. `GET /v1/applications/:id` now returns
   `allowed_next_statuses`, filled from the same function the PATCH uses:
   `domain.AllowedApplicationTransitions(app.Status)`
-  ([line 405](../../internal/api/application_handler.go#L405)).
+  ([line 410](../../internal/api/application_handler.go#L410)).
 
 One table, two readers. The handler test asserts the response equals that
 function's output for every caller
@@ -84,11 +84,11 @@ that error's details and says "every vacancy already has an offer (3 of 3)"
 
 ## 3. The status buttons
 
-**📍 Open:** [`web/src/components/applications/application-detail.tsx:201`](../../web/src/components/applications/application-detail.tsx#L201)
+**📍 Open:** [`web/src/components/applications/application-detail.tsx:202`](../../web/src/components/applications/application-detail.tsx#L202)
 
 - Forward moves are primary buttons with an arrow; **Reject** is an outline
   button behind a confirmation dialog
-  ([line 224](../../web/src/components/applications/application-detail.tsx#L224)),
+  ([line 225](../../web/src/components/applications/application-detail.tsx#L225)),
   because rejection is final and one mis-click should not end an
   application.
 - A rejected application gets no buttons, just "Final: no further moves".
@@ -116,7 +116,7 @@ actor, the action and the object at once:
 
 - interviewer IDs are resolved from what the page already holds — the
   assignments list and the reviews both carry names
-  ([`application-detail.tsx:402`](../../web/src/components/applications/application-detail.tsx#L402)) —
+  ([`application-detail.tsx:417`](../../web/src/components/applications/application-detail.tsx#L417)) —
   and an ID it cannot resolve (an interviewer since unassigned, with no
   review) becomes "an interviewer", never a UUID;
 - a rescore shows the totals before and after, which the event keeps
@@ -133,14 +133,14 @@ review), so the eye can skim a long history before reading it.
 
 ## 5. Reviews and the visibility rules
 
-**📍 Open:** [`web/src/components/applications/application-detail.tsx:349`](../../web/src/components/applications/application-detail.tsx#L349)
+**📍 Open:** [`web/src/components/applications/application-detail.tsx:364`](../../web/src/components/applications/application-detail.tsx#L364)
 
 9.2 enforces review visibility **in SQL**: an admin gets every review, an
 interviewer only their own, a candidate no `reviews` key at all. The UI
 does not re-filter; it renders what the server sent and keeps the
 server's distinction between **absent** ("not visible to you") and
 **empty** ("no interviewer has filed a review yet")
-([line 352](../../web/src/components/applications/application-detail.tsx#L352)).
+([line 367](../../web/src/components/applications/application-detail.tsx#L367)).
 Hiding data in the frontend would be the excessive-data-exposure mistake
 9.2 was written to avoid.
 
@@ -192,7 +192,7 @@ scored ID as one array parameter
 subquery keeping each application to its latest rubric version (as
 `ScoreCard` does), ordered by rubric position. The handler collects the
 scored IDs first and makes that one call
-([`application_handler.go:831`](../../internal/api/application_handler.go#L831)).
+([`application_handler.go:836`](../../internal/api/application_handler.go#L836)).
 
 It is a separate method on purpose: `RankApplications` is still 07-5's
 deliberate N+1, waiting for its step-2 rewrite, and this change leaves it

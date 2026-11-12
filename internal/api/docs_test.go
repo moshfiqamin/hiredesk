@@ -68,6 +68,7 @@ var publicRoutes = []string{
 	"POST /v1/auth/refresh",
 	"POST /v1/auth/logout",
 	"GET /v1/job-posts",
+	"GET /v1/job-posts/{id}/listing",
 }
 
 // TestOpenAPICoversEveryRoute fails when a route is added to the router

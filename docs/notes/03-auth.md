@@ -62,7 +62,7 @@ Click the link, read the code, then come back.
 | [43](#43-the-auth-middleware-and-v1me) | The auth middleware, and `/v1/me` | [`middleware.go:43`](../../internal/api/middleware.go#L43) |
 | [44](#44-the-seed-command) | The seed command | [`cmd/seed/main.go:106`](../../cmd/seed/main.go#L106) |
 | [45](#45-go-idioms-appearing-for-the-first-time-in-the-session-code) | Transactions, nullable columns, arrays and slices, goroutines | [`tokens.go:108`](../../internal/store/tokens.go#L108) |
-| [46](#46-what-middleware-is-and-how-gin-chains-it) | What middleware is, and how Gin chains it | [`router.go:129`](../../internal/api/router.go#L129) |
+| [46](#46-what-middleware-is-and-how-gin-chains-it) | What middleware is, and how Gin chains it | [`router.go:135`](../../internal/api/router.go#L135) |
 | [47](#47-cnext-and-cabort) | `c.Next()` and `c.Abort()` | [`errors.go:173`](../../internal/api/errors.go#L173) |
 | [48](#48-forgetting-abort-what-actually-goes-wrong) | Forgetting `Abort`: what actually goes wrong | [`middleware_test.go:132`](../../internal/api/middleware_test.go#L132) |
 | [49](#49-a-typed-context-key-and-currentuser) | A typed context key, and `CurrentUser` | [`middleware.go:20`](../../internal/api/middleware.go#L20) |
@@ -75,10 +75,10 @@ Click the link, read the code, then come back.
 | [56](#56-why-the-negative-cases-matter-more-than-the-positive-ones) | Why the negative cases matter more | [`policy_test.go:74`](../../internal/auth/policy_test.go#L74) |
 | [57](#57-counting-the-combinations) | Counting the combinations | [`policy_test.go:154`](../../internal/auth/policy_test.go#L154) |
 | [58](#58-filtering-in-sql-not-in-go) | Filtering in SQL, not in Go | [`applications.go:62`](../../internal/store/applications.go#L62) |
-| [59](#59-two-encodings-of-one-rule-and-the-check-that-they-agree) | Two encodings of one rule, and the check that they agree | [`application_handler.go:378`](../../internal/api/application_handler.go#L378) |
+| [59](#59-two-encodings-of-one-rule-and-the-check-that-they-agree) | Two encodings of one rule, and the check that they agree | [`application_handler.go:383`](../../internal/api/application_handler.go#L383) |
 | [60](#60-403-or-404) | 403 or 404 | [`decisions.md`](../decisions.md) |
 | [61](#61-testcontainers-go-and-why-a-real-postgresql-beats-a-mock) | testcontainers-go, and why a real PostgreSQL beats a mock | [`authz_test.go:93`](../../test/integration/authz_test.go#L93) |
-| [62](#62-testauthorizationmatrix) | `TestAuthorizationMatrix`; generics, spreading a slice, package build tags | [`authz_test.go:324`](../../test/integration/authz_test.go#L324) |
+| [62](#62-testauthorizationmatrix) | `TestAuthorizationMatrix`; generics, spreading a slice, package build tags | [`authz_test.go:329`](../../test/integration/authz_test.go#L329) |
 
 ---
 
@@ -2208,7 +2208,7 @@ token with the `TokenManager` from section 11, and either answers 401 or
 leaves the authenticated user on the request for the handler.
 
 It is attached to a **group**
-([`router.go:129`](../../internal/api/router.go#L129)), not to a route. Every
+([`router.go:135`](../../internal/api/router.go#L135)), not to a route. Every
 route registered on `protected` is guarded, so protecting the next endpoint is
 adding a line inside the braces, and forgetting to protect it is impossible.
 
@@ -2278,7 +2278,7 @@ registered, so none of the addresses can belong to anyone.
 
 **It is a second binary in the same image.** `cmd/seed` is built next to
 `cmd/api` in the [`Dockerfile`](../../Dockerfile#L31), and `make seed`
-([`Makefile:134`](../../Makefile#L134)) runs it inside the running API
+([`Makefile:144`](../../Makefile#L144)) runs it inside the running API
 container, which already has `DATABASE_URL`. Nothing is needed on the host but
 Docker.
 
@@ -2356,7 +2356,7 @@ loop variable needed.
 
 ## 46. What middleware is, and how Gin chains it
 
-**📍 Open:** [`internal/api/router.go:129`](../../internal/api/router.go#L129)
+**📍 Open:** [`internal/api/router.go:135`](../../internal/api/router.go#L135)
 
 A Gin route is not one function. It is a **list** of `gin.HandlerFunc`, and
 each one has the same signature, `func(c *gin.Context)`. "Middleware" is
@@ -2368,7 +2368,7 @@ The list is built from three places, outermost first:
 | Registered with | Applies to | Here |
 |---|---|---|
 | `router.Use(…)` | every route on the engine | `gin.Logger()`, `Recovery()` ([`router.go:61`](../../internal/api/router.go#L61)) |
-| `v1.Group("", …)` | every route registered on that group | `RequireAuth` ([`router.go:129`](../../internal/api/router.go#L129)) |
+| `v1.Group("", …)` | every route registered on that group | `RequireAuth` ([`router.go:135`](../../internal/api/router.go#L135)) |
 | the route itself | that route only | `deps.Auth.Me` |
 
 So a request for `GET /v1/me` runs this list:
@@ -3037,7 +3037,7 @@ connection after row 400) is reported only by `rows.Err()`, and a hand-written
 
 ## 59. Two encodings of one rule, and the check that they agree
 
-**📍 Open:** [`internal/api/application_handler.go:378`](../../internal/api/application_handler.go#L378)
+**📍 Open:** [`internal/api/application_handler.go:383`](../../internal/api/application_handler.go#L383)
 
 The visibility rule now exists twice:
 
@@ -3050,11 +3050,11 @@ a post see its applications" to the policy and forgets the query. The symptom
 is a list showing rows that then 404 when opened, or the reverse.
 
 `TestAuthorizationMatrix` checks the two against each other for every caller
-([`authz_test.go:620`](../../test/integration/authz_test.go#L620)): an
+([`authz_test.go:629`](../../test/integration/authz_test.go#L629)): an
 application is in the list **if and only if** fetching it alone returns 200.
 
 **`Get` needs two facts, fetched in one query.**
-[`applications.go:327`](../../internal/store/applications.go#L327) returns the
+[`applications.go:340`](../../internal/store/applications.go#L340) returns the
 row and, via `EXISTS (…)`, whether the caller is assigned to it. Then the
 handler calls the pure policy. The store gathers facts; the policy decides.
 
@@ -3065,7 +3065,7 @@ handler calls the pure policy. The store gathers facts; the policy decides.
 **📍 Open:** [`docs/decisions.md`](../decisions.md) — decision D1
 
 **A refused view answers 404, identical to a missing record**
-([`application_handler.go:382`](../../internal/api/application_handler.go#L382)).
+([`application_handler.go:387`](../../internal/api/application_handler.go#L387)).
 The full record — when 403 is still right, what was rejected, what it costs —
 is in `docs/decisions.md`. The core argument:
 
@@ -3151,7 +3151,7 @@ needs nothing.
 
 ## 62. `TestAuthorizationMatrix`
 
-**📍 Open:** [`test/integration/authz_test.go:324`](../../test/integration/authz_test.go#L324)
+**📍 Open:** [`test/integration/authz_test.go:329`](../../test/integration/authz_test.go#L329)
 
 **The shape.** One row per caller, one column per endpoint, the expected
 status in each cell — readable as a matrix:
@@ -3181,7 +3181,7 @@ per caller who can list) = 54 subtests.
 - a **single fetch** returns the application asked for.
 
 **The matrix cannot fall behind the router.**
-[`assertEveryProtectedRouteIsInTheMatrix`](../../test/integration/authz_test.go#L627)
+[`assertEveryProtectedRouteIsInTheMatrix`](../../test/integration/authz_test.go#L636)
 reads the router's registered routes and fails if any `/v1` route outside
 `/v1/auth` has no column. Adding an endpoint without deciding who may call it
 turns the test red.

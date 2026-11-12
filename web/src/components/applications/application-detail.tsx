@@ -43,6 +43,7 @@ import type {
 import { describeEvent, relativeTime, type TimelineLine } from "@/lib/applications/timeline";
 import { formatDate } from "@/lib/format";
 
+import { AssignDialog } from "./assign-dialog";
 import { ApplicationStatusBadge } from "./cells";
 
 /** ApplicationDetail is one candidate's application, laid out to support a decision about it. */
@@ -151,7 +152,7 @@ function ApplicationBody({ application: a }: { application: ApplicationDetailDat
 
         <aside className="flex flex-col gap-4">
           <ReviewSummary reviews={a.reviews} assignments={assignments.data} onOpen={() => setTab("reviews")} />
-          <Interviewers assignments={assignments.data} loading={assignments.isPending} />
+          <Interviewers applicationId={a.id} candidateName={name} assignments={assignments.data} loading={assignments.isPending} />
         </aside>
       </div>
 
@@ -291,12 +292,25 @@ function ReviewSummary({
   );
 }
 
-function Interviewers({ assignments, loading }: { assignments: Assignment[] | undefined; loading: boolean }) {
+function Interviewers({
+  applicationId,
+  candidateName,
+  assignments,
+  loading,
+}: {
+  applicationId: string;
+  candidateName: string;
+  assignments: Assignment[] | undefined;
+  loading: boolean;
+}) {
   return (
     <section aria-labelledby="interviewers-heading" className="rounded-lg border bg-surface p-4">
-      <h2 id="interviewers-heading" className="mb-2 text-sm font-medium text-text-secondary">
-        Interviewers
-      </h2>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h2 id="interviewers-heading" className="text-sm font-medium text-text-secondary">
+          Interviewers
+        </h2>
+        {assignments && <AssignDialog applicationId={applicationId} candidateName={candidateName} assignments={assignments} />}
+      </div>
       {loading ? (
         <Skeleton className="h-10" />
       ) : !assignments || assignments.length === 0 ? (
@@ -317,7 +331,8 @@ function Interviewers({ assignments, loading }: { assignments: Assignment[] | un
   );
 }
 
-function Answers({ application: a, prompts }: { application: ApplicationDetailData; prompts: Map<string, Question> }) {
+/** Answers is an application's answers in form order; shared with the interviewer's view. */
+export function Answers({ application: a, prompts }: { application: ApplicationDetailData; prompts: Map<string, Question> }) {
   // In form order, not storage order, so the answers read as the candidate saw the form.
   const answers = [...a.answers].sort(
     (x, y) => (prompts.get(x.question_id)?.position ?? 0) - (prompts.get(y.question_id)?.position ?? 0),

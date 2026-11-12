@@ -2,11 +2,46 @@ package store
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/moshfiqamin/hiredesk/internal/domain"
 )
+
+// listingLaterals computes, for each post p in the FROM clause, o.offers
+// (applications at the offer stage) and t.tags (the keywords of its current
+// rubric's keyword_match criteria). Shared by the listing and the single
+// public post, so the two can never disagree about a post's vacancies or tags.
+const listingLaterals = `
+		CROSS JOIN LATERAL (
+			-- count(*) with no GROUP BY always returns one row, 0 when no
+			-- application matches, so no coalesce is needed here.
+			SELECT count(*)::int AS offers
+			FROM applications a
+			WHERE a.job_post_id = p.id AND a.status = 'offer'
+		) o
+		LEFT JOIN LATERAL (
+			SELECT array_agg(DISTINCT n.tag ORDER BY n.tag) AS tags
+			FROM rubric_criteria rc
+			-- config is free-form jsonb, so a criterion whose "keywords" is
+			-- missing or not an array is read as having none, rather than
+			-- making jsonb_array_elements_text raise an error and turn the
+			-- public listing into a 500.
+			CROSS JOIN LATERAL jsonb_array_elements_text(
+				CASE WHEN jsonb_typeof(rc.config -> 'keywords') = 'array'
+				     THEN rc.config -> 'keywords'
+				     ELSE '[]'::jsonb
+				END
+			) AS k(raw)
+			CROSS JOIN LATERAL (SELECT lower(btrim(k.raw)) AS tag) n
+			WHERE rc.job_post_id = p.id
+			  AND rc.kind = 'keyword_match'
+			  AND n.tag <> ''
+			  AND rc.rubric_version = (
+				SELECT max(rubric_version) FROM rubric_criteria WHERE job_post_id = p.id
+			  )
+		) t ON true`
 
 // ListOpenJobPosts returns up to limit open job posts, newest first, starting
 // after the position given, or from the newest when after is nil. more
@@ -68,34 +103,7 @@ func (s *JobPostStore) ListOpenJobPosts(ctx context.Context, after *domain.Listi
 			greatest(p.vacancies - o.offers, 0),
 			p.created_at
 		FROM page p
-		CROSS JOIN LATERAL (
-			-- count(*) with no GROUP BY always returns one row, 0 when no
-			-- application matches, so no coalesce is needed here.
-			SELECT count(*)::int AS offers
-			FROM applications a
-			WHERE a.job_post_id = p.id AND a.status = 'offer'
-		) o
-		LEFT JOIN LATERAL (
-			SELECT array_agg(DISTINCT n.tag ORDER BY n.tag) AS tags
-			FROM rubric_criteria rc
-			-- config is free-form jsonb, so a criterion whose "keywords" is
-			-- missing or not an array is read as having none, rather than
-			-- making jsonb_array_elements_text raise an error and turn the
-			-- public listing into a 500.
-			CROSS JOIN LATERAL jsonb_array_elements_text(
-				CASE WHEN jsonb_typeof(rc.config -> 'keywords') = 'array'
-				     THEN rc.config -> 'keywords'
-				     ELSE '[]'::jsonb
-				END
-			) AS k(raw)
-			CROSS JOIN LATERAL (SELECT lower(btrim(k.raw)) AS tag) n
-			WHERE rc.job_post_id = p.id
-			  AND rc.kind = 'keyword_match'
-			  AND n.tag <> ''
-			  AND rc.rubric_version = (
-				SELECT max(rubric_version) FROM rubric_criteria WHERE job_post_id = p.id
-			  )
-		) t ON true
+		` + listingLaterals + `
 		ORDER BY p.created_at DESC, p.id DESC`
 
 	// One extra row is the cheapest way to know whether another page exists:
@@ -121,4 +129,37 @@ func (s *JobPostStore) ListOpenJobPosts(ctx context.Context, after *domain.Listi
 		listings = []domain.JobListing{}
 	}
 	return listings, more, nil
+}
+
+// GetOpenJobListing returns the open job post with this ID as the public sees
+// it: the listing fields, its description, salary and closing date, and its
+// application form. A draft, a closed post and a missing one are all
+// domain.ErrNotFound, so the public route reveals nothing about posts that
+// are not open.
+func (s *JobPostStore) GetOpenJobListing(ctx context.Context, id string) (*domain.JobListingDetail, error) {
+	const op = "get open job listing"
+
+	const query = `
+		SELECT p.id::text, p.title, p.location, p.employment_type,
+			coalesce(t.tags, '{}'),
+			greatest(p.vacancies - o.offers, 0),
+			p.created_at,
+			-- Whole minor units, exactly as jobPostColumns reads them.
+			p.description, (p.salary_min * 100)::bigint, (p.salary_max * 100)::bigint, p.closes_at
+		FROM job_posts p` + listingLaterals + `
+		WHERE p.id = $1::text::uuid AND p.status = 'open'`
+
+	var d domain.JobListingDetail
+	err := s.db.QueryRow(ctx, query, id).Scan(&d.ID, &d.Title, &d.Location, &d.EmploymentType,
+		&d.SkillTags, &d.RemainingVacancies, &d.CreatedAt,
+		&d.Description, &d.SalaryMin, &d.SalaryMax, &d.ClosesAt)
+	if err != nil {
+		return nil, translateByID(op, err)
+	}
+
+	d.Questions, err = listQuestions(ctx, s.db, d.ID)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+	return &d, nil
 }

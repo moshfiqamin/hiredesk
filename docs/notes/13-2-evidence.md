@@ -17,7 +17,7 @@ answer. A criterion that scored zero says *why*, in a sentence.
 | [4](#4-which-words-get-highlighted) | Which words get highlighted | [`highlight.ts:13`](../../web/src/lib/score/highlight.ts#L13) |
 | [5](#5-explaining-a-zero) | **Explaining a zero** | [`highlight.ts:60`](../../web/src/lib/score/highlight.ts#L60) |
 | [6](#6-always-visible-not-collapsed) | Always visible, not collapsed | [`score-breakdown.tsx:107`](../../web/src/components/score/score-breakdown.tsx#L107) |
-| [7](#7-the-link-to-the-full-answer) | The link to the full answer | [`application-detail.tsx:89`](../../web/src/components/applications/application-detail.tsx#L89) |
+| [7](#7-the-link-to-the-full-answer) | The link to the full answer | [`application-detail.tsx:90`](../../web/src/components/applications/application-detail.tsx#L90) |
 | [8](#8-verification) | Verification | — |
 
 ---
@@ -146,7 +146,7 @@ already trimmed each answer to the part that matters (07-3).
 
 ## 7. The link to the full answer
 
-**📍 Open:** [`web/src/components/applications/application-detail.tsx:89`](../../web/src/components/applications/application-detail.tsx#L89)
+**📍 Open:** [`web/src/components/applications/application-detail.tsx:90`](../../web/src/components/applications/application-detail.tsx#L90)
 
 "Read the full answer" is a real `href="#answer-<id>"` link, so it works
 without JavaScript and can be opened or copied. On the detail page the

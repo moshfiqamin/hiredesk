@@ -168,3 +168,18 @@ type TimelineFilter struct {
 	// or nil for the first page.
 	After *ListingPosition
 }
+
+// InterviewerLoad is one interviewer and how much work is on their plate, as
+// an admin choosing whom to assign needs to see it.
+type InterviewerLoad struct {
+	ID    string
+	Name  string
+	Email string
+
+	// OpenAssignments counts their assignments to applications still in
+	// progress: not yet at an offer and not rejected.
+	OpenAssignments int
+
+	// PendingReviews is the part of OpenAssignments they have not reviewed.
+	PendingReviews int
+}

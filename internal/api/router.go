@@ -124,6 +124,12 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 	// page as one with none.
 	v1.GET("/job-posts", deps.Listings.List)
 
+	// One open post and its application form, public for the same reason:
+	// a visitor should see what they will be asked before signing up. A
+	// draft or closed post is a 404 here whoever asks, so this route never
+	// depends on a token either.
+	v1.GET("/job-posts/:id/listing", deps.Listings.Get)
+
 	// Everything registered on this group runs RequireAuth first, so a handler
 	// here can rely on CurrentUser. A route limited to some roles adds
 	// RequireRole after it, either on a nested group or on the route itself.
@@ -193,6 +199,11 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 			admin.POST("/applications/:id/assign", deps.Reviews.Assign)
 			admin.DELETE("/applications/:id/assign/:interviewerID", deps.Reviews.Unassign)
 			admin.GET("/applications/:id/assignments", deps.Reviews.Assignments)
+
+			// Every interviewer with their load, for choosing whom to assign.
+			// Under /admin beside /admin/job-posts: a directory of staff,
+			// not something any other role has a reason to read.
+			admin.GET("/admin/interviewers", deps.Reviews.Interviewers)
 
 			// Rescoring against the current rubric: one application, or every
 			// application to a post. POST, not PUT: each call appends an event,

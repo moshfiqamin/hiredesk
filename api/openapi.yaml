@@ -278,6 +278,49 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /v1/admin/interviewers:
+    get:
+      tags: [reviews]
+      summary: Every interviewer with their current load (admin)
+      description: |
+        Only users whose role is interviewer, by name, for the assignment
+        picker. `open_assignments` counts assignments to applications still in
+        progress (submitted, shortlisted or interview); `pending_reviews` is
+        the part of those not yet reviewed.
+      operationId: listInterviewers
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Every interviewer.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InterviewerList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/job-posts/{id}/listing:
+    parameters:
+      - $ref: "#/components/parameters/JobPostID"
+    get:
+      tags: [job-posts]
+      summary: One open post and its application form (public)
+      description: |
+        No authentication, like the listing. A draft, a closed post and a
+        missing one are all 404, so this reveals nothing about posts that are
+        not open. Never includes the rubric.
+      operationId: getJobListing
+      security: []
+      responses:
+        "200":
+          description: The post.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobListingDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /v1/job-posts/{id}:
     parameters:
       - $ref: "#/components/parameters/JobPostID"
@@ -1372,6 +1415,36 @@ components:
           items: { type: string }
         remaining_vacancies: { type: integer, minimum: 0 }
 
+    JobListingDetail:
+      allOf:
+        - $ref: "#/components/schemas/JobListing"
+        - type: object
+          required: [description, salary_min, salary_max, closes_at, questions]
+          properties:
+            description: { type: string, nullable: true }
+            salary_min: { type: number, nullable: true }
+            salary_max: { type: number, nullable: true }
+            closes_at: { type: string, format: date-time, nullable: true }
+            questions:
+              type: array
+              items: { $ref: "#/components/schemas/Question" }
+
+    InterviewerList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            required: [id, full_name, email, open_assignments, pending_reviews]
+            properties:
+              id: { type: string, format: uuid }
+              full_name: { type: string }
+              email: { type: string, format: email }
+              open_assignments: { type: integer, minimum: 0 }
+              pending_reviews: { type: integer, minimum: 0 }
+
     JobListingPage:
       type: object
       required: [data, next_cursor]
@@ -1555,6 +1628,9 @@ components:
               description: Admins only; absent for everyone else.
               type: array
               items: { $ref: "#/components/schemas/AssigneeRef" }
+            reviewed_by_me:
+              description: Interviewers only; whether the caller has filed their own review. Says nothing about other reviews.
+              type: boolean
 
     AssigneeRef:
       type: object

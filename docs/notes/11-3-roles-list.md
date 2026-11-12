@@ -8,24 +8,24 @@ phones.
 
 | # | Section | Open |
 |---|---|---|
-| 1 | What an optimistic update is | [`web/src/hooks/use-job-posts.ts:88`](../../web/src/hooks/use-job-posts.ts#L88) |
-| 2 | Rolling one back in TanStack Query | [`web/src/hooks/use-job-posts.ts:112`](../../web/src/hooks/use-job-posts.ts#L112) |
-| 3 | Why the server still decides | [`web/src/hooks/use-job-posts.ts:128`](../../web/src/hooks/use-job-posts.ts#L128) |
+| 1 | What an optimistic update is | [`web/src/hooks/use-job-posts.ts:92`](../../web/src/hooks/use-job-posts.ts#L92) |
+| 2 | Rolling one back in TanStack Query | [`web/src/hooks/use-job-posts.ts:116`](../../web/src/hooks/use-job-posts.ts#L116) |
+| 3 | Why the server still decides | [`web/src/hooks/use-job-posts.ts:132`](../../web/src/hooks/use-job-posts.ts#L132) |
 | 4 | Status not by colour alone | [`web/src/components/roles/status-badge.tsx:9`](../../web/src/components/roles/status-badge.tsx#L9) |
 | 5 | Tabular figures and right-aligned numbers | [`web/src/app/globals.css:322`](../../web/src/app/globals.css#L322) |
 | 6 | Filtering and sorting in the browser | [`web/src/components/roles/roles-view.tsx:77`](../../web/src/components/roles/roles-view.tsx#L77) |
 | 7 | Sortable headers that a screen reader can follow | [`web/src/components/roles/roles-view.tsx:267`](../../web/src/components/roles/roles-view.tsx#L267) |
-| 8 | Only the moves the lifecycle allows | [`web/src/components/roles/roles-view.tsx:432`](../../web/src/components/roles/roles-view.tsx#L432) |
-| 9 | Table to cards at 375px | [`web/src/components/roles/roles-view.tsx:337`](../../web/src/components/roles/roles-view.tsx#L337) |
-| 10 | Skeletons shaped like the table | [`web/src/components/roles/roles-view.tsx:503`](../../web/src/components/roles/roles-view.tsx#L503) |
-| 11 | An empty state that teaches | [`web/src/components/roles/roles-view.tsx:471`](../../web/src/components/roles/roles-view.tsx#L471) |
+| 8 | Only the moves the lifecycle allows | [`web/src/components/roles/roles-view.tsx:434`](../../web/src/components/roles/roles-view.tsx#L434) |
+| 9 | Table to cards at 375px | [`web/src/components/roles/roles-view.tsx:339`](../../web/src/components/roles/roles-view.tsx#L339) |
+| 10 | Skeletons shaped like the table | [`web/src/components/roles/roles-view.tsx:505`](../../web/src/components/roles/roles-view.tsx#L505) |
+| 11 | An empty state that teaches | [`web/src/components/roles/roles-view.tsx:473`](../../web/src/components/roles/roles-view.tsx#L473) |
 | 12 | Verification | — |
 
 ---
 
 ## 1. What an optimistic update is
 
-**📍 Open:** [`web/src/hooks/use-job-posts.ts:88`](../../web/src/hooks/use-job-posts.ts#L88)
+**📍 Open:** [`web/src/hooks/use-job-posts.ts:92`](../../web/src/hooks/use-job-posts.ts#L92)
 
 A normal (pessimistic) update waits: click "Open", send the request, show a
 spinner, and change the badge only when the server answers. An
@@ -41,13 +41,13 @@ the server can produce.
 `onMutate` runs before the request is sent and does four things, in order:
 
 1. **Cancels in-flight reads** of the list and the detail
-   ([line 94](../../web/src/hooks/use-job-posts.ts#L94)). A refetch that
+   ([line 98](../../web/src/hooks/use-job-posts.ts#L98)). A refetch that
    started a moment earlier would otherwise land *after* the optimistic write
    and overwrite it with the old status, so the badge would flicker back.
 2. **Takes a snapshot** of both cache entries exactly as they were
-   ([line 98](../../web/src/hooks/use-job-posts.ts#L98)).
+   ([line 102](../../web/src/hooks/use-job-posts.ts#L102)).
 3. **Writes the prediction** into the cache
-   ([line 104](../../web/src/hooks/use-job-posts.ts#L104)). The updater
+   ([line 108](../../web/src/hooks/use-job-posts.ts#L108)). The updater
    returns a *new* array with a *new* object for the changed row, never a
    mutated one: React and TanStack Query detect changes by reference, so an
    object edited in place looks unchanged and nothing re-renders.
@@ -57,7 +57,7 @@ the server can produce.
 
 ## 2. Rolling one back in TanStack Query
 
-**📍 Open:** [`web/src/hooks/use-job-posts.ts:112`](../../web/src/hooks/use-job-posts.ts#L112)
+**📍 Open:** [`web/src/hooks/use-job-posts.ts:116`](../../web/src/hooks/use-job-posts.ts#L116)
 
 When the request fails, `onError` writes the snapshot back with
 `setQueryData`. The badge returns to "Draft", and a toast says why.
@@ -65,7 +65,7 @@ When the request fails, `onError` writes the snapshot back with
 The most common failure here is not a network problem but the server
 refusing: opening a draft with no questions or no rubric is a 409
 `not_ready`, whose `details` name each missing piece. `transitionError`
-([line 65](../../web/src/hooks/use-job-posts.ts#L65)) uses those sentences
+([line 69](../../web/src/hooks/use-job-posts.ts#L69)) uses those sentences
 rather than the generic message, so the toast reads "The post has no
 questions. Add at least one before opening it. The post has no rubric…",
 which tells the admin what to do next.
@@ -75,7 +75,7 @@ nothing *loads*; the confirmation is the only sign the server agreed.
 
 ## 3. Why the server still decides
 
-**📍 Open:** [`web/src/hooks/use-job-posts.ts:128`](../../web/src/hooks/use-job-posts.ts#L128)
+**📍 Open:** [`web/src/hooks/use-job-posts.ts:132`](../../web/src/hooks/use-job-posts.ts#L132)
 
 `onSettled` runs after success *or* failure and invalidates both entries, so
 they are refetched. After a success this replaces the prediction with the
@@ -166,7 +166,7 @@ that empties the table is not silent.
 
 ## 8. Only the moves the lifecycle allows
 
-**📍 Open:** [`web/src/components/roles/roles-view.tsx:432`](../../web/src/components/roles/roles-view.tsx#L432)
+**📍 Open:** [`web/src/components/roles/roles-view.tsx:434`](../../web/src/components/roles/roles-view.tsx#L434)
 
 The menu offers "Open" only on a draft and "Close" only on an open role, the
 same `draft → open → closed` map the server enforces (module 4.2). Showing a
@@ -179,13 +179,14 @@ mis-click, and once confirmed, the badge changes immediately.
 
 ## 9. Table to cards at 375px
 
-**📍 Open:** [`web/src/components/roles/roles-view.tsx:337`](../../web/src/components/roles/roles-view.tsx#L337)
+**📍 Open:** [`web/src/components/roles/roles-view.tsx:339`](../../web/src/components/roles/roles-view.tsx#L339)
 
 A seven-column table at 375px either shrinks text past legibility or scrolls
-sideways, hiding the status and actions off-screen. Below 768px the table is
-hidden ([line 286](../../web/src/components/roles/roles-view.tsx#L286)) and
+sideways, hiding the status and actions off-screen. Below 1280px the table is
+hidden (768px until module 14, which found the table overflowing beside the
+sidebar at tablet width; see [14-3](14-3-responsive-accessible.md)) ([line 288](../../web/src/components/roles/roles-view.tsx#L288)) and
 each role becomes a card: title and actions on top, status and date, then the
-two figures. The figures are a `<dl>` ([line 363](../../web/src/components/roles/roles-view.tsx#L363)),
+two figures. The figures are a `<dl>` ([line 365](../../web/src/components/roles/roles-view.tsx#L365)),
 so each number is announced with its label; in the table the column header
 does that job, and a card has no header.
 
@@ -195,7 +196,7 @@ paint would show the wrong layout on phones.
 
 ## 10. Skeletons shaped like the table
 
-**📍 Open:** [`web/src/components/roles/roles-view.tsx:503`](../../web/src/components/roles/roles-view.tsx#L503)
+**📍 Open:** [`web/src/components/roles/roles-view.tsx:505`](../../web/src/components/roles/roles-view.tsx#L505)
 
 A centred spinner says "wait" and nothing else, and when the table arrives
 everything below it jumps. The skeleton reproduces the table's frame: the
@@ -206,7 +207,7 @@ admin already knows where to look. On phones the skeleton is card-shaped.
 
 ## 11. An empty state that teaches
 
-**📍 Open:** [`web/src/components/roles/roles-view.tsx:471`](../../web/src/components/roles/roles-view.tsx#L471)
+**📍 Open:** [`web/src/components/roles/roles-view.tsx:473`](../../web/src/components/roles/roles-view.tsx#L473)
 
 A new admin's first screen is this one, empty. "No roles yet" reports an
 absence and leaves them to work out the product. The empty state explains
