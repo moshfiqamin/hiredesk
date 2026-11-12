@@ -114,6 +114,17 @@ type ApplicationEvent struct {
 	CreatedAt time.Time
 }
 
+// The orders a list of applications can be read in.
+const (
+	// ApplicationSortNewest is newest first, by submitted_at then id.
+	ApplicationSortNewest = ""
+
+	// ApplicationSortScore is highest score first, unscored last, then
+	// newest first. Admins and interviewers only: a candidate cannot see
+	// scores, so may not sort by them either.
+	ApplicationSortScore = "score"
+)
+
 // ApplicationFilter narrows and pages a list of applications. The zero value
 // means every application the viewer may see, first page, default size.
 type ApplicationFilter struct {
@@ -122,6 +133,9 @@ type ApplicationFilter struct {
 
 	// JobPostID, when not "", keeps only applications to that post.
 	JobPostID string
+
+	// Sort is ApplicationSortNewest (the zero value) or ApplicationSortScore.
+	Sort string
 
 	// After, when not nil, starts the page after this position.
 	After *ListingPosition

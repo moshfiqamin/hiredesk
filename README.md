@@ -75,8 +75,10 @@ PostgreSQL, waits for its healthcheck, applies all 13 migrations, and starts
 the API on port 8080 and the Next.js frontend on port 3000. The first build
 takes a few minutes.
 
-<http://localhost:3000> is the admin console. Run `make seed`, then sign in
-as `admin@hiredesk.test` / `admin-password` (accounts below).
+<http://localhost:3000> is the admin console: roles, the application-form and
+rubric builders, and a server-paged applications table that reads as a
+shortlist when sorted by score. Run `make seed`, then sign in as
+`admin@hiredesk.test` / `admin-password` (accounts below).
 
 **Do not create `.env` by copying `.env.example`.** Its `JWT_SECRET` is a
 placeholder that is deliberately too short, so a copied file makes the API
@@ -274,7 +276,7 @@ rendered at `/docs`. In brief:
 | `GET` | `/v1/job-posts/:id/applications/search?q=` | admin |
 | `GET` | `/v1/job-posts/:id/ranking` | admin |
 | `POST` | `/v1/job-posts/:id/rescore-all` | admin |
-| `GET` | `/v1/applications` | any signed-in user (filtered per role, in SQL) |
+| `GET` | `/v1/applications?sort=score` | any signed-in user (filtered per role, in SQL); score order for admins and interviewers |
 | `GET` | `/v1/applications/:id` | admin, assigned interviewer, its candidate |
 | `PATCH` | `/v1/applications/:id/status` | admin |
 | `GET` | `/v1/applications/:id/score` | admin, assigned interviewer |

@@ -21,12 +21,13 @@ cd web && npm install && npm run dev
 | `src/app/globals.css` | Every design token: palette, semantic colours, type and spacing scales, light and dark |
 | `src/app/layout.tsx` | Root layout: fonts, theme provider, query provider, toaster |
 | `src/app/login/` | Sign-in page |
-| `src/app/admin/` | The admin console, behind the session gate in `components/layout/admin-shell.tsx` |
+| `src/app/admin/` | The admin console, behind the session gate in `components/layout/admin-shell.tsx`: roles (list, form, questions, rubric) and applications (table, detail) |
 | `src/app/tokens/` | The design-token specimen, at `/tokens` |
 | `src/lib/api/` | The fetch wrapper (`client.ts`), the error type and the API's types |
 | `src/lib/auth/session.ts` | The signed-in session, kept in localStorage |
 | `src/lib/query/` | The TanStack Query client and its defaults (`client.ts`), and every query key (`keys.ts`) |
-| `src/hooks/` | One file of query and mutation hooks per resource |
+| `src/hooks/` | One file of query and mutation hooks per resource, plus the unsaved-changes guard and the debounce |
+| `src/lib/roles/`, `src/lib/questions/`, `src/lib/rubric/`, `src/lib/applications/` | Each screen's schema, conversions and URL state; the rubric's criterion-kind registry |
 | `src/components/states/` | The shared loading, empty and error states, and `QueryView` |
 | `src/components/ui/` | shadcn/ui components, restyled only through the tokens |
 

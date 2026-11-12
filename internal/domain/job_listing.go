@@ -43,4 +43,11 @@ type JobListing struct {
 type ListingPosition struct {
 	CreatedAt time.Time
 	ID        string
+
+	// Score is set only for a position in the applications list sorted by
+	// score: the row's latest percentage, or -1 when it has none, which is
+	// how unscored rows sort after every scored one. Unlike the other two
+	// fields it can change, when an application is rescored; see
+	// docs/notes/11-7-applications-table.md.
+	Score *float64
 }

@@ -115,3 +115,102 @@ export interface CriterionInput {
   question_id: string | null;
   config: Record<string, unknown>;
 }
+
+export type ApplicationStatus = "submitted" | "shortlisted" | "interview" | "offer" | "rejected";
+
+export interface Assignee {
+  id: string;
+  name: string;
+}
+
+/** ApplicationListItem is one row of GET /v1/applications. */
+export interface ApplicationListItem {
+  id: string;
+  job_post_id: string;
+  candidate_id: string;
+  status: ApplicationStatus;
+  cv_url: string;
+  submitted_at: string;
+  updated_at: string;
+  candidate_name: string;
+  job_post_title: string;
+  /** Absent for candidates; percentage null when not scored yet. */
+  score?: { percentage: number | null };
+  /** Admins only. */
+  assignees?: Assignee[];
+}
+
+export interface ApplicationPage {
+  data: ApplicationListItem[];
+  next_cursor: string | null;
+  total: number;
+}
+
+/** SearchEntry is one match of GET /v1/job-posts/:id/applications/search. */
+export interface SearchEntry {
+  application_id: string;
+  candidate_id: string;
+  candidate_name: string;
+  status: ApplicationStatus;
+  submitted_at: string;
+  relevance: number;
+  percentage: number | null;
+  assignees: Assignee[];
+}
+
+export interface SearchPage {
+  job_post_id: string;
+  query: string;
+  total: number;
+  limit: number;
+  offset: number;
+  next_offset: number | null;
+  data: SearchEntry[];
+}
+
+export interface Answer {
+  id: string;
+  question_id: string;
+  answer: string;
+  created_at: string;
+}
+
+export interface ApplicationEvent {
+  id: string;
+  actor_id: string | null;
+  actor_name: string | null;
+  type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+/** ApplicationDetail is GET /v1/applications/:id. */
+export interface ApplicationDetail {
+  id: string;
+  job_post_id: string;
+  candidate_id: string;
+  status: ApplicationStatus;
+  cv_url: string;
+  submitted_at: string;
+  updated_at: string;
+  answers: Answer[];
+  events: ApplicationEvent[];
+}
+
+export interface ScoreEntry {
+  criterion: string;
+  kind: CriterionKind;
+  earned: number;
+  available: number;
+  detail: string;
+  evidence: { question: string; answer_id: string; excerpt: string } | null;
+}
+
+export interface ScoreBreakdown {
+  application_id: string;
+  total_earned: number;
+  total_available: number;
+  percentage: number;
+  rubric_version: number;
+  breakdown: ScoreEntry[];
+}

@@ -23,7 +23,7 @@ Click the link, read the code, then come back.
 | [5](#5-keyset-pagination) | Keyset pagination | [`job_listing.go:56`](../../internal/store/job_listing.go#L56) |
 | [6](#6-the-sort-key-must-never-change-and-never-tie) | The sort key must never change, and never tie | [`job_listing.go:43`](../../internal/domain/job_listing.go#L43) |
 | [7](#7-the-second-offset-bug-skipped-and-repeated-rows) | The second `OFFSET` bug: skipped and repeated rows | [`job_listing_integration_test.go:274`](../../internal/store/job_listing_integration_test.go#L274) |
-| [8](#8-the-cursor) | The cursor | [`cursor.go:39`](../../internal/api/cursor.go#L39) |
+| [8](#8-the-cursor) | The cursor | [`cursor.go:44`](../../internal/api/cursor.go#L44) |
 | [9](#9-why-limit-is-capped) | Why `limit` is capped | [`job_listing_handler.go:124`](../../internal/api/job_listing_handler.go#L124) |
 | [10](#10-idioms-appearing-for-the-first-time) | Idioms appearing for the first time | [`job_listing.go:103`](../../internal/store/job_listing.go#L103) |
 | [11](#11-the-tests) | The tests | [`job_listing_handler_test.go:202`](../../internal/api/job_listing_handler_test.go#L202) |
@@ -341,7 +341,7 @@ also correct: the client has already been past that point.
 
 ## 8. The cursor
 
-**📍 Open:** [`internal/api/cursor.go:39`](../../internal/api/cursor.go#L39)
+**📍 Open:** [`internal/api/cursor.go:44`](../../internal/api/cursor.go#L44)
 
 A cursor encodes the last row's sort key:
 
@@ -360,7 +360,7 @@ them fail cleanly as invalid, instead of being misread as a position in the
 new order.
 
 **Microseconds.** At
-[`cursor.go:47`](../../internal/api/cursor.go#L47) the time is written with
+[`cursor.go:52`](../../internal/api/cursor.go#L52) the time is written with
 `time.RFC3339Nano`. PostgreSQL stores microseconds. A cursor rounded to
 milliseconds would sit *after* every row created later in the same
 millisecond — and those rows would come back again on the next page.
@@ -488,7 +488,7 @@ handler must tell apart: absent is the default, an empty value is an error.
 | [`TestListOpenJobPostsRemainingVacancies`](../../internal/store/job_listing_integration_test.go#L163) | Only offers count; never below zero |
 | [`TestListOpenJobPostsSkillTags`](../../internal/store/job_listing_integration_test.go#L216) | Normalising, current version only, malformed config ignored |
 | [`TestListOpenJobPostsIsStableWhileDataChanges`](../../internal/store/job_listing_integration_test.go#L274) | Section 7, with the `OFFSET` answers alongside |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L301) | Every caller gets the anonymous response, with no drafts in it |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L304) | Every caller gets the anonymous response, with no drafts in it |
 
 The store tests share a database with every other test, and the listing is
 global. Each test therefore places its posts in its own year far in the future

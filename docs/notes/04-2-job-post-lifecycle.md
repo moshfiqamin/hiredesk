@@ -20,7 +20,7 @@ Click the link, read the code, then come back.
 | [1](#1-what-a-state-machine-is) | What a state machine is | [`job_post.go:26`](../../internal/domain/job_post.go#L26) |
 | [2](#2-why-a-map-beats-a-chain-of-if-statements) | Why a map beats a chain of `if` statements | [`job_post.go:35`](../../internal/domain/job_post.go#L35) |
 | [3](#3-the-rest-of-the-lifecycle-api) | The rest of the lifecycle API | [`job_post.go:43`](../../internal/domain/job_post.go#L43) |
-| [4](#4-one-route-per-transition) | One route per transition | [`router.go:175`](../../internal/api/router.go#L175) |
+| [4](#4-one-route-per-transition) | One route per transition | [`router.go:180`](../../internal/api/router.go#L180) |
 | [5](#5-check-and-write-under-one-lock) | Check and write under one lock | [`job_posts.go:205`](../../internal/store/job_posts.go#L205) |
 | [6](#6-why-409-and-not-400-or-422) | Why 409, and not 400 or 422 | [`errors.go:91`](../../internal/api/errors.go#L91) |
 | [7](#7-why-a-post-cannot-open-without-a-rubric) | Why a post cannot open without a rubric | [`job_post.go:110`](../../internal/domain/job_post.go#L110) |
@@ -167,14 +167,14 @@ did not happen, or need a special case to skip it.
 
 ## 4. One route per transition
 
-**📍 Open:** [`internal/api/router.go:175`](../../internal/api/router.go#L175)
+**📍 Open:** [`internal/api/router.go:180`](../../internal/api/router.go#L180)
 
 ```
 POST /v1/job-posts/:id/open
 POST /v1/job-posts/:id/close
 ```
 
-Both go to [`transition`](../../internal/api/job_post_handler.go#L311), which
+Both go to [`transition`](../../internal/api/job_post_handler.go#L362), which
 takes the target status from the route, never from the body.
 
 **Rejected:** a writable `status` field on `PATCH`. It looks simpler and is
@@ -449,12 +449,12 @@ so a post with no rubric gets counts of 0 rather than `pgx.ErrNoRows`.
 | [`TestLifecycleCoversEveryStatus`](../../internal/domain/job_post_lifecycle_test.go#L66) | The map has exactly the three statuses, and every destination is itself a status |
 | [`TestAllowedTransitions`](../../internal/domain/job_post_lifecycle_test.go#L91) | The lists, non-nil for `closed`, and that mutating a result does not change the lifecycle |
 | [`TestCheckReadyToOpen`](../../internal/domain/job_post_lifecycle_test.go#L142) | Each combination of missing questions, missing rubric and zero weights |
-| [`TestJobPostTransitions`](../../internal/api/job_post_handler_test.go#L855) | Every route against every state: 200s, 409 `invalid_transition` with the exact allowed list, 404 |
-| [`TestOpenJobPostRefusesAnUnreadyPost`](../../internal/api/job_post_handler_test.go#L916) | 409 `not_ready`, with exactly the missing keys in `details` |
-| [`TestJobPostTransitionsAreAdminOnly`](../../internal/api/job_post_handler_test.go#L965) | 403 / 401, and 400 for a malformed ID, all before the store |
+| [`TestJobPostTransitions`](../../internal/api/job_post_handler_test.go#L888) | Every route against every state: 200s, 409 `invalid_transition` with the exact allowed list, 404 |
+| [`TestOpenJobPostRefusesAnUnreadyPost`](../../internal/api/job_post_handler_test.go#L949) | 409 `not_ready`, with exactly the missing keys in `details` |
+| [`TestJobPostTransitionsAreAdminOnly`](../../internal/api/job_post_handler_test.go#L998) | 403 / 401, and 400 for a malformed ID, all before the store |
 | [`TestJobPostStoreLifecycle`](../../internal/store/job_post_lifecycle_integration_test.go#L91) | Real SQL: the full lifecycle with one event per move and none per refusal; readiness including rubric versions |
 | [`TestJobPostStoreTransitionConcurrently`](../../internal/store/job_post_lifecycle_integration_test.go#L226) | Section 5's race |
-| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L301) | Three new columns: open a ready draft, open an unready one, close an open post, for every caller |
+| [`TestAuthorizationMatrix`](../../test/integration/authz_test.go#L304) | Three new columns: open a ready draft, open an unready one, close an open post, for every caller |
 
 ---
 

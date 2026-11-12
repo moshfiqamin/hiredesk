@@ -73,7 +73,8 @@ func (s *ApplicationStore) SearchApplications(ctx context.Context, jobPostID, qu
 	// ORDER BY compares the values PostgreSQL computed.
 	const pageQuery = `
 		SELECT p.id::text, p.candidate_id::text, u.full_name, p.status, p.submitted_at,
-		       p.relevance::float8, t.rubric_version, t.earned, t.available
+		       p.relevance::float8, t.rubric_version, t.earned, t.available,
+		       coalesce(asg.assignees, '[]'::jsonb)
 		FROM (
 			SELECT a.id, a.candidate_id, a.status, a.submitted_at,
 			       ts_rank(a.search_vector, tsq) AS relevance
@@ -92,6 +93,12 @@ func (s *ApplicationStore) SearchApplications(ctx context.Context, jobPostID, qu
 			ORDER BY s.rubric_version DESC
 			LIMIT 1
 		) AS t ON true
+		LEFT JOIN LATERAL (
+			SELECT jsonb_agg(jsonb_build_object('id', ia.interviewer_id::text, 'name', iu.full_name) ORDER BY iu.full_name) AS assignees
+			FROM interviewer_assignments ia
+			JOIN users iu ON iu.id = ia.interviewer_id
+			WHERE ia.application_id = p.id
+		) AS asg ON true
 		ORDER BY p.relevance DESC, p.submitted_at, p.id`
 
 	rows, err := tx.Query(ctx, pageQuery, jobPostID, query, limit, offset)
@@ -119,11 +126,19 @@ func scanSearchResult(row pgx.CollectableRow) (domain.SearchResult, error) {
 		// NULL together when the application has no scores, so pointers.
 		version           *int
 		earned, available *float64
+		assignees         []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		}
 	)
 	err := row.Scan(&r.ApplicationID, &r.CandidateID, &r.CandidateName, &r.Status, &r.SubmittedAt,
-		&r.Relevance, &version, &earned, &available)
+		&r.Relevance, &version, &earned, &available, &assignees)
 	if err != nil {
 		return domain.SearchResult{}, err
+	}
+	r.Assignees = make([]domain.Assignee, 0, len(assignees))
+	for _, a := range assignees {
+		r.Assignees = append(r.Assignees, domain.Assignee(a))
 	}
 	if version != nil && earned != nil && available != nil {
 		r.Totals = &domain.ScoreTotals{RubricVersion: *version, Earned: *earned, Available: *available}

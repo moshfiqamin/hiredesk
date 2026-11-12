@@ -75,10 +75,10 @@ Click the link, read the code, then come back.
 | [56](#56-why-the-negative-cases-matter-more-than-the-positive-ones) | Why the negative cases matter more | [`policy_test.go:74`](../../internal/auth/policy_test.go#L74) |
 | [57](#57-counting-the-combinations) | Counting the combinations | [`policy_test.go:154`](../../internal/auth/policy_test.go#L154) |
 | [58](#58-filtering-in-sql-not-in-go) | Filtering in SQL, not in Go | [`applications.go:62`](../../internal/store/applications.go#L62) |
-| [59](#59-two-encodings-of-one-rule-and-the-check-that-they-agree) | Two encodings of one rule, and the check that they agree | [`application_handler.go:286`](../../internal/api/application_handler.go#L286) |
+| [59](#59-two-encodings-of-one-rule-and-the-check-that-they-agree) | Two encodings of one rule, and the check that they agree | [`application_handler.go:372`](../../internal/api/application_handler.go#L372) |
 | [60](#60-403-or-404) | 403 or 404 | [`decisions.md`](../decisions.md) |
 | [61](#61-testcontainers-go-and-why-a-real-postgresql-beats-a-mock) | testcontainers-go, and why a real PostgreSQL beats a mock | [`authz_test.go:93`](../../test/integration/authz_test.go#L93) |
-| [62](#62-testauthorizationmatrix) | `TestAuthorizationMatrix`; generics, spreading a slice, package build tags | [`authz_test.go:321`](../../test/integration/authz_test.go#L321) |
+| [62](#62-testauthorizationmatrix) | `TestAuthorizationMatrix`; generics, spreading a slice, package build tags | [`authz_test.go:324`](../../test/integration/authz_test.go#L324) |
 
 ---
 
@@ -3027,7 +3027,7 @@ tempting alternative — admin query as the fallback, with `WHERE` clauses added
 for the roles that need restricting — would hand an unknown role every row.
 That exact mistake was introduced as a test (section 62) and caught.
 
-**`pgx.CollectRows`** ([`:145`](../../internal/store/applications.go#L145)) reads
+**`pgx.CollectRows`** ([`:145`](../../internal/store/applications.go#L133)) reads
 every row through a function, closes the result set, and returns `rows.Err()`.
 That last one matters: an error part-way through a result (a dropped
 connection after row 400) is reported only by `rows.Err()`, and a hand-written
@@ -3037,7 +3037,7 @@ connection after row 400) is reported only by `rows.Err()`, and a hand-written
 
 ## 59. Two encodings of one rule, and the check that they agree
 
-**📍 Open:** [`internal/api/application_handler.go:286`](../../internal/api/application_handler.go#L286)
+**📍 Open:** [`internal/api/application_handler.go:372`](../../internal/api/application_handler.go#L372)
 
 The visibility rule now exists twice:
 
@@ -3050,11 +3050,11 @@ a post see its applications" to the policy and forgets the query. The symptom
 is a list showing rows that then 404 when opened, or the reverse.
 
 `TestAuthorizationMatrix` checks the two against each other for every caller
-([`authz_test.go:615`](../../test/integration/authz_test.go#L615)): an
+([`authz_test.go:620`](../../test/integration/authz_test.go#L620)): an
 application is in the list **if and only if** fetching it alone returns 200.
 
 **`Get` needs two facts, fetched in one query.**
-[`applications.go:220`](../../internal/store/applications.go#L220) returns the
+[`applications.go:327`](../../internal/store/applications.go#L327) returns the
 row and, via `EXISTS (…)`, whether the caller is assigned to it. Then the
 handler calls the pure policy. The store gathers facts; the policy decides.
 
@@ -3065,7 +3065,7 @@ handler calls the pure policy. The store gathers facts; the policy decides.
 **📍 Open:** [`docs/decisions.md`](../decisions.md) — decision D1
 
 **A refused view answers 404, identical to a missing record**
-([`application_handler.go:288`](../../internal/api/application_handler.go#L288)).
+([`application_handler.go:376`](../../internal/api/application_handler.go#L376)).
 The full record — when 403 is still right, what was rejected, what it costs —
 is in `docs/decisions.md`. The core argument:
 
@@ -3151,7 +3151,7 @@ needs nothing.
 
 ## 62. `TestAuthorizationMatrix`
 
-**📍 Open:** [`test/integration/authz_test.go:321`](../../test/integration/authz_test.go#L321)
+**📍 Open:** [`test/integration/authz_test.go:324`](../../test/integration/authz_test.go#L324)
 
 **The shape.** One row per caller, one column per endpoint, the expected
 status in each cell — readable as a matrix:
@@ -3181,7 +3181,7 @@ per caller who can list) = 54 subtests.
 - a **single fetch** returns the application asked for.
 
 **The matrix cannot fall behind the router.**
-[`assertEveryProtectedRouteIsInTheMatrix`](../../test/integration/authz_test.go#L622)
+[`assertEveryProtectedRouteIsInTheMatrix`](../../test/integration/authz_test.go#L627)
 reads the router's registered routes and fails if any `/v1` route outside
 `/v1/auth` has no column. Adding an endpoint without deciding who may call it
 turns the test red.

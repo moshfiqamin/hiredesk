@@ -281,3 +281,145 @@ func TestGetApplicationDetail(t *testing.T) {
 		}
 	})
 }
+
+func TestListApplicationsSortAndFields(t *testing.T) {
+	t.Parallel()
+
+	score := 82.5
+	scoreCursor := func(s float64, at time.Time, id string) string {
+		return encodeCursor(domain.ListingPosition{CreatedAt: at, ID: id, Score: &s})
+	}
+
+	t.Run("sort=score reaches the store and its cursor carries the score", func(t *testing.T) {
+		t.Parallel()
+
+		f := newAppFixture(t)
+		scored := f.mine
+		scored.Score = &domain.ListedScore{Percentage: &score}
+		unscored := f.theirs
+		unscored.Score = &domain.ListedScore{}
+		f.apps.list = []domain.Application{scored, unscored}
+		f.apps.listTotal, f.apps.listMore = 5, true
+
+		rec := f.get("/v1/applications?sort=score&limit=2&after="+scoreCursor(90, f.mine.SubmittedAt, f.mine.ID), f.headers["admin"])
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d; body = %s", rec.Code, rec.Body)
+		}
+
+		f.apps.mu.Lock()
+		got := f.apps.lastFilter
+		f.apps.mu.Unlock()
+		if got.Sort != domain.ApplicationSortScore || got.After == nil || got.After.Score == nil || *got.After.Score != 90 {
+			t.Errorf("filter = %+v, want sort=score after a score of 90", got)
+		}
+
+		var page applicationPage
+		if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil || page.NextCursor == nil {
+			t.Fatalf("body = %s (%v)", rec.Body, err)
+		}
+		// The last row has no score, so the cursor holds -1, where the store
+		// sorts unscored rows.
+		pos, err := decodeCursor(*page.NextCursor)
+		if err != nil || pos.Score == nil || *pos.Score != -1 || pos.ID != f.theirs.ID {
+			t.Errorf("cursor = %+v (%v), want score -1 at %s", pos, err, f.theirs.ID)
+		}
+	})
+
+	t.Run("a candidate may not sort by score", func(t *testing.T) {
+		t.Parallel()
+
+		f := newAppFixture(t)
+		rec := f.get("/v1/applications?sort=score", f.headers["candidate"])
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("status = %d, want 403; body = %s", rec.Code, rec.Body)
+		}
+	})
+
+	refusals := []struct{ name, query string }{
+		{"a newest-first cursor with sort=score", "sort=score&after=" + encodeCursor(domain.ListingPosition{CreatedAt: time.Now(), ID: "aaaaaaaa-0000-4000-8000-000000000001"})},
+		{"a score cursor without sort=score", "after=" + scoreCursor(50, time.Now(), "aaaaaaaa-0000-4000-8000-000000000001")},
+	}
+	for _, tt := range refusals {
+		t.Run("refused: "+tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newAppFixture(t)
+			rec := f.get("/v1/applications?"+tt.query, f.headers["admin"])
+			if rec.Code != http.StatusBadRequest || decode(t, rec.Body.Bytes()).Code != codeInvalidCursor {
+				t.Errorf("status = %d, body = %s; want 400 invalid_cursor", rec.Code, rec.Body)
+			}
+		})
+	}
+
+	t.Run("an unknown sort is a 422", func(t *testing.T) {
+		t.Parallel()
+
+		f := newAppFixture(t)
+		rec := f.get("/v1/applications?sort=name", f.headers["admin"])
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Errorf("status = %d, want 422; body = %s", rec.Code, rec.Body)
+		}
+	})
+
+	// The keys a client sees, per what the store filled in for the role.
+	shapes := []struct {
+		name          string
+		app           func(a domain.Application) domain.Application
+		wantScore     string // the raw JSON of "score", or "" for absent
+		wantAssignees string
+	}{
+		{
+			name: "admin: score and assignees",
+			app: func(a domain.Application) domain.Application {
+				a.Score = &domain.ListedScore{Percentage: &score}
+				a.Assignees = []domain.Assignee{{ID: "i1", Name: "Ira"}}
+				return a
+			},
+			wantScore:     `{"percentage":82.5}`,
+			wantAssignees: `[{"id":"i1","name":"Ira"}]`,
+		},
+		{
+			name: "admin, unscored and unassigned: null percentage, empty list",
+			app: func(a domain.Application) domain.Application {
+				a.Score = &domain.ListedScore{}
+				a.Assignees = []domain.Assignee{}
+				return a
+			},
+			wantScore:     `{"percentage":null}`,
+			wantAssignees: `[]`,
+		},
+		{
+			name:      "candidate: neither key",
+			app:       func(a domain.Application) domain.Application { return a },
+			wantScore: "", wantAssignees: "",
+		},
+	}
+	for _, tt := range shapes {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newAppFixture(t)
+			app := tt.app(f.mine)
+			app.CandidateName, app.JobPostTitle = "Cara Candidate", "Backend Engineer"
+			f.apps.list = []domain.Application{app}
+
+			rec := f.get("/v1/applications", f.headers["admin"])
+			var body struct {
+				Data []map[string]json.RawMessage `json:"data"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || len(body.Data) != 1 {
+				t.Fatalf("body = %s (%v)", rec.Body, err)
+			}
+			row := body.Data[0]
+			if string(row["candidate_name"]) != `"Cara Candidate"` || string(row["job_post_title"]) != `"Backend Engineer"` {
+				t.Errorf("names = %s, %s", row["candidate_name"], row["job_post_title"])
+			}
+			if got := string(row["score"]); got != tt.wantScore {
+				t.Errorf("score = %q, want %q", got, tt.wantScore)
+			}
+			if got := string(row["assignees"]); got != tt.wantAssignees {
+				t.Errorf("assignees = %q, want %q", got, tt.wantAssignees)
+			}
+		})
+	}
+}

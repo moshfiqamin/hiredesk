@@ -18,11 +18,11 @@ Part 1 is [07-1-rubric-endpoints.md](07-1-rubric-endpoints.md).
 
 | # | Topic | Code |
 |---|---|---|
-| [1](#1-a-post-with-no-rubric-the-decision) | A post with no rubric: the decision | [`applications.go:779`](../../internal/store/applications.go#L779) |
-| [2](#2-the-hook) | The hook | [`applications.go:730`](../../internal/store/applications.go#L730) |
-| [3](#3-why-a-scoring-failure-fails-the-submission) | Why a scoring failure fails the submission | [`applications.go:785`](../../internal/store/applications.go#L785) |
+| [1](#1-a-post-with-no-rubric-the-decision) | A post with no rubric: the decision | [`applications.go:886`](../../internal/store/applications.go#L886) |
+| [2](#2-the-hook) | The hook | [`applications.go:837`](../../internal/store/applications.go#L837) |
+| [3](#3-why-a-scoring-failure-fails-the-submission) | Why a scoring failure fails the submission | [`applications.go:892`](../../internal/store/applications.go#L892) |
 | [4](#4-tracing-evidence_answer_id) | **Tracing `evidence_answer_id`** | [`engine.go:312`](../../internal/scoring/engine.go#L312) |
-| [5](#5-why-the-engine-takes-domain-types) | **Why the engine takes domain types** | [`applications.go:766`](../../internal/store/applications.go#L766) |
+| [5](#5-why-the-engine-takes-domain-types) | **Why the engine takes domain types** | [`applications.go:873`](../../internal/store/applications.go#L873) |
 | [6](#6-storing-the-numbers) | Storing the numbers | [`rubric.go:281`](../../internal/store/rubric.go#L281) |
 | [7](#7-in-the-request-or-in-a-background-job) | **In the request, or in a background job?** | — |
 | [8](#8-verification) | Verification | — |
@@ -31,7 +31,7 @@ Part 1 is [07-1-rubric-endpoints.md](07-1-rubric-endpoints.md).
 
 ## 1. A post with no rubric: the decision
 
-**📍 Open:** [`internal/store/applications.go:779`](../../internal/store/applications.go#L779)
+**📍 Open:** [`internal/store/applications.go:886`](../../internal/store/applications.go#L886)
 
 **Decision: accept the application, store no scores, and record that it was
 not scored.** The `application.submitted` event carries
@@ -70,7 +70,7 @@ error, and it rolls back.
 
 ## 2. The hook
 
-**📍 Open:** [`internal/store/applications.go:730`](../../internal/store/applications.go#L730)
+**📍 Open:** [`internal/store/applications.go:837`](../../internal/store/applications.go#L837)
 
 One line in `SubmitApplication`, between the answers and the event:
 
@@ -80,7 +80,7 @@ lock post (FOR SHARE) → validate → insert application → insert answers
 ```
 
 That is the order of statements, not a command. `scoreApplication`
-([line 619](../../internal/store/applications.go#L619)) does three things
+([line 619](../../internal/store/applications.go#L726)) does three things
 on the same `tx`:
 
 1. `loadRubric(ctx, tx, …)` — the current version, through the same query
@@ -99,7 +99,7 @@ judged the application, even after the scores are rescored.
 
 ## 3. Why a scoring failure fails the submission
 
-**📍 Open:** [`internal/store/applications.go:785`](../../internal/store/applications.go#L785)
+**📍 Open:** [`internal/store/applications.go:892`](../../internal/store/applications.go#L892)
 
 `Score` returns an error only for a rubric it cannot apply: an unknown kind
 or an unusable config. Neither can arrive through `PUT /rubric`
@@ -132,9 +132,9 @@ goes back into PostgreSQL. Follow one answer, the candidate's reply to
 
 **1. The database creates the ID.** `insertAnswers` inserts the answers and
 returns them with `RETURNING id::text, …`
-([`applications.go:816`](../../internal/store/applications.go#L816)). Each
+([`applications.go:923`](../../internal/store/applications.go#L923)). Each
 `domain.Answer` now has `ID = "a188f925-…"`, `QuestionID = "<describe>"`.
-These go into `app.Answers` ([line 578](../../internal/store/applications.go#L578)).
+These go into `app.Answers` ([line 578](../../internal/store/applications.go#L685)).
 
 **2. The engine indexes answers by question.** `Score` builds
 `answerIndex`, a `map[questionID]domain.Answer`. The whole `Answer` is
@@ -183,7 +183,7 @@ engine, not for this endpoint (see "What I just built" for the options).
 
 ## 5. Why the engine takes domain types
 
-**📍 Open:** [`internal/store/applications.go:766`](../../internal/store/applications.go#L766)
+**📍 Open:** [`internal/store/applications.go:873`](../../internal/store/applications.go#L873)
 
 `scoring.Score(answers []domain.Answer, criteria []domain.Criterion)`. The
 store converts rows to domain values — `scanCriterion` for criteria,

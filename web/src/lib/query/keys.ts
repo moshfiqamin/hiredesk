@@ -41,5 +41,13 @@ export const queryKeys = {
   },
   applications: {
     all: ["applications"] as const,
+    lists: () => [...queryKeys.applications.all, "list"] as const,
+    // The filters object is the whole view: status, role, sort and the page.
+    list: (filters: Record<string, string | number | undefined>) =>
+      [...queryKeys.applications.lists(), filters] as const,
+    search: (filters: Record<string, string | number | undefined>) =>
+      [...queryKeys.applications.lists(), "search", filters] as const,
+    detail: (id: string) => [...queryKeys.applications.all, "detail", id] as const,
+    score: (id: string) => [...queryKeys.applications.detail(id), "score"] as const,
   },
 } as const;

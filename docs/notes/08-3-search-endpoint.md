@@ -11,11 +11,11 @@ paged, and unable to produce a 500 whatever is typed into `q`.
 | # | Topic | Code |
 |---|---|---|
 | [1](#1-plainto_tsquery-not-to_tsquery) | **`plainto_tsquery`, not `to_tsquery`** | [`search.go:53`](../../internal/store/search.go#L53) |
-| [2](#2-why-the-drop-table-string-is-harmless) | **Why the `DROP TABLE` string is harmless** | [`search.go:97`](../../internal/store/search.go#L97) |
+| [2](#2-why-the-drop-table-string-is-harmless) | **Why the `DROP TABLE` string is harmless** | [`search.go:104`](../../internal/store/search.go#L104) |
 | [3](#3-why-ilike-go-would-be-wrong-twice) | **Why `ILIKE '%go%'` would be wrong, twice** | [`search_test.go:128`](../../test/integration/search_test.go#L128) |
-| [4](#4-every-hostile-input-and-what-it-gets) | Every hostile input, and what it gets | [`search.go:97`](../../internal/domain/search.go#L97) |
+| [4](#4-every-hostile-input-and-what-it-gets) | Every hostile input, and what it gets | [`search.go:104`](../../internal/domain/search.go#L97) |
 | [5](#5-the-query-rank-a-page-then-join) | The query: rank, take a page, then join | [`search.go:74`](../../internal/store/search.go#L74) |
-| [6](#6-offset-paging-here-keyset-everywhere-else) | Offset paging here, keyset everywhere else | [`application_handler.go:794`](../../internal/api/application_handler.go#L794) |
+| [6](#6-offset-paging-here-keyset-everywhere-else) | Offset paging here, keyset everywhere else | [`application_handler.go:884`](../../internal/api/application_handler.go#L884) |
 | [7](#7-the-tests) | The tests | [`search_test.go:170`](../../test/integration/search_test.go#L170) |
 | [8](#8-verification) | Verification | — |
 
@@ -86,7 +86,7 @@ born.
 
 ## 2. Why the `DROP TABLE` string is harmless
 
-**📍 Open:** [`internal/store/search.go:97`](../../internal/store/search.go#L97)
+**📍 Open:** [`internal/store/search.go:104`](../../internal/store/search.go#L104)
 
 There are two separate protections, and it helps to know which is which.
 
@@ -186,7 +186,7 @@ contain it. (A trigram GIN index from `pg_trgm` *can* serve `ILIKE
 
 ## 4. Every hostile input, and what it gets
 
-**📍 Open:** [`internal/domain/search.go:97`](../../internal/domain/search.go#L97)
+**📍 Open:** [`internal/domain/search.go:104`](../../internal/domain/search.go#L97)
 
 The principle: **refuse in Go only what PostgreSQL would turn into an
 error; pass everything else through, and let `plainto_tsquery` make it
@@ -254,7 +254,7 @@ would loop forever on what it thinks is page 600.
 
 ## 6. Offset paging here, keyset everywhere else
 
-**📍 Open:** [`internal/api/application_handler.go:794`](../../internal/api/application_handler.go#L794)
+**📍 Open:** [`internal/api/application_handler.go:884`](../../internal/api/application_handler.go#L884)
 
 Every other list in this API uses keyset cursors (4.4) because `OFFSET n`
 makes PostgreSQL produce and throw away n rows. Search uses `offset` anyway:

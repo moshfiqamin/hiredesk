@@ -127,4 +127,7 @@ type SearchResult struct {
 
 	// Totals is nil for an application with no stored score.
 	Totals *ScoreTotals
+
+	// Assignees are the interviewers assigned to the application, by name.
+	Assignees []Assignee
 }

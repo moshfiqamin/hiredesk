@@ -15,7 +15,7 @@ has to be enforced.
 | [1](#1-anchoring-bias-and-why-the-rule-exists) | **Anchoring bias, and why the rule exists** | — |
 | [2](#2-why-hiding-it-in-the-frontend-is-a-security-bug) | **Why hiding it in the frontend is a security bug** | — |
 | [3](#3-it-was-already-leaking-through-the-events) | It was already leaking, through the events | [`policy.go:109`](../../internal/auth/policy.go#L109) |
-| [4](#4-one-decision-two-enforcement-points) | **One decision, two enforcement points: avoiding the tangle** | [`applications.go:497`](../../internal/store/applications.go#L497) |
+| [4](#4-one-decision-two-enforcement-points) | **One decision, two enforcement points: avoiding the tangle** | [`applications.go:604`](../../internal/store/applications.go#L604) |
 | [5](#5-the-mark-0-11-and-eight) | The mark: `0`, `11` and `"eight"` | [`review_handler.go:214`](../../internal/api/review_handler.go#L214) |
 | [6](#6-notes) | Notes | [`review.go:102`](../../internal/domain/review.go#L102) |
 | [7](#7-one-review-each-and-the-409) | One review each, and the 409 | [`reviews.go:326`](../../internal/store/reviews.go#L326) |
@@ -113,7 +113,7 @@ existing behaviour**: a candidate's application detail now lists only
 
 ## 4. One decision, two enforcement points: avoiding the tangle
 
-**📍 Open:** [`internal/store/applications.go:497`](../../internal/store/applications.go#L497)
+**📍 Open:** [`internal/store/applications.go:604`](../../internal/store/applications.go#L604)
 
 "Admins see everything, interviewers see their own, candidates see none"
 now applies to two lists (reviews and events), in two endpoints (detail and

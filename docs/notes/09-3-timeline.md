@@ -12,12 +12,12 @@ by whom, and seventy-two new cells in `TestAuthorizationMatrix`.
 | # | Topic | Code |
 |---|---|---|
 | [1](#1-what-the-log-can-answer-that-a-status-column-cannot) | **What the log can answer that a status column cannot** | — |
-| [2](#2-the-endpoint) | The endpoint | [`application_handler.go:901`](../../internal/api/application_handler.go#L901) |
-| [3](#3-resolving-the-actor-at-read-time) | **Resolving the actor at read time** | [`applications.go:482`](../../internal/store/applications.go#L482) |
+| [2](#2-the-endpoint) | The endpoint | [`application_handler.go:992`](../../internal/api/application_handler.go#L992) |
+| [3](#3-resolving-the-actor-at-read-time) | **Resolving the actor at read time** | [`applications.go:589`](../../internal/store/applications.go#L589) |
 | [4](#4-the-audit-are-all-seven-events-written) | The audit: are all seven events written? | [`timeline_test.go:33`](../../test/integration/timeline_test.go#L33) |
 | [5](#5-the-audit-does-every-event-have-an-actor) | The audit: does every event have an actor? | — |
 | [6](#6-what-the-log-is-worth-in-a-dispute) | **What the log is worth in a dispute** | — |
-| [7](#7-the-authorization-matrix) | The authorization matrix | [`authz_test.go:298`](../../test/integration/authz_test.go#L298) |
+| [7](#7-the-authorization-matrix) | The authorization matrix | [`authz_test.go:301`](../../test/integration/authz_test.go#L301) |
 | [8](#8-verification) | Verification | — |
 
 ---
@@ -55,7 +55,7 @@ events per application, read through an index that already exists.
 
 ## 2. The endpoint
 
-**📍 Open:** [`internal/api/application_handler.go:901`](../../internal/api/application_handler.go#L901)
+**📍 Open:** [`internal/api/application_handler.go:992`](../../internal/api/application_handler.go#L992)
 
 - **Access** follows the score endpoint (07-3): `CanViewApplication` first,
   so anyone who may not see the application gets the standard 404, then
@@ -75,7 +75,7 @@ events per application, read through an index that already exists.
 
 ## 3. Resolving the actor at read time
 
-**📍 Open:** [`internal/store/applications.go:482`](../../internal/store/applications.go#L482)
+**📍 Open:** [`internal/store/applications.go:589`](../../internal/store/applications.go#L589)
 
 The event stores only `actor_id`. The name comes from a `LEFT JOIN users`
 when the timeline is read:
@@ -249,7 +249,7 @@ have a right to obtain it.
 
 ## 7. The authorization matrix
 
-**📍 Open:** [`test/integration/authz_test.go:298`](../../test/integration/authz_test.go#L298)
+**📍 Open:** [`test/integration/authz_test.go:301`](../../test/integration/authz_test.go#L301)
 
 Nine new endpoint columns, for every one of the eight callers: **72 new
 cells**, each checking the exact status and, for refusals, the error code

@@ -202,3 +202,140 @@ func TestGetApplication(t *testing.T) {
 		}
 	}
 }
+
+func TestListApplicationsByScore(t *testing.T) {
+	ctx := context.Background()
+	f := newAppFixture(t)
+	db := f.store.db
+	users := NewUserStore(db)
+	suffix := strings.ToLower(rand.Text())
+
+	// Two more applications, so the post has four: mine, theirs, extra1, extra2.
+	addApp := func(name string, submittedOffset string) string {
+		t.Helper()
+		u, err := users.CreateUser(ctx, domain.NewUser{
+			Email: name + "-" + suffix + "@example.test", PasswordHash: "unused", FullName: name, Role: domain.RoleCandidate,
+		})
+		if err != nil {
+			t.Fatalf("create %s: %v", name, err)
+		}
+		var id string
+		if err = db.QueryRow(ctx, `
+			INSERT INTO applications (job_post_id, candidate_id, cv_url, submitted_at)
+			VALUES ($1::text::uuid, $2::text::uuid, 'https://cv.test/x.pdf', now() + $3::interval) RETURNING id::text`,
+			f.postID, u.ID, submittedOffset,
+		).Scan(&id); err != nil {
+			t.Fatalf("create application: %v", err)
+		}
+		return id
+	}
+	tieOlder := addApp("tie-older", "1 minute")
+	tieNewer := addApp("tie-newer", "2 minutes")
+
+	criterion := func(version int) string {
+		t.Helper()
+		var id string
+		if err := db.QueryRow(ctx, `
+			INSERT INTO rubric_criteria (job_post_id, label, kind, weight, config, rubric_version, position)
+			VALUES ($1::text::uuid, 'c', 'boolean_all', 100, '{}'::jsonb, $2, 1) RETURNING id::text`, f.postID, version,
+		).Scan(&id); err != nil {
+			t.Fatalf("add criterion: %v", err)
+		}
+		return id
+	}
+	v1, v2 := criterion(1), criterion(2)
+	score := func(appID, criterionID string, version int, earned float64) {
+		t.Helper()
+		if _, err := db.Exec(ctx, `
+			INSERT INTO scores (application_id, criterion_id, earned, available, detail, rubric_version)
+			VALUES ($1::text::uuid, $2::text::uuid, $3, 100, 'test', $4)`, appID, criterionID, earned, version,
+		); err != nil {
+			t.Fatalf("add score: %v", err)
+		}
+	}
+	// mine: 90 under the old version, 40 under the newest, so 40 counts.
+	score(f.mine, v1, 1, 90)
+	score(f.mine, v2, 2, 40)
+	// Two at 80, told apart by submission time. theirs has no score.
+	score(tieOlder, v2, 2, 80)
+	score(tieNewer, v2, 2, 80)
+
+	// Scores reference criteria with ON DELETE RESTRICT, so they go before
+	// the fixture deletes the post. Cleanups run last-registered first.
+	t.Cleanup(func() {
+		if _, err := db.Exec(ctx, `DELETE FROM scores WHERE application_id IN (SELECT id FROM applications WHERE job_post_id = $1::text::uuid)`, f.postID); err != nil {
+			t.Errorf("clean up scores: %v", err)
+		}
+		if _, err := db.Exec(ctx, `DELETE FROM applications WHERE job_post_id = $1::text::uuid`, f.postID); err != nil {
+			t.Errorf("clean up applications: %v", err)
+		}
+		if _, err := db.Exec(ctx, `DELETE FROM users WHERE email LIKE '%-' || $1 || '@example.test'`, suffix); err != nil {
+			t.Errorf("clean up users: %v", err)
+		}
+	})
+
+	filter := domain.ApplicationFilter{JobPostID: f.postID, Sort: domain.ApplicationSortScore, Limit: 2}
+
+	first, total, more, err := f.store.ListApplications(ctx, f.admin, filter)
+	if err != nil {
+		t.Fatalf("first page: %v", err)
+	}
+	if total != 4 || !more {
+		t.Fatalf("total = %d, more = %v; want 4, true", total, more)
+	}
+	if got, want := ids(first), []string{tieNewer, tieOlder}; !slices.Equal(got, want) {
+		t.Fatalf("first page = %v, want the two 80s, newer first: %v", got, want)
+	}
+
+	// The cursor, as the handler builds it from the last row.
+	last := first[len(first)-1]
+	s := *last.Score.Percentage
+	filter.After = &domain.ListingPosition{CreatedAt: last.SubmittedAt, ID: last.ID, Score: &s}
+	second, _, more, err := f.store.ListApplications(ctx, f.admin, filter)
+	if err != nil {
+		t.Fatalf("second page: %v", err)
+	}
+	if got, want := ids(second), []string{f.mine, f.theirs}; !slices.Equal(got, want) || more {
+		t.Fatalf("second page = %v (more %v), want 40 then the unscored one: %v", got, more, want)
+	}
+	if p := second[0].Score.Percentage; p == nil || *p != 40 {
+		t.Errorf("mine scored %v, want 40: only the newest rubric version counts", p)
+	}
+	if second[1].Score == nil || second[1].Score.Percentage != nil {
+		t.Errorf("unscored application: Score = %+v, want visible with no percentage", second[1].Score)
+	}
+
+	// What each role is given, row by row.
+	byID := func(apps []domain.Application, id string) domain.Application {
+		for _, a := range apps {
+			if a.ID == id {
+				return a
+			}
+		}
+		t.Fatalf("%s not listed", id)
+		return domain.Application{}
+	}
+	adminView := byID(second, f.mine)
+	if adminView.CandidateName != "candidate" || adminView.JobPostTitle != "Store test" {
+		t.Errorf("names = %q, %q", adminView.CandidateName, adminView.JobPostTitle)
+	}
+	if len(adminView.Assignees) != 1 || adminView.Assignees[0].ID != f.assigned.ID || adminView.Assignees[0].Name != "assigned" {
+		t.Errorf("admin sees assignees %+v, want the assigned interviewer", adminView.Assignees)
+	}
+
+	interviewer, _, _, err := f.store.ListApplications(ctx, f.assigned, domain.ApplicationFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("interviewer list: %v", err)
+	}
+	if mine := byID(interviewer, f.mine); mine.Score == nil || mine.Assignees != nil {
+		t.Errorf("interviewer sees Score %+v, Assignees %+v; want the score and no assignees", mine.Score, mine.Assignees)
+	}
+
+	candidate, _, _, err := f.store.ListApplications(ctx, f.candidate, domain.ApplicationFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("candidate list: %v", err)
+	}
+	if mine := byID(candidate, f.mine); mine.Score != nil || mine.Assignees != nil {
+		t.Errorf("candidate sees Score %+v, Assignees %+v; want neither", mine.Score, mine.Assignees)
+	}
+}

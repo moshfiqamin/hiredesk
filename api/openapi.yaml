@@ -715,6 +715,13 @@ paths:
         - name: job_post_id
           in: query
           schema: { type: string, format: uuid }
+        - name: sort
+          in: query
+          description: |
+            `newest` (default) or `score`: highest latest score first, unscored
+            last, then newest. A cursor works only with the sort it was issued
+            for. Candidates may not sort by score (403).
+          schema: { type: string, enum: [newest, score], default: newest }
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/After"
       responses:
@@ -1526,9 +1533,35 @@ components:
       properties:
         data:
           type: array
-          items: { $ref: "#/components/schemas/Application" }
+          items: { $ref: "#/components/schemas/ApplicationListItem" }
         next_cursor: { type: string, nullable: true }
         total: { type: integer, description: Every match across all pages. }
+
+    ApplicationListItem:
+      allOf:
+        - $ref: "#/components/schemas/Application"
+        - type: object
+          required: [candidate_name, job_post_title]
+          properties:
+            candidate_name: { type: string }
+            job_post_title: { type: string }
+            score:
+              description: Absent for a candidate. `percentage` is null when there is no score yet.
+              type: object
+              required: [percentage]
+              properties:
+                percentage: { type: number, nullable: true, example: 82.5 }
+            assignees:
+              description: Admins only; absent for everyone else.
+              type: array
+              items: { $ref: "#/components/schemas/AssigneeRef" }
+
+    AssigneeRef:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
 
     Answer:
       type: object
@@ -1705,7 +1738,7 @@ components:
 
     SearchEntry:
       type: object
-      required: [application_id, candidate_id, candidate_name, status, submitted_at, relevance, total_earned, total_available, percentage, rubric_version]
+      required: [application_id, candidate_id, candidate_name, status, submitted_at, relevance, total_earned, total_available, percentage, rubric_version, assignees]
       properties:
         application_id: { type: string, format: uuid }
         candidate_id: { type: string, format: uuid }
@@ -1717,6 +1750,9 @@ components:
         total_available: { type: number, nullable: true }
         percentage: { type: number, nullable: true }
         rubric_version: { type: integer, nullable: true }
+        assignees:
+          type: array
+          items: { $ref: "#/components/schemas/AssigneeRef" }
 
     SearchPage:
       type: object

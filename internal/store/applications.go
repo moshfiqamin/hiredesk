@@ -106,20 +106,7 @@ func (s *ApplicationStore) ListApplications(ctx context.Context, viewer domain.U
 	countQuery := `SELECT count(*) FROM applications a` + where.sql()
 	countArgs := slices.Clone(where.args)
 
-	// The page adds the cursor and the limit to a copy, so the count's
-	// conditions and arguments are not disturbed.
-	page := where.clone()
-	if filter.After != nil {
-		// A row comparison: true for every row after the cursor in a
-		// (submitted_at DESC, id DESC) order, and matched by
-		// applications_submitted_at_id_idx, so the scan starts at the cursor.
-		page.add("(a.submitted_at, a.id) < (" + page.arg(filter.After.CreatedAt) + "::timestamptz, " +
-			page.arg(filter.After.ID) + "::text::uuid)")
-	}
-	// One more than the page, to learn whether another page follows without
-	// counting what remains.
-	pageQuery := `SELECT ` + applicationColumns + ` FROM applications a` + page.sql() +
-		` ` + applicationOrder + ` LIMIT ` + page.arg(filter.Limit+1)
+	pageQuery, pageArgs := applicationPageQuery(viewer, filter, where.clone())
 
 	// Both statements in one read-only transaction at REPEATABLE READ, so
 	// they read one snapshot: the total cannot disagree with the page because
@@ -134,20 +121,17 @@ func (s *ApplicationStore) ListApplications(ctx context.Context, viewer domain.U
 		return nil, 0, false, translate(op+": count", err)
 	}
 
-	rows, err := tx.Query(ctx, pageQuery, page.args...)
+	rows, err := tx.Query(ctx, pageQuery, pageArgs...)
 	if err != nil {
 		return nil, 0, false, translate(op, err)
 	}
 
-	// CollectRows reads every row through scanApplication, closes rows, and
-	// returns rows.Err(), which is where an error part-way through the result
-	// set is reported. A hand-written rows.Next loop must remember all three.
+	// CollectRows reads every row through scanListedApplication, closes rows,
+	// and returns rows.Err(), which is where an error part-way through the
+	// result set is reported. A hand-written rows.Next loop must remember all
+	// three.
 	apps, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Application, error) {
-		app, scanErr := scanApplication(row)
-		if scanErr != nil {
-			return domain.Application{}, scanErr
-		}
-		return *app, nil
+		return scanListedApplication(row, viewer.Role)
 	})
 	if err != nil {
 		return nil, 0, false, translate(op, err)
@@ -165,6 +149,129 @@ func (s *ApplicationStore) ListApplications(ctx context.Context, viewer domain.U
 		apps = []domain.Application{}
 	}
 	return apps, total, more, nil
+}
+
+// latestPercentage is a LATERAL subquery giving one application's latest
+// total as a percentage, or no row when it has no score. It sums the scores
+// of the newest rubric version only, as ScoreCard does: after a rubric
+// change, rows from an older version may remain until a rescore.
+const latestPercentage = `
+	SELECT round((sum(s.earned) / nullif(sum(s.available), 0) * 100)::numeric, 2)::float8 AS percentage
+	FROM scores s
+	WHERE s.application_id = a.id
+	GROUP BY s.rubric_version
+	ORDER BY s.rubric_version DESC
+	LIMIT 1`
+
+// applicationPageQuery returns the statement for one page of the list, and
+// its arguments, given the WHERE clause already scoped to the viewer and the
+// filters.
+//
+// Newest first, the page is found first, by the index on (submitted_at, id),
+// and only its rows are joined to names, scores and assignees. By score,
+// every matching row must be scored before any can be ordered, so the
+// percentage is computed for all of them and the page is cut afterwards.
+// That is O(matches) per page; docs/notes/11-7 says when it stops being
+// acceptable and what replaces it.
+func applicationPageQuery(viewer domain.User, filter domain.ApplicationFilter, page conditions) (string, []any) {
+	var inner string
+	order := `a.submitted_at DESC, a.id DESC`
+
+	if filter.Sort == domain.ApplicationSortScore {
+		// -1 for "no score" keeps sort_score non-null, so a plain row
+		// comparison works for the cursor and unscored rows sort last.
+		scored := `
+			SELECT a.*, coalesce(t.percentage, -1) AS sort_score
+			FROM applications a
+			LEFT JOIN LATERAL (` + latestPercentage + `) t ON true` + page.sql()
+
+		var after string
+		if filter.After != nil && filter.After.Score != nil {
+			after = ` WHERE (a.sort_score, a.submitted_at, a.id) < (` + page.arg(*filter.After.Score) + `::float8, ` +
+				page.arg(filter.After.CreatedAt) + `::timestamptz, ` + page.arg(filter.After.ID) + `::text::uuid)`
+		}
+		order = `a.sort_score DESC, a.submitted_at DESC, a.id DESC`
+		inner = `SELECT a.* FROM (` + scored + `) a` + after + ` ORDER BY ` + order + ` LIMIT ` + page.arg(filter.Limit+1)
+	} else {
+		if filter.After != nil {
+			// A row comparison: true for every row after the cursor in a
+			// (submitted_at DESC, id DESC) order, and matched by
+			// applications_submitted_at_id_idx, so the scan starts at the
+			// cursor.
+			page.add("(a.submitted_at, a.id) < (" + page.arg(filter.After.CreatedAt) + "::timestamptz, " +
+				page.arg(filter.After.ID) + "::text::uuid)")
+		}
+		// One more than the page, to learn whether another page follows
+		// without counting what remains.
+		inner = `SELECT a.* FROM applications a` + page.sql() + ` ` + applicationOrder + ` LIMIT ` + page.arg(filter.Limit+1)
+	}
+
+	// Scores for those who may see them; assignees for admins only. The
+	// columns are always selected, as NULL otherwise, so one scan function
+	// reads every shape.
+	scoreColumn := `NULL::float8`
+	scoreJoin := ``
+	if viewer.Role == domain.RoleAdmin || viewer.Role == domain.RoleInterviewer {
+		scoreColumn = `t.percentage`
+		scoreJoin = ` LEFT JOIN LATERAL (` + latestPercentage + `) t ON true`
+	}
+	assigneesColumn := `NULL::jsonb`
+	assigneesJoin := ``
+	if viewer.Role == domain.RoleAdmin {
+		assigneesColumn = `coalesce(asg.assignees, '[]'::jsonb)`
+		assigneesJoin = ` LEFT JOIN LATERAL (
+			SELECT jsonb_agg(jsonb_build_object('id', ia.interviewer_id::text, 'name', iu.full_name) ORDER BY iu.full_name) AS assignees
+			FROM interviewer_assignments ia
+			JOIN users iu ON iu.id = ia.interviewer_id
+			WHERE ia.application_id = a.id
+		) asg ON true`
+	}
+
+	query := `
+		WITH page AS (` + inner + `)
+		SELECT ` + applicationColumns + `, u.full_name, p.title, ` + scoreColumn + `, ` + assigneesColumn + `
+		FROM page a
+		JOIN users u ON u.id = a.candidate_id
+		JOIN job_posts p ON p.id = a.job_post_id` + scoreJoin + assigneesJoin + `
+		ORDER BY ` + order
+	// The page CTE keeps every column of its rows, sort_score included when
+	// it was cut by score, so the outer ORDER BY is the inner one again: a
+	// join does not preserve order, and the page must come out as it was cut.
+	return query, page.args
+}
+
+// scanListedApplication reads one row of applicationPageQuery.
+func scanListedApplication(row pgx.CollectableRow, role string) (domain.Application, error) {
+	var (
+		a          domain.Application
+		percentage *float64
+		assignees  []domain.Assignee
+	)
+	// pgx decodes a jsonb column into a Go value with encoding/json, so the
+	// aggregated [{"id":…,"name":…}] arrives as a slice of structs; NULL
+	// leaves it nil.
+	type assigneeJSON struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	var raw []assigneeJSON
+	err := row.Scan(&a.ID, &a.JobPostID, &a.CandidateID, &a.Status, &a.CVURL, &a.SubmittedAt, &a.UpdatedAt,
+		&a.CandidateName, &a.JobPostTitle, &percentage, &raw)
+	if err != nil {
+		return domain.Application{}, err
+	}
+
+	if role == domain.RoleAdmin || role == domain.RoleInterviewer {
+		a.Score = &domain.ListedScore{Percentage: percentage}
+	}
+	if role == domain.RoleAdmin {
+		assignees = make([]domain.Assignee, 0, len(raw))
+		for _, r := range raw {
+			assignees = append(assignees, domain.Assignee(r))
+		}
+		a.Assignees = assignees
+	}
+	return a, nil
 }
 
 // conditions builds a WHERE clause from fixed SQL fragments and a matching

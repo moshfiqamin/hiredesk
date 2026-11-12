@@ -233,7 +233,7 @@ each grabbing half.
 **Against an offer.** The first design also locked the post (`FOR SHARE`),
 so that a rubric replacement could not commit mid-rescore. That creates a
 cycle with `TransitionApplication`
-([`applications.go:262`](../../internal/store/applications.go#L262)), which
+([`applications.go:369`](../../internal/store/applications.go#L369)), which
 locks an application and then, for an offer, the post:
 
 ```text

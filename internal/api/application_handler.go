@@ -141,9 +141,63 @@ type listResponse[T any] struct {
 // total counts every application matching the filters, across all pages.
 // next_cursor is null on the last page.
 type applicationPage struct {
-	Data       []applicationResponse `json:"data"`
+	Data       []applicationListItem `json:"data"`
 	NextCursor *string               `json:"next_cursor"`
 	Total      int                   `json:"total"`
+}
+
+// applicationListItem is one row of GET /v1/applications: the application,
+// the names behind its two IDs, and what the viewer's role may see of its
+// score and reviewers.
+type applicationListItem struct {
+	applicationResponse
+	CandidateName string `json:"candidate_name"`
+	JobPostTitle  string `json:"job_post_title"`
+
+	// Score is absent for a candidate, who may not see scores; present for
+	// everyone else, with a null percentage when there is no score yet. The
+	// difference matters: "hidden" and "not scored" must not look alike.
+	Score *listedScoreResponse `json:"score,omitempty"`
+
+	// Assignees is absent unless the viewer is an admin. A pointer to a
+	// slice, so that an admin sees [] for nobody assigned, while for anyone
+	// else the key is left out: omitempty drops a nil pointer, not an empty
+	// slice behind one.
+	Assignees *[]assigneeResponse `json:"assignees,omitempty"`
+}
+
+type listedScoreResponse struct {
+	Percentage *float64 `json:"percentage"`
+}
+
+// assigneeResponse is an interviewer assigned to an application.
+type assigneeResponse struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func newAssigneeList(in []domain.Assignee) []assigneeResponse {
+	out := make([]assigneeResponse, 0, len(in))
+	for _, a := range in {
+		out = append(out, assigneeResponse(a))
+	}
+	return out
+}
+
+func newApplicationListItem(a *domain.Application) applicationListItem {
+	item := applicationListItem{
+		applicationResponse: newApplicationResponse(a),
+		CandidateName:       a.CandidateName,
+		JobPostTitle:        a.JobPostTitle,
+	}
+	if a.Score != nil {
+		item.Score = &listedScoreResponse{Percentage: a.Score.Percentage}
+	}
+	if a.Assignees != nil {
+		list := newAssigneeList(a.Assignees)
+		item.Assignees = &list
+	}
+	return item
 }
 
 // eventResponse is one entry of an application's history.
@@ -192,11 +246,11 @@ func newAnswerList(answers []domain.Answer) []answerResponse {
 	return out
 }
 
-// List handles GET /v1/applications?status=&job_post_id=&limit=&after=.
+// List handles GET /v1/applications?status=&job_post_id=&sort=&limit=&after=.
 //
 // Which applications the caller may see is decided by the store's query for
 // their role. status and job_post_id narrow that further; limit and after
-// page through it newest first, as GET /v1/job-posts does.
+// page through it, newest first, or with sort=score highest score first.
 func (h *ApplicationHandler) List(c *gin.Context) {
 	user, ok := CurrentUser(c)
 	if !ok {
@@ -225,16 +279,39 @@ func (h *ApplicationHandler) List(c *gin.Context) {
 		}
 		filter.JobPostID = strings.ToLower(postID)
 	}
+	switch sort := c.Query("sort"); sort {
+	case "", "newest":
+		filter.Sort = domain.ApplicationSortNewest
+	case "score":
+		filter.Sort = domain.ApplicationSortScore
+	default:
+		invalid.Add("sort", "must be newest or score")
+	}
 	if err := invalid.Err(); err != nil {
 		Respond(c, err)
 		return
 	}
 
+	// A candidate cannot see scores, so may not sort by them either: the
+	// order alone would tell them how they rank against their other
+	// applications' scores.
+	if filter.Sort == domain.ApplicationSortScore && user.Role == domain.RoleCandidate {
+		Respond(c, fmt.Errorf("list applications by score as a candidate: %w", domain.ErrForbidden))
+		return
+	}
+
 	if raw := c.Query("after"); raw != "" {
 		position, err := decodeCursor(raw)
+		// A cursor carries the sort key of the order it was issued for. One
+		// from the newest-first list has no score; one from the score order
+		// has. Using either with the other order would start the page at a
+		// meaningless point, so it is refused like any other bad cursor.
+		if err == nil && (position.Score != nil) != (filter.Sort == domain.ApplicationSortScore) {
+			err = errInvalidCursor
+		}
 		if err != nil {
 			write(c, http.StatusBadRequest, codeInvalidCursor,
-				"The after parameter is not a cursor this API issued. Start again from the first page.", nil)
+				"The after parameter is not a cursor this API issued for this sort order. Start again from the first page.", nil)
 			return
 		}
 		filter.After = &position
@@ -248,17 +325,26 @@ func (h *ApplicationHandler) List(c *gin.Context) {
 
 	// make with a length of 0 and a capacity of len(apps): one allocation,
 	// and an empty result still encodes as [] rather than null.
-	page := applicationPage{Data: make([]applicationResponse, 0, len(apps)), Total: total}
+	page := applicationPage{Data: make([]applicationListItem, 0, len(apps)), Total: total}
 	for i := range apps {
 		// &apps[i] points into the slice rather than copying each element.
-		page.Data = append(page.Data, newApplicationResponse(&apps[i]))
+		page.Data = append(page.Data, newApplicationListItem(&apps[i]))
 	}
 
 	// The cursor is the sort key of the last row on this page, issued only
 	// when the store saw a further row.
 	if more && len(apps) > 0 {
 		last := apps[len(apps)-1]
-		cursor := encodeCursor(domain.ListingPosition{CreatedAt: last.SubmittedAt, ID: last.ID})
+		position := domain.ListingPosition{CreatedAt: last.SubmittedAt, ID: last.ID}
+		if filter.Sort == domain.ApplicationSortScore {
+			// -1 for an unscored row, as the store sorts it.
+			score := -1.0
+			if last.Score != nil && last.Score.Percentage != nil {
+				score = *last.Score.Percentage
+			}
+			position.Score = &score
+		}
+		cursor := encodeCursor(position)
 		page.NextCursor = &cursor
 	}
 
@@ -758,6 +844,10 @@ type searchEntry struct {
 	TotalAvailable *float64 `json:"total_available"`
 	Percentage     *float64 `json:"percentage"`
 	RubricVersion  *int     `json:"rubric_version"`
+
+	// Assignees are the interviewers assigned to it. The route is admin
+	// only, so it is always present.
+	Assignees []assigneeResponse `json:"assignees"`
 }
 
 // searchResponse is the body of GET /v1/job-posts/:id/applications/search.
@@ -848,6 +938,7 @@ func (h *ApplicationHandler) Search(c *gin.Context) {
 		entry := searchEntry{
 			ApplicationID: r.ApplicationID, CandidateID: r.CandidateID, CandidateName: r.CandidateName,
 			Status: r.Status, SubmittedAt: r.SubmittedAt.UTC(), Relevance: r.Relevance,
+			Assignees: newAssigneeList(r.Assignees),
 		}
 		if t := r.Totals; t != nil {
 			// Copies, so each pointer refers to this entry's own values.

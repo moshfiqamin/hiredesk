@@ -28,6 +28,11 @@ type cursorPayload struct {
 	V  int    `json:"v"`
 	T  string `json:"t"`
 	ID string `json:"id"`
+
+	// S is the score, only in a cursor for the score-sorted applications
+	// list. omitempty keeps every other cursor exactly as it was, so cursors
+	// issued before S existed still decode.
+	S *float64 `json:"s,omitempty"`
 }
 
 // encodeCursor turns a listing position into an opaque string for a URL.
@@ -46,9 +51,10 @@ func encodeCursor(p domain.ListingPosition) string {
 		// millisecond, and they would be returned twice.
 		T:  p.CreatedAt.UTC().Format(time.RFC3339Nano),
 		ID: p.ID,
+		S:  p.Score,
 	}
 
-	// Marshalling a struct of two strings and an int cannot fail.
+	// Marshalling a struct of strings, an int and a float pointer cannot fail.
 	raw, _ := json.Marshal(payload) //nolint:errcheck // See above.
 
 	// URL-safe base64 without padding: no character in it needs escaping in
@@ -83,5 +89,5 @@ func decodeCursor(s string) (domain.ListingPosition, error) {
 		return domain.ListingPosition{}, errInvalidCursor
 	}
 
-	return domain.ListingPosition{CreatedAt: createdAt, ID: strings.ToLower(payload.ID)}, nil
+	return domain.ListingPosition{CreatedAt: createdAt, ID: strings.ToLower(payload.ID), Score: payload.S}, nil
 }

@@ -35,6 +35,35 @@ type Application struct {
 	// when it was submitted, or nil if its post had no rubric. Only
 	// SubmitApplication sets it.
 	RubricVersion *int
+
+	// The fields below are set only by ListApplications, for the admin
+	// applications table, so one page needs no follow-up request per row.
+
+	// CandidateName and JobPostTitle name the two IDs above.
+	CandidateName string
+	JobPostTitle  string
+
+	// Score is nil when the viewer may not see scores (a candidate). When
+	// set, its Percentage is nil if the application has no score yet.
+	Score *ListedScore
+
+	// Assignees is nil unless the viewer is an admin: who is assigned to
+	// review the application is not the candidate's or another
+	// interviewer's business.
+	Assignees []Assignee
+}
+
+// ListedScore is an application's latest total as a percentage, as the
+// applications list shows it.
+type ListedScore struct {
+	// Percentage is nil for an application with no stored score.
+	Percentage *float64
+}
+
+// Assignee is an interviewer assigned to an application, by ID and name.
+type Assignee struct {
+	ID   string
+	Name string
 }
 
 // Answer is one row of the application_answers table.

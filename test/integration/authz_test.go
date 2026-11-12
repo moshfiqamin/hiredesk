@@ -294,6 +294,9 @@ type callerRow struct {
 	// The ranking of postID, and a search of its applications: admins only.
 	ranking, search int
 
+	// Every job post with its counts, for the admin roles list: admins only.
+	adminPosts int
+
 	// Interviewer assignment, admins only. assignRepeat assigns the
 	// interviewer already assigned to A again: idempotent, a 200 that
 	// changes nothing. assignCandidate tries to assign a candidate to B: the
@@ -345,7 +348,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau,
 			listing: ok, submit: unau, statusChange: unau,
 			rubricGet: unau, rubricPut: unau, scoreA: unau,
-			rescoreB: unau, rescoreAll: unau, ranking: unau, search: unau,
+			rescoreB: unau, rescoreAll: unau, ranking: unau, search: unau, adminPosts: unau,
 			assignList: unau, assignRepeat: unau, assignCandidate: unau, unassign: unau,
 			reviewA: unau, reviewB: unau, reviewPatchA: unau, eventsA: unau, eventsB: unau},
 		{caller: "ghost (token for a deleted user)", userID: ghostID, role: domain.RoleAdmin,
@@ -356,7 +359,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: unau, qCreate: unau, qCreateLocked: unau, qUpdate: unau, qReorder: unau, qDelete: unau,
 			listing: ok, submit: unau, statusChange: unau,
 			rubricGet: unau, rubricPut: unau, scoreA: unau,
-			rescoreB: unau, rescoreAll: unau, ranking: unau, search: unau,
+			rescoreB: unau, rescoreAll: unau, ranking: unau, search: unau, adminPosts: unau,
 			assignList: unau, assignRepeat: unau, assignCandidate: unau, unassign: unau,
 			reviewA: unau, reviewB: unau, reviewPatchA: unau, eventsA: unau, eventsB: unau},
 
@@ -368,7 +371,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: ok, qCreate: made, qCreateLocked: conf, qUpdate: ok, qReorder: ok, qDelete: gone,
 			listing: ok, submit: forb, statusChange: ok,
 			rubricGet: ok, rubricPut: ok, scoreA: ok,
-			rescoreB: ok, rescoreAll: ok, ranking: ok, search: ok,
+			rescoreB: ok, rescoreAll: ok, ranking: ok, search: ok, adminPosts: ok,
 			assignList: ok, assignRepeat: ok, assignCandidate: unpr, unassign: gone,
 			reviewA: forb, reviewB: forb, reviewPatchA: forb, eventsA: ok, eventsB: ok,
 			listed: []string{appA, appB}},
@@ -380,7 +383,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listing: ok, submit: forb, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: ok,
-			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb,
+			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb, adminPosts: forb,
 			assignList: forb, assignRepeat: forb, assignCandidate: forb, unassign: forb,
 			reviewA: made, reviewB: nf, reviewPatchA: ok, eventsA: ok, eventsB: nf,
 			listed: []string{appA}},
@@ -392,7 +395,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listing: ok, submit: forb, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: nf,
-			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb,
+			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb, adminPosts: forb,
 			assignList: forb, assignRepeat: forb, assignCandidate: forb, unassign: forb,
 			reviewA: nf, reviewB: nf, reviewPatchA: nf, eventsA: nf, eventsB: nf,
 			listed: []string{}},
@@ -404,7 +407,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listing: ok, submit: conf, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: forb,
-			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb,
+			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb, adminPosts: forb,
 			assignList: forb, assignRepeat: forb, assignCandidate: forb, unassign: forb,
 			reviewA: forb, reviewB: forb, reviewPatchA: forb, eventsA: forb, eventsB: nf,
 			listed: []string{appA}},
@@ -416,7 +419,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listing: ok, submit: conf, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: nf,
-			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb,
+			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb, adminPosts: forb,
 			assignList: forb, assignRepeat: forb, assignCandidate: forb, unassign: forb,
 			reviewA: forb, reviewB: forb, reviewPatchA: forb, eventsA: nf, eventsB: forb,
 			listed: []string{appB}},
@@ -431,7 +434,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			qList: forb, qCreate: forb, qCreateLocked: forb, qUpdate: forb, qReorder: forb, qDelete: forb,
 			listing: ok, submit: conf, statusChange: forb,
 			rubricGet: forb, rubricPut: forb, scoreA: forb,
-			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb,
+			rescoreB: forb, rescoreAll: forb, ranking: forb, search: forb, adminPosts: forb,
 			assignList: forb, assignRepeat: forb, assignCandidate: forb, unassign: forb,
 			reviewA: forb, reviewB: forb, reviewPatchA: forb, eventsA: forb, eventsB: nf,
 			listed: []string{appA}},
@@ -480,6 +483,8 @@ func TestAuthorizationMatrix(t *testing.T) {
 		// disturb it.
 		{name: "GET public listing", method: http.MethodGet, route: "/v1/job-posts", path: "/v1/job-posts?limit=100",
 			public: true, cellFor: func(r callerRow) int { return r.listing }},
+		{name: "GET admin job post list", method: http.MethodGet, route: "/v1/admin/job-posts", path: "/v1/admin/job-posts",
+			cellFor: func(r callerRow) int { return r.adminPosts }},
 
 		// The form endpoints run in this order for the admin: the reorder
 		// must name all three questions, so it comes before the delete.

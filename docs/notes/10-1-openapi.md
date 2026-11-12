@@ -8,8 +8,8 @@ The whole API described in one OpenAPI 3 document, rendered as Swagger UI at
 | # | Section | Open |
 |---|---|---|
 | 1 | What OpenAPI is for, beyond documentation | [`api/openapi.yaml:1`](../../api/openapi.yaml#L1) |
-| 2 | One error envelope, referenced everywhere | [`api/openapi.yaml:1177`](../../api/openapi.yaml#L1177) |
-| 3 | Bearer auth per route, and why Authorize works | [`api/openapi.yaml:1026`](../../api/openapi.yaml#L1026) |
+| 2 | One error envelope, referenced everywhere | [`api/openapi.yaml:1204`](../../api/openapi.yaml#L1204) |
+| 3 | Bearer auth per route, and why Authorize works | [`api/openapi.yaml:1053`](../../api/openapi.yaml#L1053) |
 | 4 | `go:embed` | [`api/embed.go:12`](../../api/embed.go#L12) |
 | 5 | Serving the docs, and a CSP | [`internal/api/docs.go:17`](../../internal/api/docs.go#L17) |
 | 6 | Keeping the spec honest | [`internal/api/docs_test.go:77`](../../internal/api/docs_test.go#L77) |
@@ -58,8 +58,8 @@ bought back by the tests in section 6.
 
 ## 2. One error envelope, referenced everywhere
 
-**📍 Open:** [`api/openapi.yaml:1177`](../../api/openapi.yaml#L1177), then the
-shared responses from [`api/openapi.yaml:1109`](../../api/openapi.yaml#L1109)
+**📍 Open:** [`api/openapi.yaml:1204`](../../api/openapi.yaml#L1204), then the
+shared responses from [`api/openapi.yaml:1136`](../../api/openapi.yaml#L1136)
 
 `ErrorEnvelope` is defined once under `components/schemas`. Nine shared
 responses (`BadRequest`, `Unauthorized`, `NotFound`, `Conflict`,
@@ -86,7 +86,7 @@ Why that matters rather than writing the schema out twenty times:
 
 ## 3. Bearer auth per route, and why Authorize works
 
-**📍 Open:** [`api/openapi.yaml:1026`](../../api/openapi.yaml#L1026),
+**📍 Open:** [`api/openapi.yaml:1053`](../../api/openapi.yaml#L1053),
 [`api/swagger-ui/init.js:10`](../../api/swagger-ui/init.js#L10)
 
 ```yaml
