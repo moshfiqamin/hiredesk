@@ -25,6 +25,7 @@ type JobPostStore interface {
 	GetJobPostByID(ctx context.Context, id string, includeDrafts bool) (*domain.JobPost, error)
 	UpdateJobPost(ctx context.Context, id string, patch domain.JobPostPatch) (*domain.JobPost, error)
 	TransitionJobPost(ctx context.Context, id, to, actorID string) (*domain.JobPost, error)
+	ListJobPostSummaries(ctx context.Context) ([]domain.JobPostSummary, error)
 }
 
 // JobPostHandler serves the job post endpoints. Every route it serves must be
@@ -80,23 +81,33 @@ type updateJobPostRequest struct {
 	ClosesAt       *time.Time   `json:"closes_at"`
 }
 
-// jobPostResponse is a job post as a client sees one. The nullable fields
-// are pointers so that an unset one is sent as null rather than as "" or 0.
+// jobPostFields are a job post's own columns as a client sees them. The
+// nullable fields are pointers so that an unset one is sent as null rather
+// than as "" or 0.
+//
+// It is embedded, not repeated, in jobPostResponse and in
+// jobPostSummaryResponse. encoding/json promotes an embedded struct's fields
+// into the outer object, so both encode flat, with no "jobPostFields" key.
+type jobPostFields struct {
+	ID             string       `json:"id"`
+	Title          string       `json:"title"`
+	Description    *string      `json:"description"`
+	EmploymentType *string      `json:"employment_type"`
+	Location       *string      `json:"location"`
+	Vacancies      int          `json:"vacancies"`
+	SalaryMin      *json.Number `json:"salary_min"`
+	SalaryMax      *json.Number `json:"salary_max"`
+	Status         string       `json:"status"`
+	ClosesAt       *time.Time   `json:"closes_at"`
+	CreatedBy      *string      `json:"created_by"`
+	CreatedAt      time.Time    `json:"created_at"`
+	UpdatedAt      time.Time    `json:"updated_at"`
+}
+
+// jobPostResponse is one job post with its application form.
 type jobPostResponse struct {
-	ID             string             `json:"id"`
-	Title          string             `json:"title"`
-	Description    *string            `json:"description"`
-	EmploymentType *string            `json:"employment_type"`
-	Location       *string            `json:"location"`
-	Vacancies      int                `json:"vacancies"`
-	SalaryMin      *json.Number       `json:"salary_min"`
-	SalaryMax      *json.Number       `json:"salary_max"`
-	Status         string             `json:"status"`
-	ClosesAt       *time.Time         `json:"closes_at"`
-	CreatedBy      *string            `json:"created_by"`
-	CreatedAt      time.Time          `json:"created_at"`
-	UpdatedAt      time.Time          `json:"updated_at"`
-	Questions      []questionResponse `json:"questions"`
+	jobPostFields
+	Questions []questionResponse `json:"questions"`
 }
 
 // questionResponse is one field of a job post's application form.
@@ -111,7 +122,16 @@ type questionResponse struct {
 }
 
 func newJobPostResponse(p *domain.JobPost) jobPostResponse {
-	out := jobPostResponse{
+	return jobPostResponse{
+		jobPostFields: newJobPostFields(p),
+
+		// Never nil: a post with no questions sends [] and not null.
+		Questions: newQuestionList(p.Questions),
+	}
+}
+
+func newJobPostFields(p *domain.JobPost) jobPostFields {
+	out := jobPostFields{
 		ID:             p.ID,
 		Title:          p.Title,
 		Description:    p.Description,
@@ -124,9 +144,6 @@ func newJobPostResponse(p *domain.JobPost) jobPostResponse {
 		CreatedBy:      p.CreatedBy,
 		CreatedAt:      p.CreatedAt.UTC(),
 		UpdatedAt:      p.UpdatedAt.UTC(),
-
-		// Never nil: a post with no questions sends [] and not null.
-		Questions: newQuestionList(p.Questions),
 	}
 
 	if p.ClosesAt != nil {
@@ -136,6 +153,19 @@ func newJobPostResponse(p *domain.JobPost) jobPostResponse {
 	}
 
 	return out
+}
+
+// jobPostSummaryResponse is one row of the admin roles list: the post's own
+// fields without its questions, and two figures from its applications.
+type jobPostSummaryResponse struct {
+	jobPostFields
+	ApplicationCount   int `json:"application_count"`
+	RemainingVacancies int `json:"remaining_vacancies"`
+}
+
+// jobPostSummaryList is the envelope of GET /v1/admin/job-posts.
+type jobPostSummaryList struct {
+	Data []jobPostSummaryResponse `json:"data"`
 }
 
 // moneyJSON renders m as a JSON number with two decimal places, or as null.
@@ -216,6 +246,27 @@ func (h *JobPostHandler) Create(c *gin.Context) {
 	// the URL itself.
 	c.Header("Location", "/v1/job-posts/"+post.ID)
 	c.JSON(http.StatusCreated, newJobPostResponse(post))
+}
+
+// List handles GET /v1/admin/job-posts: every post, drafts included, with
+// its application count and remaining vacancies. Admin only; the public
+// listing of open posts is GET /v1/job-posts.
+func (h *JobPostHandler) List(c *gin.Context) {
+	summaries, err := h.posts.ListJobPostSummaries(c.Request.Context())
+	if err != nil {
+		Respond(c, fmt.Errorf("list job posts: %w", err))
+		return
+	}
+
+	out := jobPostSummaryList{Data: make([]jobPostSummaryResponse, 0, len(summaries))}
+	for i := range summaries {
+		out.Data = append(out.Data, jobPostSummaryResponse{
+			jobPostFields:      newJobPostFields(&summaries[i].JobPost),
+			ApplicationCount:   summaries[i].ApplicationCount,
+			RemainingVacancies: summaries[i].RemainingVacancies,
+		})
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 // Get handles GET /v1/job-posts/:id. It returns the post with its questions.

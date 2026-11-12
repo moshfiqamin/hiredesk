@@ -199,6 +199,19 @@ type JobPost struct {
 	Questions []Question
 }
 
+// JobPostSummary is a job post as the admin roles list shows it: the post
+// without its questions, plus two figures computed from its applications.
+type JobPostSummary struct {
+	JobPost
+
+	// ApplicationCount is every application to the post, in any status.
+	ApplicationCount int
+
+	// RemainingVacancies is the vacancies not yet taken by an offer, never
+	// below zero.
+	RemainingVacancies int
+}
+
 // Question is one row of the questions table: one field of a job post's
 // application form.
 type Question struct {

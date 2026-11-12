@@ -19,9 +19,16 @@ cd web && npm install && npm run dev
 | Path | Holds |
 |---|---|
 | `src/app/globals.css` | Every design token: palette, semantic colours, type and spacing scales, light and dark |
-| `src/app/layout.tsx` | Root layout: fonts, theme provider, toaster |
+| `src/app/layout.tsx` | Root layout: fonts, theme provider, query provider, toaster |
+| `src/app/login/` | Sign-in page |
+| `src/app/admin/` | The admin console, behind the session gate in `components/layout/admin-shell.tsx` |
+| `src/app/tokens/` | The design-token specimen, at `/tokens` |
+| `src/lib/api/` | The fetch wrapper (`client.ts`), the error type and the API's types |
+| `src/lib/auth/session.ts` | The signed-in session, kept in localStorage |
+| `src/lib/query/` | The TanStack Query client and its defaults (`client.ts`), and every query key (`keys.ts`) |
+| `src/hooks/` | One file of query and mutation hooks per resource |
+| `src/components/states/` | The shared loading, empty and error states, and `QueryView` |
 | `src/components/ui/` | shadcn/ui components, restyled only through the tokens |
-| `src/components/theme-*.tsx` | next-themes provider and the toggle |
 
-The reasoning behind each choice is in
+The reasoning behind each choice is in the module 11 notes, starting at
 [`docs/notes/11-1-frontend-foundation.md`](../docs/notes/11-1-frontend-foundation.md).

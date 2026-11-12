@@ -39,6 +39,10 @@ type fakeJobPosts struct {
 	lastAfter *domain.ListingPosition
 	listings  map[string]domain.JobListing
 
+	// summaries supplies application counts and remaining vacancies per post
+	// ID to ListJobPostSummaries.
+	summaries map[string]domain.JobPostSummary
+
 	// lastPatch is the patch the most recent UpdateJobPost call received, and
 	// calls counts every call to any method.
 	lastPatch domain.JobPostPatch
@@ -151,6 +155,35 @@ func (f *fakeJobPosts) TransitionJobPost(_ context.Context, id, to, actorID stri
 	post.Status = to
 	f.byID[id] = post
 	return &post, nil
+}
+
+// ListJobPostSummaries returns every stored post, newest first, with the
+// figures from summaries when set and zero applications otherwise.
+func (f *fakeJobPosts) ListJobPostSummaries(_ context.Context) ([]domain.JobPostSummary, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.calls++
+	if f.failWith != nil {
+		return nil, f.failWith
+	}
+
+	out := make([]domain.JobPostSummary, 0, len(f.byID))
+	for _, p := range f.byID {
+		sum := domain.JobPostSummary{JobPost: p, RemainingVacancies: p.Vacancies}
+		if extra, ok := f.summaries[p.ID]; ok {
+			sum.ApplicationCount, sum.RemainingVacancies = extra.ApplicationCount, extra.RemainingVacancies
+		}
+		sum.Questions = nil
+		out = append(out, sum)
+	}
+	slices.SortFunc(out, func(a, b domain.JobPostSummary) int {
+		if c := b.CreatedAt.Compare(a.CreatedAt); c != 0 {
+			return c
+		}
+		return strings.Compare(a.ID, b.ID)
+	})
+	return out, nil
 }
 
 func (f *fakeJobPosts) callCount() int {
@@ -1005,4 +1038,73 @@ func TestJobPostTransitionsAreAdminOnly(t *testing.T) {
 			t.Errorf("store called %d times, want 0", n)
 		}
 	})
+}
+
+func TestListJobPostSummaries(t *testing.T) {
+	t.Parallel()
+
+	f := newPostFixture(t)
+	f.posts.summaries = map[string]domain.JobPostSummary{
+		openPostID: {ApplicationCount: 7, RemainingVacancies: 0},
+	}
+
+	rec := f.send(http.MethodGet, "/v1/admin/job-posts", f.headers[domain.RoleAdmin], "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body)
+	}
+
+	// Decoded into maps, so the test sees the JSON keys a client sees rather
+	// than what a Go struct happens to accept.
+	var body struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("body is not a summary list: %v\n%s", err, rec.Body)
+	}
+	if len(body.Data) != 2 {
+		t.Fatalf("got %d posts, want 2 (the draft is included)", len(body.Data))
+	}
+
+	byID := map[string]map[string]any{}
+	for _, row := range body.Data {
+		byID[row["id"].(string)] = row
+		if _, ok := row["questions"]; ok {
+			t.Errorf("post %v has a questions key; the list leaves the form out", row["id"])
+		}
+	}
+	if got := byID[draftPostID]["status"]; got != domain.JobStatusDraft {
+		t.Errorf("draft status = %v, want draft", got)
+	}
+	if got := byID[draftPostID]["salary_min"]; got != 50000.0 {
+		t.Errorf("draft salary_min = %v, want 50000 (the same encoding as a single post)", got)
+	}
+	if got := byID[openPostID]["application_count"]; got != 7.0 {
+		t.Errorf("application_count = %v, want 7", got)
+	}
+	if got := byID[openPostID]["remaining_vacancies"]; got != 0.0 {
+		t.Errorf("remaining_vacancies = %v, want 0", got)
+	}
+}
+
+func TestListJobPostSummariesIsAdminOnly(t *testing.T) {
+	t.Parallel()
+
+	for role, wantStatus := range map[string]int{
+		domain.RoleInterviewer: http.StatusForbidden,
+		domain.RoleCandidate:   http.StatusForbidden,
+		"":                     http.StatusUnauthorized,
+	} {
+		t.Run("as "+role, func(t *testing.T) {
+			t.Parallel()
+
+			f := newPostFixture(t)
+			rec := f.send(http.MethodGet, "/v1/admin/job-posts", f.headers[role], "")
+			if rec.Code != wantStatus {
+				t.Errorf("status = %d, want %d; body = %s", rec.Code, wantStatus, rec.Body)
+			}
+			if n := f.posts.callCount(); n != 0 {
+				t.Errorf("store called %d times, want 0", n)
+			}
+		})
+	}
 }

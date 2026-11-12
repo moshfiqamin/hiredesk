@@ -167,6 +167,11 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 		// handler, so a non-admin is refused before the body is read.
 		admin := protected.Group("", RequireRole(domain.RoleAdmin))
 		{
+			// Every post, drafts included, for the admin roles list. Under
+			// /admin because GET /v1/job-posts is the public listing, which
+			// reads no token at all and must stay that way.
+			admin.GET("/admin/job-posts", deps.JobPosts.List)
+
 			admin.POST("/job-posts", deps.JobPosts.Create)
 			admin.PATCH("/job-posts/:id", deps.JobPosts.Update)
 

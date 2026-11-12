@@ -8,7 +8,7 @@ before any screen exists, the design tokens every screen will be built from.
 | # | Section | Open |
 |---|---|---|
 | 1 | Choosing the look before writing code | [`docs/design/hiredesk-prototype.html`](../design/hiredesk-prototype.html) |
-| 2 | The App Router directory conventions | [`web/src/app/layout.tsx:42`](../../web/src/app/layout.tsx#L42) |
+| 2 | The App Router directory conventions | [`web/src/app/layout.tsx:43`](../../web/src/app/layout.tsx#L43) |
 | 3 | shadcn/ui, Base UI, and the missing `form` | [`web/components.json:3`](../../web/components.json#L3) |
 | 4 | Three layers of tokens | [`web/src/app/globals.css:26`](../../web/src/app/globals.css#L26) |
 | 5 | Why tokens come before screens | [`web/src/app/globals.css:59`](../../web/src/app/globals.css#L59) |
@@ -17,9 +17,9 @@ before any screen exists, the design tokens every screen will be built from.
 | 8 | Type and spacing scales | [`web/src/app/globals.css:101`](../../web/src/app/globals.css#L101) |
 | 9 | Dark mode is a second set of values | [`web/src/app/globals.css:157`](../../web/src/app/globals.css#L157) |
 | 10 | Tailwind v4 `@theme inline` | [`web/src/app/globals.css:219`](../../web/src/app/globals.css#L219) |
-| 11 | next-themes and the flash of the wrong theme | [`web/src/app/layout.tsx:49`](../../web/src/app/layout.tsx#L49) |
+| 11 | next-themes and the flash of the wrong theme | [`web/src/app/layout.tsx:50`](../../web/src/app/layout.tsx#L50) |
 | 12 | A hydration mismatch React will not repair | [`web/src/components/theme-toggle.tsx:25`](../../web/src/components/theme-toggle.tsx#L25) |
-| 13 | Self-hosted fonts | [`web/src/app/layout.tsx:12`](../../web/src/app/layout.tsx#L12) |
+| 13 | Self-hosted fonts | [`web/src/app/layout.tsx:13`](../../web/src/app/layout.tsx#L13) |
 | 14 | `NEXT_PUBLIC_` is baked in at build time | [`web/Dockerfile:22`](../../web/Dockerfile#L22) |
 | 15 | The standalone image and the Compose service | [`docker-compose.yml:120`](../../docker-compose.yml#L120) |
 | 16 | CORS for the new origin | [`docker-compose.yml:108`](../../docker-compose.yml#L108) |
@@ -50,7 +50,7 @@ score-band hues (section 6), so the accent never reads as a score.
 
 ## 2. The App Router directory conventions
 
-**📍 Open:** [`web/src/app/layout.tsx:42`](../../web/src/app/layout.tsx#L42)
+**📍 Open:** [`web/src/app/layout.tsx:43`](../../web/src/app/layout.tsx#L43)
 
 In the App Router, **folders are routes and special file names are roles**.
 `src/app/jobs/[id]/` is the URL `/jobs/:id`; what happens there depends on
@@ -86,7 +86,7 @@ The current CLI defaults to the `base-nova` style, built on **Base UI**
 rather than Radix. In that style the `form` component the brief asked for is
 an **empty registry entry**: `shadcn add form` reports success and writes
 nothing. Its replacement is `field`, which was added instead and is what the
-login form (11.3) will compose with react-hook-form. The alternative was
+login form will compose with react-hook-form. The alternative was
 re-initialising on a Radix style just to get the old `form` wrapper. That
 would have tied the project to an older component set for one convenience.
 
@@ -134,9 +134,10 @@ Tokens prevent it in three ways:
 - **One source.** Dark mode, a contrast fix, or a rebrand is one edit. The
   input-border fix in section 7 changed one variable and every field moved
   together.
-- **Reviewable.** The home page is temporarily a specimen of every token
-  ([`page.tsx`](../../web/src/app/page.tsx#L1)), so the whole system can be
-  judged in both themes before a feature depends on it.
+- **Reviewable.** A specimen page shows every token
+  ([`tokens/page.tsx`](../../web/src/app/tokens/page.tsx#L1), at `/tokens`;
+  it was the home page until module 11.2), so the whole system can be judged
+  in both themes before a feature depends on it.
 
 ## 6. One accent, and score bands that survive colour blindness
 
@@ -254,7 +255,7 @@ choice in the app wins.
 
 ## 11. next-themes and the flash of the wrong theme
 
-**📍 Open:** [`web/src/app/layout.tsx:49`](../../web/src/app/layout.tsx#L49)
+**📍 Open:** [`web/src/app/layout.tsx:50`](../../web/src/app/layout.tsx#L50)
 
 The flash happens like this. The server cannot know a visitor's theme: it
 lives in `localStorage` and in the OS setting, both in the browser. So the
@@ -269,7 +270,7 @@ anything below it. It reads `localStorage.theme`, falls back to
 paint the right tokens are active. Verified in section 17: the script is in
 the served HTML ahead of the page content.
 
-The settings on the provider ([`layout.tsx:53`](../../web/src/app/layout.tsx#L53)):
+The settings on the provider ([`layout.tsx:54`](../../web/src/app/layout.tsx#L54)):
 
 - `attribute="class"` matches the `.dark` selector the tokens use.
 - `defaultTheme="system"` with `enableSystem` follows the OS until the user
@@ -306,7 +307,7 @@ the button appear a frame late, a small flash of its own.
 
 ## 13. Self-hosted fonts
 
-**📍 Open:** [`web/src/app/layout.tsx:12`](../../web/src/app/layout.tsx#L12)
+**📍 Open:** [`web/src/app/layout.tsx:13`](../../web/src/app/layout.tsx#L13)
 
 `next/font/google` downloads fonts from Google **during `next build`**. That
 build failed in this environment: Turbopack fetches fonts from Rust code that

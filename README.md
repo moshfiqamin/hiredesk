@@ -75,8 +75,8 @@ PostgreSQL, waits for its healthcheck, applies all 13 migrations, and starts
 the API on port 8080 and the Next.js frontend on port 3000. The first build
 takes a few minutes.
 
-The frontend is in progress: <http://localhost:3000> currently shows the
-design tokens every screen will be built from, in light and dark.
+<http://localhost:3000> is the admin console. Run `make seed`, then sign in
+as `admin@hiredesk.test` / `admin-password` (accounts below).
 
 **Do not create `.env` by copying `.env.example`.** Its `JWT_SECRET` is a
 placeholder that is deliberately too short, so a copied file makes the API
@@ -261,6 +261,7 @@ rendered at `/docs`. In brief:
 | `POST` | `/v1/auth/register` · `/login` · `/refresh` · `/logout` | anyone, 10 per IP per minute |
 | `GET` | `/v1/me` | any signed-in user |
 | `GET` | `/v1/job-posts` | anyone (open posts only) |
+| `GET` | `/v1/admin/job-posts` | admin (every post, with application counts) |
 | `POST` | `/v1/job-posts` | admin |
 | `GET` | `/v1/job-posts/:id` | any signed-in user (drafts: admin only) |
 | `PATCH` | `/v1/job-posts/:id` | admin |

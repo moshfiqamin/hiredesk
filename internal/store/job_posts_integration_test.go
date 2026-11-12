@@ -421,3 +421,67 @@ func TestJobPostStoreList(t *testing.T) {
 		}
 	}
 }
+
+func TestListJobPostSummaries(t *testing.T) {
+	ctx := context.Background()
+	f := newPostFixture(t)
+	users := NewUserStore(f.store.db)
+
+	apply := func(postID, status string) {
+		t.Helper()
+		u, err := users.CreateUser(ctx, newCandidate(t, users))
+		if err != nil {
+			t.Fatalf("create candidate: %v", err)
+		}
+		if _, err = f.store.db.Exec(ctx, `
+			INSERT INTO applications (job_post_id, candidate_id, cv_url, status)
+			VALUES ($1::text::uuid, $2::text::uuid, 'https://cv.test/x.pdf', $3)`,
+			postID, u.ID, status,
+		); err != nil {
+			t.Fatalf("apply: %v", err)
+		}
+	}
+
+	draft := f.create(t, "Draft, no applications", nil, nil)
+	busy := f.create(t, "Open, four applications", nil, nil)
+	f.publish(t, busy.ID)
+	if _, err := f.store.db.Exec(ctx, `UPDATE job_posts SET vacancies = 2 WHERE id = $1::text::uuid`, busy.ID); err != nil {
+		t.Fatalf("set vacancies: %v", err)
+	}
+	for _, status := range []string{"offer", "submitted", "rejected", "interview"} {
+		apply(busy.ID, status)
+	}
+	full := f.create(t, "Open, more offers than vacancies", nil, nil)
+	f.publish(t, full.ID)
+	apply(full.ID, "offer")
+	apply(full.ID, "offer")
+
+	summaries, err := f.store.ListJobPostSummaries(ctx)
+	if err != nil {
+		t.Fatalf("ListJobPostSummaries: %v", err)
+	}
+
+	type figures struct{ applications, remaining int }
+	got := map[string]figures{}
+	var order []string
+	for _, s := range summaries {
+		if s.CreatedBy != nil && *s.CreatedBy == f.admin.ID {
+			got[s.ID] = figures{s.ApplicationCount, s.RemainingVacancies}
+			order = append(order, s.ID)
+		}
+	}
+
+	want := map[string]figures{
+		draft.ID: {0, 1}, // A draft is listed, which the public listing never does.
+		busy.ID:  {4, 1}, // Every status counts as an application; only offers take a vacancy.
+		full.ID:  {2, 0}, // Two offers for one vacancy shows zero, not -1.
+	}
+	for id, w := range want {
+		if got[id] != w {
+			t.Errorf("post %s: got %+v, want %+v", id, got[id], w)
+		}
+	}
+	if wantOrder := []string{full.ID, busy.ID, draft.ID}; !slices.Equal(order, wantOrder) {
+		t.Errorf("order = %v, want newest first %v", order, wantOrder)
+	}
+}

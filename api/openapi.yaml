@@ -258,6 +258,26 @@ paths:
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /v1/admin/job-posts:
+    get:
+      tags: [job-posts]
+      summary: Every job post, drafts included (admin)
+      description: |
+        The admin roles list: every post in any status, newest first, each
+        with its application count and the vacancies not yet taken by an
+        offer. Not paged; an organisation has tens of roles, not thousands.
+      operationId: listJobPostSummaries
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Every post.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobPostSummaryList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /v1/job-posts/{id}:
     parameters:
       - $ref: "#/components/parameters/JobPostID"
@@ -1276,6 +1296,35 @@ components:
         questions:
           type: array
           items: { $ref: "#/components/schemas/Question" }
+
+    JobPostSummary:
+      description: A job post without its questions, with figures from its applications.
+      type: object
+      required: [id, title, description, employment_type, location, vacancies, salary_min, salary_max, status, closes_at, created_by, created_at, updated_at, application_count, remaining_vacancies]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        employment_type: { type: string, nullable: true }
+        location: { type: string, nullable: true }
+        vacancies: { type: integer, minimum: 1 }
+        salary_min: { type: number, nullable: true }
+        salary_max: { type: number, nullable: true }
+        status: { $ref: "#/components/schemas/JobPostStatus" }
+        closes_at: { type: string, format: date-time, nullable: true }
+        created_by: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        application_count: { type: integer, minimum: 0, description: Every application, in any status. }
+        remaining_vacancies: { type: integer, minimum: 0, description: Vacancies minus offers, never below zero. }
+
+    JobPostSummaryList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/JobPostSummary" }
 
     CreateJobPostRequest:
       type: object

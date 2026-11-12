@@ -337,6 +337,54 @@ func (s *JobPostStore) ListJobPosts(ctx context.Context, includeDrafts bool) ([]
 	return posts, nil
 }
 
+// ListJobPostSummaries returns every job post, drafts included, newest
+// first, each with its application count and remaining vacancies. It is the
+// admin roles list, so it is not paged: an organisation has tens of roles,
+// not thousands, and the list is filtered and sorted in the browser.
+func (s *JobPostStore) ListJobPostSummaries(ctx context.Context) ([]domain.JobPostSummary, error) {
+	// One LATERAL subquery per post counts its applications twice in a single
+	// pass over applications_job_post_id_status_idx: all of them, and those at
+	// the offer stage. count(*) FILTER is one aggregate with a condition, so
+	// the index is read once rather than once per figure.
+	const query = `
+		SELECT ` + jobPostColumns + `,
+		       c.applications,
+		       greatest(vacancies - c.offers, 0)
+		FROM job_posts
+		CROSS JOIN LATERAL (
+			SELECT count(*)::int AS applications,
+			       count(*) FILTER (WHERE a.status = 'offer')::int AS offers
+			FROM applications a
+			WHERE a.job_post_id = job_posts.id
+		) c
+		ORDER BY created_at DESC, id`
+
+	rows, err := s.db.Query(ctx, query)
+	if err != nil {
+		return nil, translate("list job post summaries", err)
+	}
+
+	summaries, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.JobPostSummary, error) {
+		var sum domain.JobPostSummary
+		p := &sum.JobPost
+		scanErr := row.Scan(
+			&p.ID, &p.Title, &p.Description, &p.EmploymentType, &p.Location, &p.Vacancies,
+			&p.SalaryMin, &p.SalaryMax,
+			&p.Status, &p.ClosesAt, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt,
+			&sum.ApplicationCount, &sum.RemainingVacancies,
+		)
+		return sum, scanErr
+	})
+	if err != nil {
+		return nil, translate("list job post summaries", err)
+	}
+
+	if summaries == nil {
+		summaries = []domain.JobPostSummary{}
+	}
+	return summaries, nil
+}
+
 // listQuestions returns the questions of one job post in display order. It
 // returns an empty slice, never nil, for a post with none.
 func listQuestions(ctx context.Context, db queryer, jobPostID string) ([]domain.Question, error) {
