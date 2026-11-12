@@ -40,7 +40,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
         ./cmd/reindex
 
 # ---- Runtime stage: receives only the binary -------------------------------
-FROM alpine:3.22
+FROM alpine:3.24
 
 # A static Go binary carries no root CAs, so outbound HTTPS fails without these.
 RUN apk add --no-cache ca-certificates
