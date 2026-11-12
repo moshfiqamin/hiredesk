@@ -2,7 +2,7 @@
 # runtime that holds only the standalone server and its static assets.
 
 # ---- deps: install exactly what package-lock.json pins ----------------------
-FROM node:22-alpine AS deps
+FROM node:25-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 # `npm ci` fails if the lockfile and package.json disagree, so the image always
@@ -10,7 +10,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 # ---- build ------------------------------------------------------------------
-FROM node:22-alpine AS build
+FROM node:25-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -25,7 +25,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ---- runtime ----------------------------------------------------------------
-FROM node:22-alpine AS runtime
+FROM node:25-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
