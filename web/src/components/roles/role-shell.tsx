@@ -27,6 +27,7 @@ import { StatusBadge } from "./status-badge";
 const tabs = [
   { segment: "", label: "Overview" },
   { segment: "/edit", label: "Details" },
+  { segment: "/questions", label: "Questions" },
 ] as const;
 
 /**

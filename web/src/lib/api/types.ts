@@ -73,3 +73,12 @@ export interface JobPostInput {
   salary_max?: number;
   closes_at?: string;
 }
+
+/** QuestionInput is the body of POST and PATCH on a post's questions. */
+export interface QuestionInput {
+  prompt?: string;
+  kind?: QuestionKind;
+  required?: boolean;
+  min_length?: number;
+  choices?: string[];
+}

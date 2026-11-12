@@ -35,5 +35,7 @@ export const queryKeys = {
     all: ["jobPosts"] as const,
     lists: () => [...queryKeys.jobPosts.all, "list"] as const,
     detail: (id: string) => [...queryKeys.jobPosts.all, "detail", id] as const,
+    // Nested under the post, so invalidating the post refreshes these too.
+    questions: (id: string) => [...queryKeys.jobPosts.detail(id), "questions"] as const,
   },
 } as const;
