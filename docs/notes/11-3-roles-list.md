@@ -8,9 +8,9 @@ phones.
 
 | # | Section | Open |
 |---|---|---|
-| 1 | What an optimistic update is | [`web/src/hooks/use-job-posts.ts:75`](../../web/src/hooks/use-job-posts.ts#L75) |
-| 2 | Rolling one back in TanStack Query | [`web/src/hooks/use-job-posts.ts:99`](../../web/src/hooks/use-job-posts.ts#L99) |
-| 3 | Why the server still decides | [`web/src/hooks/use-job-posts.ts:115`](../../web/src/hooks/use-job-posts.ts#L115) |
+| 1 | What an optimistic update is | [`web/src/hooks/use-job-posts.ts:88`](../../web/src/hooks/use-job-posts.ts#L88) |
+| 2 | Rolling one back in TanStack Query | [`web/src/hooks/use-job-posts.ts:112`](../../web/src/hooks/use-job-posts.ts#L112) |
+| 3 | Why the server still decides | [`web/src/hooks/use-job-posts.ts:128`](../../web/src/hooks/use-job-posts.ts#L128) |
 | 4 | Status not by colour alone | [`web/src/components/roles/status-badge.tsx:9`](../../web/src/components/roles/status-badge.tsx#L9) |
 | 5 | Tabular figures and right-aligned numbers | [`web/src/app/globals.css:322`](../../web/src/app/globals.css#L322) |
 | 6 | Filtering and sorting in the browser | [`web/src/components/roles/roles-view.tsx:77`](../../web/src/components/roles/roles-view.tsx#L77) |
@@ -25,7 +25,7 @@ phones.
 
 ## 1. What an optimistic update is
 
-**📍 Open:** [`web/src/hooks/use-job-posts.ts:75`](../../web/src/hooks/use-job-posts.ts#L75)
+**📍 Open:** [`web/src/hooks/use-job-posts.ts:88`](../../web/src/hooks/use-job-posts.ts#L88)
 
 A normal (pessimistic) update waits: click "Open", send the request, show a
 spinner, and change the badge only when the server answers. An
@@ -41,13 +41,13 @@ the server can produce.
 `onMutate` runs before the request is sent and does four things, in order:
 
 1. **Cancels in-flight reads** of the list and the detail
-   ([line 81](../../web/src/hooks/use-job-posts.ts#L81)). A refetch that
+   ([line 94](../../web/src/hooks/use-job-posts.ts#L94)). A refetch that
    started a moment earlier would otherwise land *after* the optimistic write
    and overwrite it with the old status, so the badge would flicker back.
 2. **Takes a snapshot** of both cache entries exactly as they were
-   ([line 85](../../web/src/hooks/use-job-posts.ts#L85)).
+   ([line 98](../../web/src/hooks/use-job-posts.ts#L98)).
 3. **Writes the prediction** into the cache
-   ([line 91](../../web/src/hooks/use-job-posts.ts#L91)). The updater
+   ([line 104](../../web/src/hooks/use-job-posts.ts#L104)). The updater
    returns a *new* array with a *new* object for the changed row, never a
    mutated one: React and TanStack Query detect changes by reference, so an
    object edited in place looks unchanged and nothing re-renders.
@@ -57,7 +57,7 @@ the server can produce.
 
 ## 2. Rolling one back in TanStack Query
 
-**📍 Open:** [`web/src/hooks/use-job-posts.ts:99`](../../web/src/hooks/use-job-posts.ts#L99)
+**📍 Open:** [`web/src/hooks/use-job-posts.ts:112`](../../web/src/hooks/use-job-posts.ts#L112)
 
 When the request fails, `onError` writes the snapshot back with
 `setQueryData`. The badge returns to "Draft", and a toast says why.
@@ -65,7 +65,7 @@ When the request fails, `onError` writes the snapshot back with
 The most common failure here is not a network problem but the server
 refusing: opening a draft with no questions or no rubric is a 409
 `not_ready`, whose `details` name each missing piece. `transitionError`
-([line 52](../../web/src/hooks/use-job-posts.ts#L52)) uses those sentences
+([line 65](../../web/src/hooks/use-job-posts.ts#L65)) uses those sentences
 rather than the generic message, so the toast reads "The post has no
 questions. Add at least one before opening it. The post has no rubric…",
 which tells the admin what to do next.
@@ -75,7 +75,7 @@ nothing *loads*; the confirmation is the only sign the server agreed.
 
 ## 3. Why the server still decides
 
-**📍 Open:** [`web/src/hooks/use-job-posts.ts:115`](../../web/src/hooks/use-job-posts.ts#L115)
+**📍 Open:** [`web/src/hooks/use-job-posts.ts:128`](../../web/src/hooks/use-job-posts.ts#L128)
 
 `onSettled` runs after success *or* failure and invalidates both entries, so
 they are refetched. After a success this replaces the prediction with the

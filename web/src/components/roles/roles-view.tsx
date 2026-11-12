@@ -315,7 +315,7 @@ function RolesTable({ rows, sort, onSort }: { rows: JobPostSummary[]; sort: Sort
               <td className="px-3 py-2.5">
                 <StatusBadge status={post.status} />
               </td>
-              <td className="px-3 py-2.5 text-text-secondary">{post.location ?? <Unset />}</td>
+              <td className="px-3 py-2.5 text-text-secondary">{post.location || <Unset />}</td>
               <td className="px-3 py-2.5 text-right">
                 <Vacancies post={post} />
               </td>

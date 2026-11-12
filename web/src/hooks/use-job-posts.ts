@@ -45,6 +45,19 @@ export function useCreateJobPost() {
   });
 }
 
+/** useUpdateJobPost changes the fields given, and only those. */
+export function useUpdateJobPost(id: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: JobPostInput) => api<JobPost>(`/v1/job-posts/${id}`, { method: "PATCH", body: input }),
+    onSuccess: (post) => {
+      queryClient.setQueryData(queryKeys.jobPosts.detail(id), post);
+      return queryClient.invalidateQueries({ queryKey: queryKeys.jobPosts.lists() });
+    },
+  });
+}
+
 /** The status a post can be moved to from the roles list. */
 export type TransitionTarget = "open" | "closed";
 
