@@ -105,7 +105,10 @@ func (okPinger) Ping(context.Context) error { return nil }
 
 // testServer is a full router over fake dependencies.
 type testServer struct {
-	engine  *gin.Engine
+	engine *gin.Engine
+	// deps built engine, kept so a test can rebuild it with one dependency
+	// swapped.
+	deps    Deps
 	users   *fakeUsers
 	refresh *fakeRefreshTokens
 	apps    *fakeApplications
@@ -153,7 +156,7 @@ func newTestServer(t *testing.T) *testServer {
 	s.posts = newFakeJobPosts()
 	s.rubrics = newFakeRubrics()
 	s.reviews = &fakeReviews{}
-	engine, err := NewRouter(Deps{
+	s.deps = Deps{
 		Auth:         handler,
 		Applications: NewApplicationHandler(s.apps),
 		JobPosts:     NewJobPostHandler(s.posts),
@@ -165,7 +168,10 @@ func newTestServer(t *testing.T) *testServer {
 		Users:        s.users,
 		DB:           okPinger{},
 		PingTimeout:  time.Second,
-	})
+		AuthLimiter:  unlimited(),
+		InFlight:     NewInFlight(),
+	}
+	engine, err := NewRouter(s.deps)
 	if err != nil {
 		t.Fatalf("NewRouter() unexpected error: %v", err)
 	}
@@ -179,6 +185,7 @@ func (s *testServer) post(path, body string) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(RequestIDHeader, testRequestID)
 	s.engine.ServeHTTP(rec, req)
 	return rec
 }

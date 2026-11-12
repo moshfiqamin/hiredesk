@@ -4,68 +4,27 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/moshfiqamin/hiredesk)](go.mod)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A hiring pipeline REST API in Go — jobs, candidates, applications and stage
-transitions — built with Gin and Postgres, where every point of a candidate's
-score can be traced to the answer that earned it.
-
-## Quick start
-
-Requires only Docker. No Go toolchain, no local Postgres.
-
-```bash
-git clone https://github.com/moshfiqamin/hiredesk.git && cd hiredesk && make up
-```
-
-That generates `.env` with a random `JWT_SECRET`, builds the image, starts
-Postgres, waits for it to pass its healthcheck, **applies all eleven schema
-migrations**, then starts the API.
-
-```bash
-curl -s localhost:8080/readyz
-```
-
-Returns `{"status":"ok"}` with HTTP 200 once the database is reachable, and
-`{"status":"degraded","database":"unreachable"}` with HTTP 503 when it is not.
-
-### See it in a browser
-
-| What | Where |
-|---|---|
-| **The database** — tables, columns, indexes, foreign keys, constraints | <http://localhost:8081/?pgsql=postgres&username=hiredesk&db=hiredesk> |
-| Liveness | <http://localhost:8080/healthz> |
-| Readiness | <http://localhost:8080/readyz> |
-
-The database link opens [Adminer](https://www.adminer.org/) with everything
-pre-filled except the password — `POSTGRES_PASSWORD` from your `.env`, which
-defaults to `hiredesk_dev_password`. It is bound to `127.0.0.1` only and is a
-development tool: never expose it.
-
-Run `make` at any time to list every command.
-
-## What a score looks like
-
-Every application is scored the moment it is submitted, inside the same
-transaction, against a rubric stored as data. The breakdown names the answer
-behind each number and quotes the part of it that mattered
-(`GET /v1/applications/:id/score`, abridged):
+HireDesk is a hiring-pipeline REST API in Go that scores every job application
+against a versioned rubric the moment it is submitted, and shows which answer
+earned each point.
 
 ```json
 {
-  "application_id": "d5f1a1b8-bbe5-457e-b0ac-78734c0fea26",
-  "total_earned": 66.8,
+  "application_id": "cdb5cb85-e026-40c1-b066-57ebd56d9654",
+  "total_earned": 83.37,
   "total_available": 100,
-  "percentage": 66.8,
+  "percentage": 83.37,
   "rubric_version": 1,
   "breakdown": [
     {
       "criterion": "Go knowledge",
       "kind": "keyword_match",
-      "earned": 12,
+      "earned": 30,
       "available": 30,
-      "detail": "matched 2 of 5 keywords: go, gin",
+      "detail": "matched 5 of 5 keywords: go, gin, goroutines, postgres, docker",
       "evidence": {
         "question": "Describe a project you built",
-        "answer_id": "a188f925-702d-4f6a-a839-61844fc66603",
+        "answer_id": "e3dd2676-b12f-4bf6-b990-f71148cefe91",
         "excerpt": "...services for a few years. Last year I built a REST API in Go using Gin, with goroutines handling the background jobs..."
       }
     },
@@ -75,60 +34,56 @@ behind each number and quotes the part of it that mattered
       "earned": 30,
       "available": 40,
       "detail": "3 years, 75% of the way from 0 to the target of 4",
-      "evidence": { "question": "Years of Go?", "answer_id": "6858469c-bd7b-40eb-83b7-220672afec44", "excerpt": "3" }
+      "evidence": { "question": "Years of Go?", "answer_id": "0fc16bcc-1142-49a0-ac7c-0b20db6e0480", "excerpt": "3" }
+    },
+    {
+      "criterion": "Answer depth",
+      "kind": "answer_depth",
+      "earned": 13.37,
+      "available": 20,
+      "detail": "284 characters, 67% of the way from 50 to the target of 400",
+      "evidence": { "question": "Describe a project you built", "answer_id": "e3dd2676-b12f-4bf6-b990-f71148cefe91", "excerpt": "I have been writing backend services for a few years. Last year I built a REST API in Go using Gin, with goroutines..." }
+    },
+    {
+      "criterion": "Eligibility",
+      "kind": "boolean_all",
+      "earned": 10,
+      "available": 10,
+      "detail": "1 of 1 condition met",
+      "evidence": null
     }
   ]
 }
 ```
 
-A rubric is never edited in place: replacing it adds a new version, and a
-score keeps pointing at the exact criteria that produced it.
+That is a real response from `GET /v1/applications/:id/score`, captured while
+driving the API from its Swagger UI. `evidence` is `null` when no single answer
+was the evidence (here, a criterion over several yes/no questions).
 
-## Endpoints
+## Quick start
 
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/healthz` | Liveness. Never touches the database, so a database outage cannot cause a restart loop. |
-| `GET` | `/readyz` | Readiness. Fails when a dependency is unavailable, removing the instance from the load balancer without restarting it. |
-| `POST` | `/v1/auth/register` | Create a candidate account. Body: `email`, `password` (8–72 characters), `full_name`. Returns 201 and the user. |
-| `POST` | `/v1/auth/login` | Body: `email`, `password`. Returns a 15-minute access token, a 30-day refresh token and the user. An unknown email and a wrong password get the same 401. |
-| `POST` | `/v1/auth/refresh` | Body: `refresh_token`. Returns a new access token and a **new** refresh token; the one presented stops working. Presenting a token a second time ends every session of that user. |
-| `POST` | `/v1/auth/logout` | Body: `refresh_token`. Revokes it. Always 204. |
-| `GET` | `/v1/me` | The current user. Requires `Authorization: Bearer <access token>`. |
-| `GET` | `/v1/applications` | The applications the caller may see: all of them for an admin, their own for a candidate, assigned ones for an interviewer. Filters `?status=` and `?job_post_id=`; newest first, keyset-paginated with `?limit=20&after=<next_cursor>` (`limit` capped at 100). Body: `{"data":[…],"next_cursor":"…","total":42}`, where `total` counts every match across all pages. |
-| `GET` | `/v1/applications/:id` | One application with its `answers`, in form order, its `events`, oldest first, each with `actor_name`, and its `reviews`. What each caller gets: an admin, every review and event; an assigned interviewer, **only their own review** and every event except other interviewers' reviews; the candidate, no `reviews` key and only the `application.submitted` and `application.status_changed` events. Filtered in SQL, so nothing hidden is ever sent. An application the caller may not see is a 404, identical to one that does not exist — see [`docs/decisions.md`](docs/decisions.md). |
-| `GET` | `/v1/applications/:id/score` | **Admins, and the interviewer assigned to the application.** The stored score: `total_earned`, `total_available`, `percentage`, `rubric_version`, and a `breakdown` with each criterion's `earned`, `available`, `detail` and `evidence` (`question`, `answer_id`, and an `excerpt` of about 120 characters around the first keyword match; `null` when no single answer was the evidence). The candidate who applied gets a 403; anyone who may not see the application gets the usual 404. An application with no score is a 404 `not_scored`. Built in one query, whatever the number of criteria. |
-| `POST` | `/v1/applications/:id/rescore` | **Admin only.** Replace the application's scores by scoring its stored answers against the post's current rubric, in one transaction. Returns `previous` (null if it had none) and `current` totals and versions, and `changed`. Records an `application.rescored` event with both totals and both rubric versions. A post with no rubric is a 409 `no_rubric`, and the old scores are kept. |
-| `GET` | `/v1/applications/:id/events` | **Admins, and the interviewers assigned.** The full timeline, newest first: `type`, `actor` (`{id, name, role}`, the current name; `null` for a system event), `payload`, `created_at`. Keyset-paginated with `?limit=20&after=<next_cursor>`. An interviewer does not see other interviewers' review events. The candidate who applied gets a 403. |
-| `POST` | `/v1/applications/:id/assign` | **Admin only.** Body: `interviewer_id`. Assigns an interviewer, which lets them read the application and review it. **Idempotent**: 201 the first time, 200 on a repeat, with one `application.assigned` event either way. A user who does not exist or whose role is not `interviewer` is a 422 naming `interviewer_id`; the schema refuses such a row too. |
-| `DELETE` | `/v1/applications/:id/assign/:interviewerID` | **Admin only.** Removes the assignment; access ends at once, and any review they filed is kept. Idempotent: 204 whether or not they were assigned, with an `application.unassigned` event only if they were. |
-| `GET` | `/v1/applications/:id/assignments` | **Admin only.** Who is assigned: `interviewer_id`, `interviewer_name`, `interviewer_email`, `assigned_by`, `assigned_by_name`, `assigned_at`, and `reviewed`. |
-| `POST` | `/v1/applications/:id/reviews` | **An interviewer assigned to the application.** Body: `mark`, a whole number from 1 to 10 (`0`, `11`, `"eight"`, `"8"` and `7.5` are each a 422), and optional `notes`, up to 5,000 characters. Returns 201 and the review, and records an `application.reviewed` event. One review per interviewer: a second is a 409 `already_reviewed`. An unassigned interviewer gets a 404. |
-| `PATCH` | `/v1/applications/:id/reviews/mine` | **The interviewer who filed it, while assigned.** Body: `mark`, `notes` or both; `"notes": ""` removes the notes. Records an `application.review_updated` event with `from_mark` and `to_mark`, unless nothing changed. No review yet is a 404 `no_review`. |
-| `PATCH` | `/v1/applications/:id/status` | **Admin only.** Body: `status`. One step at a time through `submitted → shortlisted → interview → offer`; `rejected` from any stage, and final. Any other move is a 409 `invalid_transition` listing `allowed_next_statuses`. An offer when every vacancy already has one is a 409 `no_vacancies`. Each change records an `application.status_changed` event with `from` and `to`. |
-| `GET` | `/v1/job-posts` | **Public, no token needed.** Open posts, newest first: `id`, `title`, `location`, `employment_type`, `skill_tags`, `remaining_vacancies`. Keyset-paginated: `?limit=20&after=<next_cursor>`, `limit` capped at 100. Body: `{"data":[…],"next_cursor":"…"}`, `null` on the last page. |
-| `POST` | `/v1/job-posts` | **Admin only.** Create a job post, always as a draft. Body: `title` (1–200 characters), and optionally `description`, `employment_type`, `location`, `vacancies` (default 1), `salary_min`, `salary_max`, `closes_at`. Returns 201 and the post. |
-| `GET` | `/v1/job-posts/:id` | One job post with its questions. A draft is visible to admins only; to anyone else it is a 404. |
-| `PATCH` | `/v1/job-posts/:id` | **Admin only.** Partial update: only the fields present in the body change, and a field sent as `""` is stored as empty. `null` is treated as not sent. The rules are checked against the post as it would be after the change. |
-| `POST` | `/v1/job-posts/:id/open` | **Admin only.** Draft to open. Refused with 409 `not_ready` unless the post has at least one question and a rubric with a positive weight; `details` names what is missing. |
-| `POST` | `/v1/job-posts/:id/close` | **Admin only.** Open to closed, which is final. Any move the lifecycle does not allow is a 409 `invalid_transition` listing `allowed_next_statuses`. |
-| `GET` | `/v1/job-posts/:id/rubric` | **Admin only.** The current version of the post's scoring rubric: `version` (`null` before the first) and `criteria` in order, each with `label`, `kind`, `weight`, `question_id` and `config`. |
-| `PUT` | `/v1/job-posts/:id/rubric` | **Admin only, any status.** Body: `criteria`, the whole rubric; it becomes the next version, and earlier versions are kept for the scores that use them. Kinds: `keyword_match` `{"keywords":[…]}`, `experience_years` `{"min":0,"target":2}`, `answer_depth` `{"min_chars":50,"target_chars":400}`, `boolean_all` `{"question_ids":[…]}`. Weights must sum to 100. Every problem comes back in one 422 keyed like `criteria[2].config`. Nothing is rescored: the response's `applications_to_rescore` says how many applications still carry an older score. |
-| `POST` | `/v1/job-posts/:id/rescore-all` | **Admin only.** Rescore every application to the post against its current rubric, atomically, in a fixed number of statements (500 applications take about 50 ms). Returns `rubric_version`, `rescored` and `changed`. |
-| `GET` | `/v1/job-posts/:id/ranking` | **Admin only.** Every applicant to the post, best total first, unscored applicants last with `null` totals: `rank`, `application_id`, `candidate_name`, `status`, `total_earned`, `total_available`, `percentage`, `rubric_version`. `?limit=` defaults to 50, capped at 500. |
-| `GET` | `/v1/job-posts/:id/applications/search` | **Admin only.** Full-text search over the text and choice answers of every application to the post: `?q=` is plain words, all of which must appear after stemming ("testing" finds "tested"; "go" does not find "Google"). Most relevant first, each with `relevance`, `candidate_name`, `status` and score totals (`total_earned`, `total_available`, `percentage`, `rubric_version`; `null` if unscored). Offset-paginated: `?limit=20&offset=0`, `limit` capped at 100, `offset` at most 10,000. Body: `{"query","total","limit","offset","next_offset","data":[…]}`. A blank `q`, one over 200 characters, or one that is not UTF-8 is a 422; operators, punctuation and SQL in `q` are only text. |
-| `GET` | `/v1/job-posts/:id/questions` | **Admin only.** The post's application form in order, whatever its status. Everyone else gets the form inside `GET /v1/job-posts/:id`. |
-| `POST` | `/v1/job-posts/:id/questions` | **Admin only, draft only.** Add a question. Body: `prompt`, `kind` (`text`, `number`, `boolean`, `choice`), `choices` (required for `choice`, absent otherwise), `min_length` (text only), `required` (default true), `position` (default: after the last). |
-| `PATCH` | `/v1/job-posts/:id/questions/:questionID` | **Admin only, draft only.** Partial update. Send `"choices":[]` to clear choices when changing the kind. |
-| `DELETE` | `/v1/job-posts/:id/questions/:questionID` | **Admin only, draft only.** Returns 204. |
-| `POST` | `/v1/job-posts/:id/applications` | **Candidate only.** Apply to an open post. Body: `cv_url` (absolute `http`/`https`), `answers`: `[{"question_id","answer"}]`, where `answer` may be a string, number or boolean. Every problem comes back in one 422, under `details.cv_url` and `details.answers` (each with `question_id`, `code` and, for `too_short`, `min_length` and `got`). A closed post is a 409 `not_accepting_applications`, a second application a 409 `already_applied`, also when several arrive at once. Returns 201, the application and its answers; the application, answers, one score per rubric criterion and an `application.submitted` event are written in one transaction, and a rubric that cannot be applied fails the whole submission. |
-| `PUT` | `/v1/job-posts/:id/questions/order` | **Admin only, draft only.** Body: `question_ids`, every question of the post exactly once, in the new order. Applied in one transaction. |
-
-Create the development accounts, then try it:
+Needs only Docker (with Compose v2), `make` and `openssl`, which macOS and most
+Linux distributions already have.
 
 ```bash
-make seed
+git clone https://github.com/moshfiqamin/hiredesk.git && cd hiredesk && make up
 ```
+
+That creates `.env` with a random `JWT_SECRET`, builds the image, starts
+PostgreSQL, waits for its healthcheck, applies all 13 migrations, and starts
+the API on port 8080. The first build takes a minute or two.
+
+Then open **<http://localhost:8080/docs>**: Swagger UI, served from inside the
+binary. To use it:
+
+1. `make seed` creates four development accounts (table below).
+2. In `/docs`, run `POST /v1/auth/login` with `admin@hiredesk.test` /
+   `admin-password`. The example body is already filled in.
+3. Copy `access_token` from the response, press **Authorize**, paste it.
+
+Every padlocked operation now runs as that user. The whole flow (create a job
+post, add questions, set a rubric, open it, sign in as a candidate, apply,
+read the score) works from the browser without curl.
 
 | Role | Email | Password |
 |---|---|---|
@@ -137,233 +92,290 @@ make seed
 | candidate | `candidate1@hiredesk.test` | `candidate-password` |
 | candidate | `candidate2@hiredesk.test` | `candidate-password` |
 
-These are development fixtures with published passwords. The seed refuses to
-run when `ENV=production`, and is safe to run more than once.
+These are development fixtures with published passwords. The seeder refuses
+to run with `ENV=production`.
+
+If port 8080 or 5432 is already taken on your machine, set `API_PORT` or
+`POSTGRES_PORT` in `.env` and run `make down && make up`.
+
+## Architecture
+
+```
+cmd/api ─────────────▶ internal/api ──▶ internal/auth ──┐
+   │                       │    │                       │
+   │                       │    └──────▶ internal/scoring ──▶ internal/domain
+   │                       ▼                    ▲                ▲
+   ├──────────────▶ internal/store ─────────────┘                │
+   │                       └─────────────────────────────────────┘
+   └──────────────▶ internal/config ──▶ internal/platform
+```
+
+Dependencies point inward, toward `internal/domain`:
+
+- **`domain`** holds the types, rules and errors (an application's lifecycle,
+  what makes a submission valid, `ErrNotFound`). It imports no other package
+  in this module, and nothing that knows about HTTP or SQL.
+- **`scoring`** is the scoring engine: a pure function from answers and a
+  rubric to scores. It imports only `domain` and the standard library; no
+  database, no clock, no randomness. That makes it deterministic, and
+  testable by table and by fuzzing.
+- **`auth`** (bcrypt, JWTs, refresh tokens, access policy) imports only
+  `domain`.
+- **`store`** is the only package that speaks SQL. It turns database errors
+  into domain errors (a unique violation on the application key becomes
+  `domain.ErrAlreadyApplied`), so nothing above it sees a pgx error.
+- **`api`** is the only package that speaks HTTP. It decodes requests, calls
+  the store, and maps domain errors to statuses in one table.
+- **`cmd/api`** builds every dependency once and passes it down. It is the one
+  place that shows what the server is made of. Configuration is read once, in
+  `internal/config`; nothing else calls `os.Getenv`.
+
+The rule is checked, not just stated: `go list -deps ./internal/domain
+./internal/scoring` contains neither pgx, Gin nor `net/http`.
+
+## Technical highlights
+
+- **Refresh-token rotation with replay detection.** Each refresh issues a new token and kills the old one; presenting a used token revokes every session of that user ([`store/tokens.go`](internal/store/tokens.go), [notes](docs/notes/03-auth.md)).
+- **An authorization matrix test.** Every caller (anonymous, three roles, assigned and unassigned interviewers) against every protected route on a real PostgreSQL: 334 subtests, and a route added without a row fails the build ([`authz_test.go`](test/integration/authz_test.go)).
+- **A concurrent duplicate-application test.** Ten goroutines submit the same candidate's application at once, released by one start gate; exactly one succeeds and the rest get 409 `already_applied`, enforced by a unique constraint rather than a check-then-insert ([`concurrency_test.go`](test/integration/concurrency_test.go)).
+- **An N+1 query, measured.** The ranking endpoint is deliberately naive today: 502 statements for 500 applicants, **53.9 ms median server time** (20 runs, API and PostgreSQL in Docker on one laptop). The single-query fix is designed but **not yet built**, so there is no "after" number yet ([notes](docs/notes/07-5-ranking.md)).
+- **Whole-word full-text search on a GIN index.** A generated `tsvector` column with stemming: "testing" finds "tested", "go" does not find "google", and the query is a bound parameter ([`000012_search.up.sql`](migrations/000012_search.up.sql), [decision D7](docs/decisions.md)).
+- **Graceful shutdown, proven.** On SIGTERM a request already in flight finishes with 200, new connections are refused, then the pool closes and the process exits 0. Past the 10-second budget it logs which requests it abandoned and exits 1 ([`cmd/api/main.go`](cmd/api/main.go), [notes](docs/notes/10-4-graceful-shutdown.md)).
+- **Request IDs end to end.** Every response carries `X-Request-ID`, every error body carries `request_id`, and every log line written during the request carries both the ID and the user ID, read from `context.Context` rather than passed down ([notes](docs/notes/10-2-structured-logging.md)).
+- **No credentials in the logs, by test.** A full register, login, refresh, replay and logout cycle runs at debug level, and the test fails if any password, token or `Authorization` value appears in the output.
+
+## Test strategy
+
+| Layer | What runs | How | Coverage |
+|---|---|---|---|
+| Pure logic | `domain`, `scoring`, `auth` | table-driven unit tests, a fuzz test on the keyword matcher | 96.0%, 97.6%, 96.0% |
+| HTTP | `internal/api` | handlers and middleware against in-memory fakes, via `httptest` | 91.4% |
+| Plumbing | `config`, `platform` | env parsing, log redaction, context propagation | 72.5%, 94.3% |
+| SQL | `internal/store` | integration tests against the running PostgreSQL | 83.1% |
+| End to end | `test/integration` | the production router over real stores, on a PostgreSQL started by testcontainers-go | (included below) |
+
+Unit-test numbers are from `make test` (statement coverage per package). The
+store figure is from the integration run, measured with `-coverpkg` across
+`./internal/...`; that run alone covers **69.9%** of all statements in
+`internal/`. `cmd/` is not counted: the seeder has a unit test (20.2%), and
+the API's `main` is exercised by the shutdown procedure, not by a test.
+
+What the tests deliberately prove, beyond line counts:
+
+- **Refusal looks like absence.** The matrix compares a refused request's body
+  byte for byte with the body for an ID that does not exist
+  ([decision D1](docs/decisions.md)).
+- **Races are real.** The duplicate-submission and vacancy tests use a start
+  gate so the goroutines collide, and run under `-race`.
+- **Rollback is real.** A trigger forces a failure mid-submit, and the test
+  checks that nothing was written.
+- **The spec matches the code.** A test fails if a route is served but missing
+  from `api/openapi.yaml`, or documented but not served, or if its security
+  requirement disagrees with the router.
+
+Run them:
 
 ```bash
-curl -s -X POST localhost:8080/v1/auth/login -d '{"email":"admin@hiredesk.test","password":"admin-password"}'
+make test
 ```
 
-Browse the open jobs, with no account at all:
+Unit tests with the race detector. Needs Go 1.27.3 locally; nothing else.
 
 ```bash
-curl -s "localhost:8080/v1/job-posts?limit=20"
+make test-integration
 ```
 
-Register a candidate of your own:
+Integration tests. Needs Go, and `make up` running, plus a Docker daemon for
+testcontainers.
 
-```bash
-curl -s -X POST localhost:8080/v1/auth/register -d '{"email":"demo@example.com","password":"correct horse","full_name":"Demo User"}'
-```
+## Out of scope, deliberately
 
-```bash
-curl -s -X POST localhost:8080/v1/auth/login -d '{"email":"demo@example.com","password":"correct horse"}'
-```
+- **Email, notifications, file uploads.** A CV is a URL, not a stored file.
+- **Multi-tenancy.** One organisation per deployment.
+- **A frontend.** `/docs` is the UI. CORS is in place for when one exists
+  (`ALLOWED_ORIGINS`).
+- **Rate limiting beyond `/v1/auth/*`.** The limiter is in memory, per
+  process: right for one instance, wrong for several. More than one instance
+  needs a shared store (Redis) or limiting at the proxy.
+- **Distributed tracing and metrics.** Request IDs and structured logs are the
+  first step. There is no OpenTelemetry and no `/metrics` yet.
 
-## Commands
+## What I would build next
 
-| Command | Does |
-|---|---|
-| `make up` | Start the stack in the background |
-| `make down` | Stop it; database data is kept |
-| `make logs` | Follow logs from all services |
-| `make ps` | Container status and health |
-| `make psql` | Open a `psql` shell in the database |
-| `make adminer` | Print the pre-filled database-browser link |
-| `make migrate-up` | Apply every pending migration |
-| `make migrate-down` | Roll back exactly one migration |
-| `make migrate-version` | Show the applied version and dirty flag |
-| `make migrate-create` | New migration pair: `make migrate-create NAME=add_foo` |
-| `make test` | Tests with the race detector and coverage |
-| `make test-integration` | Database tests against the running stack, and the authorization matrix in its own PostgreSQL container (needs `make up` and Docker) |
-| `make seed` | Create the development accounts (needs `make up`; safe to repeat) |
-| `make seed-bulk` | Create one open post with 500 scored applications, for measuring the ranking (needs `make up`) |
-| `make reindex-search` | Rebuild every application's search document from its answers, rewriting only those that drifted (safe on a live database; needs `make up`) |
-| `make lint` | `golangci-lint` (13 linters) |
-| `make fmt` | Format code and tidy `go.mod` |
-| `make build` | Compile to `./bin` without Docker |
-| `make reset` | Destroy the database volume and start fresh |
+1. **Step 2 of the ranking**: one query with `LEFT JOIN … NULLS LAST`, and the
+   before/after numbers, measured the same way as above.
+2. **sqlc** to generate the scan code from the existing SQL, keeping every
+   hand-tuned query ([decision D6](docs/decisions.md)).
+3. **The outbox pattern** for application events, so notifications can be
+   added without a second write path ([notes](docs/notes/05-2-submit-transaction.md)).
+4. **A candidate-facing score view** without keywords or weights, if a
+   candidate is ever owed an explanation ([decision D3](docs/decisions.md)).
+5. **Prometheus metrics** keyed on the same `route` field the access log uses.
 
-## Layout
+---
 
-```
-cmd/api/              main package — the server binary
-cmd/seed/             creates the development accounts
-cmd/reindex/          repairs full-text search documents
-internal/api/         HTTP layer: router, handlers, validation, error envelope
-internal/auth/        password hashing (bcrypt), access tokens (JWT), refresh tokens
-internal/config/      environment config, loaded once into a struct
-internal/domain/      domain types and errors; no HTTP or database imports
-internal/scoring/     pure scoring engine: rubric validation and four strategies
-internal/store/       Postgres connection pool and hand-written SQL queries
-migrations/           golang-migrate pairs, applied on container start
-test/integration/     tests against a real PostgreSQL started by testcontainers-go
-docs/notes/           design notes, one per module
-docs/decisions.md     decision records
-.github/workflows/    CI pipeline
-```
+## Reference
 
-`internal/` is enforced by the Go compiler: nothing outside this module can
-import it, so those packages stay free to change without breaking anyone.
+### Endpoints
 
-## Errors
+The full contract (request bodies, response schemas, every status code, and
+examples) is the OpenAPI document at [`api/openapi.yaml`](api/openapi.yaml),
+rendered at `/docs`. In brief:
 
-Every error response has the same body, including unknown routes and panics:
+| Method | Path | Who |
+|---|---|---|
+| `GET` | `/healthz` | anyone (liveness; never touches the database) |
+| `GET` | `/readyz` | anyone (readiness; pings the database) |
+| `GET` | `/docs` | anyone (Swagger UI; `/docs/openapi.yaml` is the spec) |
+| `POST` | `/v1/auth/register` · `/login` · `/refresh` · `/logout` | anyone, 10 per IP per minute |
+| `GET` | `/v1/me` | any signed-in user |
+| `GET` | `/v1/job-posts` | anyone (open posts only) |
+| `POST` | `/v1/job-posts` | admin |
+| `GET` | `/v1/job-posts/:id` | any signed-in user (drafts: admin only) |
+| `PATCH` | `/v1/job-posts/:id` | admin |
+| `POST` | `/v1/job-posts/:id/open` · `/close` | admin |
+| `GET` `POST` | `/v1/job-posts/:id/questions` | admin |
+| `PUT` | `/v1/job-posts/:id/questions/order` | admin |
+| `PATCH` `DELETE` | `/v1/job-posts/:id/questions/:questionID` | admin |
+| `GET` `PUT` | `/v1/job-posts/:id/rubric` | admin |
+| `POST` | `/v1/job-posts/:id/applications` | candidate |
+| `GET` | `/v1/job-posts/:id/applications/search?q=` | admin |
+| `GET` | `/v1/job-posts/:id/ranking` | admin |
+| `POST` | `/v1/job-posts/:id/rescore-all` | admin |
+| `GET` | `/v1/applications` | any signed-in user (filtered per role, in SQL) |
+| `GET` | `/v1/applications/:id` | admin, assigned interviewer, its candidate |
+| `PATCH` | `/v1/applications/:id/status` | admin |
+| `GET` | `/v1/applications/:id/score` | admin, assigned interviewer |
+| `POST` | `/v1/applications/:id/rescore` | admin |
+| `GET` | `/v1/applications/:id/events` | admin, assigned interviewer |
+| `POST` | `/v1/applications/:id/assign` | admin |
+| `DELETE` | `/v1/applications/:id/assign/:interviewerID` | admin |
+| `GET` | `/v1/applications/:id/assignments` | admin |
+| `POST` | `/v1/applications/:id/reviews` | assigned interviewer |
+| `PATCH` | `/v1/applications/:id/reviews/mine` | the interviewer who filed it |
+
+### Errors
+
+Every error, from every endpoint, including unknown routes, rate limiting and
+panics, has one shape:
 
 ```json
-{"error":{"code":"validation_failed","message":"One or more fields are invalid.","details":{"email":"is not a valid address"}}}
+{"error":{"code":"validation_failed","message":"One or more fields are invalid.","details":{"email":"is not a valid address"},"request_id":"01JCQ7Z8K3M5N7P9R1T3V5X7Z9"}}
 ```
 
-`code` is stable and meant for programs; `message` is for people; `details` is
-always an object: it names each bad field when validation fails, and lists the
-allowed next statuses when a status change is refused.
+`code` is stable and meant for programs. `message` is for people. `details`
+is always an object. `request_id` matches the `X-Request-ID` response header
+and every server log line for that request, so quote it in a bug report.
 
 | Status | `code` | Meaning |
 |---|---|---|
 | 400 | `malformed_request` | The body is not a JSON object |
-| 400 | `invalid_id` | The ID in the URL is not a UUID |
-| 400 | `invalid_cursor` | The `after` parameter is not a cursor this API issued; start from the first page |
+| 400 | `invalid_id` | An ID in the URL is not a UUID |
+| 400 | `invalid_cursor` | `after` is not a cursor this API issued |
 | 401 | `invalid_credentials` | Login failed |
 | 401 | `token_expired` | The access token has expired; refresh and retry |
 | 401 | `unauthenticated` | No usable access or refresh token |
-| 403 | `forbidden` | Authenticated, not permitted |
-| 404 | `not_found` | The record does not exist |
-| 404 | `not_scored` | The application exists but has no stored score |
-| 404 | `no_review` | You have not reviewed this application yet; file one with `POST …/reviews` first |
+| 403 | `forbidden` | Signed in, not permitted |
+| 404 | `not_found` | No such record, or one you may not see |
+| 404 | `not_scored` · `no_review` | The application has no score · you have not reviewed it |
 | 404 | `route_not_found` | No such endpoint |
 | 405 | `method_not_allowed` | The endpoint exists under another method |
-| 409 | `duplicate` | A record with the same unique key exists |
-| 409 | `already_applied` | The candidate has already applied to this job post |
-| 409 | `already_reviewed` | You have already reviewed this application; correct it with `PATCH …/reviews/mine` |
-| 409 | `not_accepting_applications` | The job post is closed |
-| 409 | `no_vacancies` | Every vacancy on the job post already has an offer; see `details` |
-| 409 | `invalid_transition` | That status change is not allowed from the current status |
-| 409 | `no_rubric` | The job post has no rubric to score against |
-| 409 | `not_ready` | The resource lacks something the new status needs; see `details` |
-| 409 | `form_locked` | The job post is no longer a draft, so its questions cannot change |
-| 409 | `conflict` | Valid, but not in the resource's current state |
+| 409 | `duplicate` · `already_applied` · `already_reviewed` | A unique rule was hit |
+| 409 | `invalid_transition` · `not_ready` · `form_locked` · `not_accepting_applications` · `no_vacancies` · `no_rubric` · `conflict` | Valid, but not in the resource's current state; see `details` |
+| 413 | `payload_too_large` | The body is over 1 MiB |
 | 422 | `validation_failed` | One or more fields are invalid; see `details` |
-| 500 | `internal_error` | Unexpected; the cause is logged, never returned |
+| 429 | `rate_limited` | Too many `/v1/auth/*` requests; see `Retry-After` |
+| 500 | `internal_error` | Unexpected; the cause is logged under the `request_id`, never returned |
 
-## Configuration
+### Commands
 
-All settings are read once at startup into a single struct
-([`internal/config/config.go`](internal/config/config.go)) and passed
-explicitly from there. No `os.Getenv` anywhere else in the codebase.
+| Command | Does |
+|---|---|
+| `make up` | Start the stack in the background (creates `.env` on first run) |
+| `make down` | Stop it; database data is kept |
+| `make logs` | Follow logs from all services |
+| `make ps` | Container status and health |
+| `make seed` | Create the development accounts (safe to repeat) |
+| `make seed-bulk` | Create one open post with 500 scored applications |
+| `make test` | Unit tests with the race detector and coverage |
+| `make test-integration` | Database and container tests (needs `make up` and Docker) |
+| `make lint` | `golangci-lint` (13 linters) |
+| `make fmt` | Format code and tidy `go.mod` |
+| `make build` | Compile to `./bin` without Docker |
+| `make psql` | `psql` shell in the database container |
+| `make adminer` | Print the pre-filled database-browser link |
+| `make migrate-up` · `migrate-down` · `migrate-version` · `migrate-create` | Migrations by hand |
+| `make reindex-search` | Rebuild search documents that drifted from their answers |
+| `make reset` | Destroy the database volume and start fresh |
+| `make env` | Create `.env` from `.env.example` with a generated `JWT_SECRET` |
 
-A missing required variable stops the process before it serves a request, and
-every missing variable is reported at once rather than one per run:
+### Configuration
 
-```
-configuration error: missing required environment variable(s): DATABASE_URL, JWT_SECRET
-```
+Read once at startup into one struct ([`internal/config/config.go`](internal/config/config.go)).
+An invalid value stops the process before it serves a request, and every
+missing required variable is reported at once.
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `DATABASE_URL` | yes | — | Postgres connection string |
-| `JWT_SECRET` | yes | — | Token signing key, at least 32 characters; no default by design |
-| `PORT` | no | `8080` | Listen port, validated as 1–65535 |
+| `DATABASE_URL` | yes | — | PostgreSQL connection string (Compose assembles it) |
+| `JWT_SECRET` | yes | — | Token signing key, at least 32 bytes; no default by design |
+| `PORT` | no | `8080` | Listen port inside the container |
 | `ENV` | no | `development` | `production` switches Gin to release mode |
+| `LOG_LEVEL` | no | `info` | `debug`, `info`, `warn` or `error` |
+| `LOG_FORMAT` | no | `text` in development, `json` otherwise | `text` is refused in production |
+| `ALLOWED_ORIGINS` | no | empty (no cross-origin access) | Comma-separated `scheme://host[:port]`; wildcards refused |
 | `DB_MAX_CONNS` | no | `10` | Pool ceiling, 1–500 |
-| `DB_MIN_CONNS` | no | `2` | Idle connections kept open; must be ≤ `DB_MAX_CONNS` |
-| `DB_MAX_CONN_LIFETIME` | no | `1h` | Maximum age of any connection |
+| `DB_MIN_CONNS` | no | `2` | Idle connections kept open; at most `DB_MAX_CONNS` |
+| `DB_MAX_CONN_LIFETIME` | no | `1h` | Maximum age of a connection |
 | `DB_MAX_CONN_IDLE_TIME` | no | `30m` | Idle connections older than this are closed |
 | `DB_CONNECT_TIMEOUT` | no | `5s` | Budget for the startup ping |
 | `DB_PING_TIMEOUT` | no | `2s` | Budget for the `/readyz` ping |
-| `SHUTDOWN_TIMEOUT` | no | `10s` | Grace period for in-flight requests |
-| `ADMINER_PORT` | no | `8081` | Database browser, bound to `127.0.0.1` |
+| `SHUTDOWN_TIMEOUT` | no | `10s` | Grace period for in-flight requests on SIGTERM |
+| `API_PORT` · `POSTGRES_PORT` · `ADMINER_PORT` | no | `8080` · `5432` · `8081` | Host ports Compose publishes |
 
-Durations use Go syntax (`30s`, `1h30m`); a bare number is rejected at startup
-as ambiguous.
+Durations use Go syntax (`30s`, `1h30m`). See [`.env.example`](.env.example)
+for the full, commented template.
 
-See [`.env.example`](.env.example) for the full template.
-
-## Running without Docker
+### Running without Docker
 
 ```bash
-make build && DATABASE_URL="postgres://localhost:5432/hiredesk?sslmode=disable" JWT_SECRET="$(openssl rand -hex 32)" ./bin/hiredesk-api
+make build && DATABASE_URL="postgres://hiredesk:hiredesk_dev_password@localhost:5432/hiredesk?sslmode=disable" JWT_SECRET="$(openssl rand -hex 32)" ./bin/hiredesk-api
 ```
 
-## Schema
+Needs PostgreSQL with the migrations applied; `make up` provides both.
 
-Twelve tables across nine migrations, applied automatically when the stack
-starts. Browse them at the Adminer link above, or:
+### Layout
 
-```bash
-make psql
+```
+api/                  OpenAPI document and Swagger UI, embedded into the binary
+cmd/api/              the server
+cmd/seed/             development accounts and bulk data
+cmd/reindex/          repairs full-text search documents
+internal/api/         HTTP: router, middleware, handlers, error envelope
+internal/auth/        bcrypt, JWTs, refresh tokens, access policy
+internal/config/      environment configuration, loaded once
+internal/domain/      types, rules and errors; no HTTP or SQL
+internal/platform/    structured logger and request-scoped context values
+internal/scoring/     the pure scoring engine
+internal/store/       PostgreSQL pool and hand-written SQL
+migrations/           golang-migrate pairs, applied on start
+test/integration/     tests on a real PostgreSQL via testcontainers-go
+docs/decisions.md     decision records
+docs/notes/           design notes, one per module
 ```
 
-| Table | Holds |
-|---|---|
-| `users` | Accounts and roles (`admin`, `interviewer`, `candidate`) |
-| `refresh_tokens` | Session tokens, stored as SHA-256 hashes |
-| `job_posts` | Vacancies, with status `draft` / `open` / `closed` |
-| `questions` | A post's application form, ordered by `position` |
-| `rubric_criteria` | Versioned scoring rubric, parameters in `jsonb` |
-| `applications` | One per candidate per post — enforced by a unique constraint |
-| `application_answers` | Submitted answers, one per question per application |
-| `scores` | Per-criterion scores with the evidence behind them |
-| `application_events` | Append-only audit trail of each application |
-| `job_post_events` | Append-only audit trail of each job post, such as status changes |
-| `interviewer_assignments` | Who is reviewing what |
-| `reviews` | Marks (1–10) and notes |
+The image is a multi-stage build: 74 MB, three static binaries (API, seeder,
+reindexer), CA certificates and an unprivileged user (UID 10001), with no Go
+toolchain and no source.
 
-The reasoning behind every constraint, index and delete action is in
-[`docs/notes/01-schema.md`](docs/notes/01-schema.md).
+## Further reading
 
-## Engineering notes
-
-- **Multi-stage Docker build.** The runtime image is 43MB and contains only two
-  statically linked binaries (the API and the development seeder), CA
-  certificates and an unprivileged user — no Go toolchain, no source. A
-  single-stage build is over 679MB.
-- **Runs as non-root.** UID 10001, no shell, no home directory.
-- **Startup ordering is explicit.** The API waits on Postgres's `pg_isready`
-  healthcheck rather than on container creation, so a cold start cannot race
-  `initdb`.
-- **Fail fast.** Invalid configuration — and an unreachable database — stops
-  the process at startup, not on the first request that needs it.
-- **A tuned connection pool.** `MaxConns`, `MinConns`, lifetime and idle time
-  are set explicitly rather than left to the driver's CPU-derived defaults, and
-  validated at startup.
-- **Liveness and readiness are separate.** `/healthz` never touches the
-  database, so a database outage removes instances from the load balancer
-  without triggering a restart loop.
-- **Migrations gate the API.** The server container does not start until the
-  migration container has exited successfully.
-- **Graceful shutdown.** SIGTERM drains in-flight requests, then closes the
-  pool.
-- **Passwords are bcrypt at cost 12**, verified in comparable time whether or
-  not the account exists, so login does not reveal which emails are registered.
-- **Short-lived access tokens, rotating refresh tokens.** Access tokens are
-  15-minute HS256 JWTs with the algorithm pinned on verification. Refresh
-  tokens are random, stored only as SHA-256 hashes, and replaced on every use;
-  presenting a used one revokes all of that user's sessions.
-- **Roles come from the database, not the token.** Every authenticated
-  request reloads the user, so a demotion or a deleted account takes effect on
-  the next request rather than when the token expires.
-- **Authorization is filtered in SQL.** Each role gets its own query, so rows
-  a caller may not see never leave the database. A record the caller may not
-  see is a 404, indistinguishable from one that does not exist.
-- **An authorization matrix runs in CI.** Every caller against every protected
-  endpoint, on a real PostgreSQL started by testcontainers-go; adding a route
-  without a row for it fails the build.
-- **Rotation is race-safe.** The token row is locked with `FOR UPDATE` inside a
-  transaction, so two concurrent refreshes cannot both succeed.
-- **A pure scoring engine.** Scoring imports only the standard library and
-  the domain types — no database, HTTP, clock or randomness — so the same
-  answers and rubric always give the same, explainable score. Keywords match
-  whole words only (`go` never matches `google`), answer length counts
-  characters rather than bytes, and a fuzz test checks the matcher's
-  boundaries against generated input.
-- **One error shape.** Every failure — validation, unknown route, panic —
-  returns the same JSON envelope, and internal causes are logged, never sent.
-- **CI on every push and PR.** Build, vet, race-detector tests, a `go.mod`
-  tidiness gate, `golangci-lint`, and the authorization matrix.
-
-Design decisions and the reasoning behind them are written up per module in
-[`docs/notes/`](docs/notes/).
+- [`docs/decisions.md`](docs/decisions.md): why Gin, why hand-written SQL,
+  why PostgreSQL search, 403 versus 404, generated column versus trigger,
+  why scores are stored.
+- [`docs/notes/`](docs/notes/): one design note per module, each pointing at
+  the lines it explains.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

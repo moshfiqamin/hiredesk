@@ -5,11 +5,16 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"log/slog"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/moshfiqamin/hiredesk/internal/platform"
 )
 
 // Recognised values for Config.Env.
@@ -102,6 +107,38 @@ type Config struct {
 	// ShutdownTimeout bounds how long the server waits for in-flight requests
 	// before giving up and closing anyway.
 	ShutdownTimeout time.Duration
+
+	// LogLevel is the lowest level written. slog.Level rather than a string,
+	// so a typo fails at startup instead of silently logging everything.
+	LogLevel slog.Level
+
+	// LogFormat is platform.FormatJSON or platform.FormatText. Text is for a
+	// developer's terminal and is refused in production, where logs are read
+	// by machines.
+	LogFormat string
+
+	// AllowedOrigins are the browser origins allowed to call the API across
+	// origins, exactly as a browser sends them in the Origin header
+	// ("https://app.example.com"). Empty means no cross-origin access at all.
+	AllowedOrigins []string
+}
+
+// LogValue implements slog.LogValuer, so logging a *Config writes only the
+// settings that are safe to read. The secret and the connection string, which
+// carries the database password, are never included.
+func (c *Config) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Int("port", c.Port),
+		slog.String("env", c.Env),
+		slog.Int("db_max_conns", int(c.DBMaxConns)),
+		slog.Int("db_min_conns", int(c.DBMinConns)),
+		slog.Duration("db_max_conn_lifetime", c.DBMaxConnLifetime),
+		slog.Duration("db_max_conn_idle_time", c.DBMaxConnIdleTime),
+		slog.Duration("shutdown_timeout", c.ShutdownTimeout),
+		slog.String("log_level", c.LogLevel.String()),
+		slog.String("log_format", c.LogFormat),
+		slog.Any("allowed_origins", c.AllowedOrigins),
+	)
 }
 
 // MissingVarsError reports every required environment variable that was absent
@@ -234,6 +271,27 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	logLevel := slog.LevelInfo
+	if raw, ok := lookupNonEmpty("LOG_LEVEL"); ok {
+		logLevel, err = platform.ParseLevel(raw)
+		if err != nil {
+			return nil, &InvalidVarError{Name: "LOG_LEVEL", Value: raw, Err: err}
+		}
+	}
+
+	logFormat, err := lookupLogFormat(env)
+	if err != nil {
+		return nil, err
+	}
+
+	var origins []string
+	if raw, ok := lookupNonEmpty("ALLOWED_ORIGINS"); ok {
+		origins, err = parseOrigins(raw)
+		if err != nil {
+			return nil, &InvalidVarError{Name: "ALLOWED_ORIGINS", Value: raw, Err: err}
+		}
+	}
+
 	return &Config{
 		Port:              port,
 		DatabaseURL:       databaseURL,
@@ -246,7 +304,68 @@ func Load() (*Config, error) {
 		DBConnectTimeout:  connectTimeout,
 		DBPingTimeout:     pingTimeout,
 		ShutdownTimeout:   shutdownTimeout,
+		LogLevel:          logLevel,
+		LogFormat:         logFormat,
+		AllowedOrigins:    origins,
 	}, nil
+}
+
+// lookupLogFormat reads LOG_FORMAT. Unset, it is text in development, where a
+// person reads the output, and JSON everywhere else. Text is refused in
+// production, where the logs feed a collector that parses JSON.
+func lookupLogFormat(env string) (string, error) {
+	raw, ok := lookupNonEmpty("LOG_FORMAT")
+	if !ok {
+		if env == EnvDevelopment {
+			return platform.FormatText, nil
+		}
+		return platform.FormatJSON, nil
+	}
+
+	format := strings.ToLower(raw)
+	switch {
+	case format != platform.FormatJSON && format != platform.FormatText:
+		return "", &InvalidVarError{Name: "LOG_FORMAT", Value: raw, Err: errors.New("must be json or text")}
+	case format == platform.FormatText && env == EnvProduction:
+		return "", &InvalidVarError{Name: "LOG_FORMAT", Value: raw, Err: errors.New("text is for development only; use json in production")}
+	}
+	return format, nil
+}
+
+// parseOrigins splits a comma-separated list of origins and checks that each
+// is exactly what a browser sends in an Origin header: a scheme, a host, an
+// optional port, and nothing else.
+//
+// A wildcard is refused outright. With credentials allowed, "*" is not even
+// legal CORS, and the usual workaround — reflecting whatever Origin arrives —
+// lets any website make authenticated calls on a visitor's behalf.
+func parseOrigins(raw string) ([]string, error) {
+	var origins []string
+	for _, part := range strings.Split(raw, ",") {
+		origin := strings.TrimSpace(part)
+		if origin == "" {
+			continue
+		}
+		if strings.Contains(origin, "*") {
+			return nil, errors.New("wildcards are not allowed; list each origin explicitly")
+		}
+
+		u, err := url.Parse(origin)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a URL", origin)
+		}
+		// An Origin header never has a path, query, fragment or user
+		// information, so a configured origin with one would never match,
+		// and is almost certainly a pasted page URL.
+		if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
+			u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+			return nil, fmt.Errorf("%q must be scheme://host[:port], with no path or trailing slash", origin)
+		}
+
+		// Browsers send the scheme and host in lower case.
+		origins = append(origins, strings.ToLower(origin))
+	}
+	return origins, nil
 }
 
 // IsProduction reports whether the API is running in production.

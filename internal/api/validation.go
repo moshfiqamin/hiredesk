@@ -24,11 +24,6 @@ const (
 // 32 hexadecimal digits and 4 hyphens.
 const uuidLength = 36
 
-// maxBodyBytes caps a request body. Every body this API accepts is a small
-// JSON object; without a cap a client could send gigabytes and have the
-// server read all of it.
-const maxBodyBytes = 1 << 20
-
 // validate is shared by every handler. A Validate caches what it learns about
 // each struct type by reflection, so one long-lived instance is both safe for
 // concurrent use and much cheaper than one per request.
@@ -52,12 +47,24 @@ func newValidator() *validator.Validate {
 	return v
 }
 
-// decodeJSON reads the request body into dst. On failure it writes a 400 and
-// returns false, and the handler should return without writing anything else.
+// decodeJSON reads the request body into dst. On failure it writes a 400, or
+// a 413 for a body over maxBodyBytes, and returns false; the handler should
+// then return without writing anything else.
 func decodeJSON(c *gin.Context, dst any) bool {
+	// BodyLimit has already wrapped the body in production. Wrapping it again
+	// keeps a handler safe when it is mounted without that middleware, as in
+	// tests; nested limits cost nothing.
 	body := http.MaxBytesReader(c.Writer, c.Request.Body, maxBodyBytes)
 
 	if err := json.NewDecoder(body).Decode(dst); err != nil {
+		// The read that crossed the limit fails with this type, wrapped by
+		// the decoder. errors.As finds it through the wrapping.
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeTooLarge(c, tooLarge.Limit)
+			return false
+		}
+
 		// 400, not 422: the body could not be read at all, so there are no
 		// fields to report on. The decoder's message is not passed on; it
 		// quotes fragments of the input and names Go types.

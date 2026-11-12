@@ -164,6 +164,7 @@ func (s *testServer) send(method, path, header, body string) *httptest.ResponseR
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(RequestIDHeader, testRequestID)
 	if header != "" {
 		req.Header.Set("Authorization", header)
 	}

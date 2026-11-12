@@ -19,7 +19,7 @@ Click the link, read the code, then come back.
 
 | # | Topic | Code |
 |---|---|---|
-| [1](#1-the-endpoint) | The endpoint | [`router.go:129`](../../internal/api/router.go#L129) |
+| [1](#1-the-endpoint) | The endpoint | [`router.go:162`](../../internal/api/router.go#L162) |
 | [2](#2-the-rules) | The rules | [`submission.go:184`](../../internal/domain/submission.go#L184) |
 | [3](#3-rule-1-and-why-a-draft-is-a-404) | Rule 1, and why a draft is a 404 | [`submission.go:41`](../../internal/domain/submission.go#L41) |
 | [4](#4-why-collect-every-error) | Why collect every error | [`submission.go:192`](../../internal/domain/submission.go#L192) |
@@ -33,7 +33,7 @@ Click the link, read the code, then come back.
 
 ## 1. The endpoint
 
-**📍 Open:** [`internal/api/router.go:129`](../../internal/api/router.go#L129)
+**📍 Open:** [`internal/api/router.go:162`](../../internal/api/router.go#L162)
 
 `POST /v1/job-posts/:id/applications`, body:
 

@@ -1,0 +1,1765 @@
+openapi: 3.0.3
+
+info:
+  title: HireDesk API
+  version: "1.0.0"
+  description: |
+    A hiring pipeline API: job posts with application forms, candidates who
+    apply, a versioned scoring rubric that scores each application the moment
+    it is submitted, interviewer assignment, reviews, and an audit timeline.
+
+    **Trying it here.** Run `make seed` to create the development accounts,
+    call `POST /v1/auth/login` below with one of them, copy `access_token`
+    from the response, press **Authorize** and paste it. Every padlocked
+    operation then sends it as `Authorization: Bearer <token>`.
+
+    | Role | Email | Password |
+    |---|---|---|
+    | admin | `admin@hiredesk.test` | `admin-password` |
+    | interviewer | `interviewer@hiredesk.test` | `interviewer-password` |
+    | candidate | `candidate1@hiredesk.test` | `candidate-password` |
+
+    Access tokens last 15 minutes. When one expires, calls answer 401
+    `token_expired`: use `POST /v1/auth/refresh` and authorize again.
+
+    **Errors.** Every error, from every endpoint, is the same envelope
+    (`ErrorEnvelope`): a stable `code` for programs, a `message` for people,
+    `details` (always an object), and the `request_id` of the call, to quote
+    when reporting a problem. The same ID is in the `X-Request-ID` response
+    header.
+  license:
+    name: MIT
+    url: https://github.com/moshfiqamin/hiredesk/blob/main/LICENSE
+
+# Relative, so the "Try it out" calls go to whichever host served this
+# document: localhost in development, the real host once deployed.
+servers:
+  - url: /
+    description: The server that served this document
+
+tags:
+  - name: health
+    description: Probes for the platform running the process. Not versioned.
+  - name: auth
+    description: Accounts and sessions. Rate limited to 10 requests per minute per IP.
+  - name: job-posts
+    description: Vacancies and their draft → open → closed lifecycle.
+  - name: questions
+    description: A job post's application form. Editable only while the post is a draft.
+  - name: rubric
+    description: The versioned scoring rubric of a job post.
+  - name: applications
+    description: Applying, the status pipeline, scores, ranking and search.
+  - name: reviews
+    description: Interviewer assignment and reviews.
+
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      summary: Liveness
+      description: Answers as long as the process can serve HTTP. Never touches the database.
+      operationId: healthz
+      responses:
+        "200":
+          description: The process is alive.
+          headers:
+            X-Request-ID: { $ref: "#/components/headers/XRequestID" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+              example: { status: ok }
+
+  /readyz:
+    get:
+      tags: [health]
+      summary: Readiness
+      description: Pings the database. A 503 removes the instance from the load balancer without restarting it.
+      operationId: readyz
+      responses:
+        "200":
+          description: Ready for traffic.
+          headers:
+            X-Request-ID: { $ref: "#/components/headers/XRequestID" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+              example: { status: ok }
+        "503":
+          description: The database is unreachable.
+          headers:
+            X-Request-ID: { $ref: "#/components/headers/XRequestID" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+              example: { status: degraded, database: unreachable }
+
+  /v1/auth/register:
+    post:
+      tags: [auth]
+      summary: Create a candidate account
+      description: Every account created here is a candidate. A `role` field in the body is ignored.
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+            example: { email: demo@example.com, password: correct horse, full_name: Demo User }
+      responses:
+        "201":
+          description: The account was created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Sign in
+      description: |
+        Returns a 15-minute access token and a 30-day refresh token. An unknown
+        email and a wrong password get the same 401, so the response does not
+        reveal which emails are registered.
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+            example: { email: admin@hiredesk.test, password: admin-password }
+      responses:
+        "200":
+          description: Signed in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/auth/refresh:
+    post:
+      tags: [auth]
+      summary: Exchange a refresh token for a new pair
+      description: |
+        The refresh token presented stops working and a new one is returned.
+        Presenting an already-used refresh token is treated as theft: every
+        session of that user is revoked.
+      operationId: refresh
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshRequest" }
+      responses:
+        "200":
+          description: A new access token and refresh token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: Revoke a refresh token
+      description: Always 204, whether or not the token was valid, so the response reveals nothing about it.
+      operationId: logout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshRequest" }
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/me:
+    get:
+      tags: [auth]
+      summary: The current user
+      operationId: me
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The authenticated user, as stored now.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/job-posts:
+    get:
+      tags: [job-posts]
+      summary: Open job posts (public)
+      description: No token needed. Newest first, keyset-paginated.
+      operationId: listOpenJobPosts
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/After"
+      responses:
+        "200":
+          description: One page of open posts.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobListingPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [job-posts]
+      summary: Create a job post (admin)
+      description: Always created as a draft.
+      operationId: createJobPost
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateJobPostRequest" }
+            example:
+              title: Backend Engineer (Go)
+              description: Build and run the HireDesk API.
+              employment_type: full_time
+              location: Remote
+              vacancies: 2
+              salary_min: 85000
+              salary_max: 110000
+      responses:
+        "201":
+          description: The new draft.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobPost" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/job-posts/{id}:
+    parameters:
+      - $ref: "#/components/parameters/JobPostID"
+    get:
+      tags: [job-posts]
+      summary: One job post, with its questions
+      description: A draft is visible to admins only; to anyone else it is a 404.
+      operationId: getJobPost
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The post.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobPost" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    patch:
+      tags: [job-posts]
+      summary: Partly update a job post (admin)
+      description: Only the fields present change. `null` is treated as not sent.
+      operationId: updateJobPost
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateJobPostRequest" }
+            example: { vacancies: 3 }
+      responses:
+        "200":
+          description: The post after the change.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobPost" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/job-posts/{id}/open:
+    parameters:
+      - $ref: "#/components/parameters/JobPostID"
+    post:
+      tags: [job-posts]
+      summary: Open a draft (admin)
+      description: |
+        Refused with 409 `not_ready` unless the post has at least one question
+        and a rubric with a positive weight; `details` names what is missing.
+      operationId: openJobPost
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The post, now open.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobPost" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/job-posts/{id}/close:
+    parameters:
+      - $ref: "#/components/parameters/JobPostID"
+    post:
+      tags: [job-posts]
+      summary: Close an open post (admin)
+      description: Final. Any other move is a 409 `invalid_transition` listing `allowed_next_statuses`.
+      operationId: closeJobPost
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The post, now closed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobPost" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/job-posts/{id}/questions:
+    parameters:
+      - $ref: "#/components/parameters/JobPostID"
+    get:
+      tags: [questions]
+      summary: The application form (admin)
+      operationId: listQuestions
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Every question, in form order.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuestionList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [questions]
+      summary: Add a question (admin, draft only)
+      operationId: createQuestion
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateQuestionRequest" }
+            examples:
+              text:
+                summary: A free-text question
+                value: { prompt: Describe a project you built, kind: text, min_length: 50 }
+              number:
+                summary: A number question
+                value: { prompt: "Years of Go?", kind: number }
+              boolean:
+                summary: A yes/no question
+                value: { prompt: "Are you eligible to work in the UK?", kind: boolean }
+      responses:
+        "201":
+          description: The new question.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Question" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/job-posts/{id}/questions/order:
+    parameters:
+      - $ref: "#/components/parameters/JobPostID"
+    put:
+      tags: [questions]
+      summary: Reorder the form (admin, draft only)
+      description: Every question of the post exactly once, in the new order. Applied in one transaction.
+      operationId: reorderQuestions
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReorderQuestionsRequest" }
+      responses:
+        "200":
+          description: The form in its new order.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuestionList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/job-posts/{id}/questions/{questionID}:
+    parameters:
+      - $ref: "#/components/parameters/JobPostID"
+      - $ref: "#/components/parameters/QuestionID"
+    patch:
+      tags: [questions]
+      summary: Partly update a question (admin, draft only)
+      description: Send `"choices":[]` to clear choices when changing the kind away from `choice`.
+      operationId: updateQuestion
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateQuestionRequest" }
+      responses:
+        "200":
+          description: The question after the change.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Question" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    delete:
+      tags: [questions]
+      summary: Delete a question (admin, draft only)
+      operationId: deleteQuestion
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/job-posts/{id}/rubric:
+    parameters:
+      - $ref: "#/components/parameters/JobPostID"
+    get:
+      tags: [rubric]
+      summary: The current rubric (admin)
+      description: "`version` is null and `criteria` empty before the first rubric is set."
+      operationId: getRubric
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The current version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rubric" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    put:
+      tags: [rubric]
+      summary: Replace the rubric (admin, any status)
+      description: |
+        The body is the whole rubric and becomes the next version; earlier
+        versions are kept for the scores that use them. Weights must sum to
+        100. Nothing is rescored: `applications_to_rescore` says how many
+        applications still carry an older score. Every problem comes back in
+        one 422, keyed like `criteria[2].config`.
+      operationId: replaceRubric
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReplaceRubricRequest" }
+            example:
+              criteria:
+                - label: Go knowledge
+                  kind: keyword_match
+                  weight: 30
+                  question_id: 2b9d6a0e-1f43-4c55-9a1e-7f1c2d3e4f50
+                  config: { keywords: [go, gin, goroutines, postgres, docker] }
+                - label: Experience
+                  kind: experience_years
+                  weight: 40
+                  question_id: 6f0e8c1a-3b2d-4e5f-8a9b-0c1d2e3f4a5b
+                  config: { min: 0, target: 4 }
+                - label: Answer depth
+                  kind: answer_depth
+                  weight: 20
+                  question_id: 2b9d6a0e-1f43-4c55-9a1e-7f1c2d3e4f50
+                  config: { min_chars: 50, target_chars: 400 }
+                - label: Eligibility
+                  kind: boolean_all
+                  weight: 10
+                  config: { question_ids: [9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d] }
+      responses:
+        "200":
+          description: The new version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReplacedRubric" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/job-posts/{id}/applications:
+    parameters:
+      - $ref: "#/components/parameters/JobPostID"
+    post:
+      tags: [applications]
+      summary: Apply to an open post (candidate)
+      description: |
+        The application, its answers, one score per rubric criterion and an
+        `application.submitted` event are written in one transaction. Every
+        problem comes back in one 422, under `details.cv_url` and
+        `details.answers`. A second application is a 409 `already_applied`,
+        also when several arrive at once.
+      operationId: submitApplication
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubmitApplicationRequest" }
+            example:
+              cv_url: https://example.com/cv.pdf
+              answers:
+                - question_id: 2b9d6a0e-1f43-4c55-9a1e-7f1c2d3e4f50
+                  answer: Last year I built a REST API in Go using Gin, with goroutines handling the background jobs and Postgres behind it.
+                - question_id: 6f0e8c1a-3b2d-4e5f-8a9b-0c1d2e3f4a5b
+                  answer: 3
+                - question_id: 9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d
+                  answer: true
+      responses:
+        "201":
+          description: The application and the answers stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SubmittedApplication" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/job-posts/{id}/applications/search:
+    parameters:
+      - $ref: "#/components/parameters/JobPostID"
+    get:
+      tags: [applications]
+      summary: Full-text search over a post's answers (admin)
+      description: |
+        Every word in `q` must appear, after stemming ("testing" finds
+        "tested"; "go" does not find "Google"). Operators and punctuation are
+        plain text. Most relevant first.
+      operationId: searchApplications
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Plain words, at most 200 characters.
+          schema: { type: string, maxLength: 200 }
+          example: goroutines postgres
+        - name: limit
+          in: query
+          description: Page size, default 20, capped at 100.
+          schema: { type: integer, minimum: 1, default: 20 }
+        - name: offset
+          in: query
+          description: Rows to skip, at most 10000.
+          schema: { type: integer, minimum: 0, maximum: 10000, default: 0 }
+      responses:
+        "200":
+          description: One page of matches.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/job-posts/{id}/ranking:
+    parameters:
+      - $ref: "#/components/parameters/JobPostID"
+    get:
+      tags: [applications]
+      summary: Every applicant, best score first (admin)
+      description: Unscored applicants come last, with `null` totals.
+      operationId: rankApplications
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: limit
+          in: query
+          description: Rows to return, default 50, capped at 500.
+          schema: { type: integer, minimum: 1, default: 50 }
+      responses:
+        "200":
+          description: The ranking.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ranking" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/job-posts/{id}/rescore-all:
+    parameters:
+      - $ref: "#/components/parameters/JobPostID"
+    post:
+      tags: [applications]
+      summary: Rescore every application to a post (admin)
+      description: Against the current rubric, atomically.
+      operationId: rescoreAll
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: How many were rescored, and how many changed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RescoreAllResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/applications:
+    get:
+      tags: [applications]
+      summary: The applications the caller may see
+      description: |
+        All of them for an admin, their own for a candidate, assigned ones for
+        an interviewer. Newest first, keyset-paginated. `total` counts every
+        match across all pages.
+      operationId: listApplications
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/ApplicationStatus" }
+        - name: job_post_id
+          in: query
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/After"
+      responses:
+        "200":
+          description: One page.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApplicationPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/applications/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ApplicationID"
+    get:
+      tags: [applications]
+      summary: One application, with answers, events and reviews
+      description: |
+        What each caller gets is filtered in SQL: an admin sees every review
+        and event; an assigned interviewer only their own review; the
+        candidate no `reviews` key and only submission and status events. An
+        application the caller may not see is a 404, identical to one that
+        does not exist.
+      operationId: getApplication
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The application.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApplicationDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/applications/{id}/status:
+    parameters:
+      - $ref: "#/components/parameters/ApplicationID"
+    patch:
+      tags: [applications]
+      summary: Move an application through the pipeline (admin)
+      description: |
+        One step at a time through `submitted → shortlisted → interview →
+        offer`; `rejected` from any stage, and final. Any other move is a 409
+        `invalid_transition` listing `allowed_next_statuses`.
+      operationId: updateApplicationStatus
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateStatusRequest" }
+            example: { status: shortlisted }
+      responses:
+        "200":
+          description: The application after the change.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Application" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/applications/{id}/score:
+    parameters:
+      - $ref: "#/components/parameters/ApplicationID"
+    get:
+      tags: [applications]
+      summary: The score breakdown (admin, assigned interviewer)
+      description: |
+        Each criterion's points, and the answer behind them with an excerpt of
+        about 120 characters around the first keyword match. `evidence` is
+        null when no single answer was the evidence. The candidate who applied
+        gets a 403; an application with no score is a 404 `not_scored`.
+      operationId: getScore
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The stored score.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScoreBreakdown" }
+              example:
+                application_id: d5f1a1b8-bbe5-457e-b0ac-78734c0fea26
+                total_earned: 66.8
+                total_available: 100
+                percentage: 66.8
+                rubric_version: 2
+                breakdown:
+                  - criterion: Go knowledge
+                    kind: keyword_match
+                    earned: 12
+                    available: 30
+                    detail: "matched 2 of 5 keywords: go, gin"
+                    evidence:
+                      question: Describe a project you built
+                      answer_id: a188f925-702d-4f6a-a839-61844fc66603
+                      excerpt: "...services for a few years. Last year I built a REST API in Go using Gin, with goroutines handling the background jobs..."
+                  - criterion: Experience
+                    kind: experience_years
+                    earned: 30
+                    available: 40
+                    detail: 3 years, 75% of the way from 0 to the target of 4
+                    evidence:
+                      question: Years of Go?
+                      answer_id: 6858469c-bd7b-40eb-83b7-220672afec44
+                      excerpt: "3"
+                  - criterion: Answer depth
+                    kind: answer_depth
+                    earned: 14.8
+                    available: 20
+                    detail: 309 characters, 74% of the way from 50 to the target of 400
+                    evidence:
+                      question: Describe a project you built
+                      answer_id: a188f925-702d-4f6a-a839-61844fc66603
+                      excerpt: "I have been writing backend services for a few years. Last year I built a REST API in Go using Gin, with goroutines..."
+                  - criterion: Eligibility
+                    kind: boolean_all
+                    earned: 10
+                    available: 10
+                    detail: 1 of 1 condition met
+                    evidence: null
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/applications/{id}/rescore:
+    parameters:
+      - $ref: "#/components/parameters/ApplicationID"
+    post:
+      tags: [applications]
+      summary: Rescore one application (admin)
+      description: |
+        Replaces its scores by scoring its stored answers against the post's
+        current rubric, in one transaction, and records an
+        `application.rescored` event. A post with no rubric is a 409
+        `no_rubric`, and the old scores are kept.
+      operationId: rescoreApplication
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The totals before and after.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RescoreResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/applications/{id}/events:
+    parameters:
+      - $ref: "#/components/parameters/ApplicationID"
+    get:
+      tags: [applications]
+      summary: The application's timeline (admin, assigned interviewers)
+      description: |
+        Newest first, keyset-paginated. An interviewer does not see other
+        interviewers' review events. The candidate who applied gets a 403.
+      operationId: getTimeline
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/After"
+      responses:
+        "200":
+          description: One page of events.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimelinePage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/applications/{id}/assign:
+    parameters:
+      - $ref: "#/components/parameters/ApplicationID"
+    post:
+      tags: [reviews]
+      summary: Assign an interviewer (admin, idempotent)
+      description: |
+        201 the first time, 200 on a repeat, with one `application.assigned`
+        event either way. A user who does not exist or is not an interviewer
+        is a 422 naming `interviewer_id`.
+      operationId: assignInterviewer
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssignRequest" }
+      responses:
+        "200":
+          description: Already assigned; nothing changed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Assignment" }
+        "201":
+          description: Assigned.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Assignment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/applications/{id}/assign/{interviewerID}:
+    parameters:
+      - $ref: "#/components/parameters/ApplicationID"
+      - name: interviewerID
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [reviews]
+      summary: Remove an assignment (admin, idempotent)
+      description: Access ends at once; any review they filed is kept. 204 whether or not they were assigned.
+      operationId: unassignInterviewer
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/applications/{id}/assignments:
+    parameters:
+      - $ref: "#/components/parameters/ApplicationID"
+    get:
+      tags: [reviews]
+      summary: Who is assigned (admin)
+      operationId: listAssignments
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Every assignment.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssignmentList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/applications/{id}/reviews:
+    parameters:
+      - $ref: "#/components/parameters/ApplicationID"
+    post:
+      tags: [reviews]
+      summary: File a review (assigned interviewer)
+      description: |
+        One review per interviewer: a second is a 409 `already_reviewed`. An
+        unassigned interviewer gets a 404.
+      operationId: createReview
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateReviewRequest" }
+            example: { mark: 8, notes: Clear explanation of the job queue design. }
+      responses:
+        "201":
+          description: The review.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Review" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /v1/applications/{id}/reviews/mine:
+    parameters:
+      - $ref: "#/components/parameters/ApplicationID"
+    patch:
+      tags: [reviews]
+      summary: Correct your review (its interviewer, while assigned)
+      description: '`"notes": ""` removes the notes. No review yet is a 404 `no_review`.'
+      operationId: updateMyReview
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateReviewRequest" }
+            example: { mark: 7 }
+      responses:
+        "200":
+          description: The review after the change.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Review" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: The `access_token` from `POST /v1/auth/login` or `/v1/auth/refresh`. Paste the token alone, without "Bearer".
+
+  headers:
+    XRequestID:
+      description: |
+        The ID of this request: the client's own `X-Request-ID` if it sent a
+        valid one (1–128 characters of letters, digits, `.`, `_`, `:`, `-`),
+        otherwise one generated by the server. Every log line about the
+        request carries it.
+      schema: { type: string }
+    RetryAfter:
+      description: Seconds to wait before the next attempt will be accepted.
+      schema: { type: integer, minimum: 1 }
+
+  parameters:
+    JobPostID:
+      name: id
+      in: path
+      required: true
+      description: A job post ID.
+      schema: { type: string, format: uuid }
+    ApplicationID:
+      name: id
+      in: path
+      required: true
+      description: An application ID.
+      schema: { type: string, format: uuid }
+    QuestionID:
+      name: questionID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Limit:
+      name: limit
+      in: query
+      description: Page size, default 20. A value above 100 is lowered to 100.
+      schema: { type: integer, minimum: 1, default: 20 }
+    After:
+      name: after
+      in: query
+      description: The `next_cursor` of the previous page. Opaque; omit it for the first page.
+      schema: { type: string }
+
+  responses:
+    NoContent:
+      description: Done. No body.
+      headers:
+        X-Request-ID: { $ref: "#/components/headers/XRequestID" }
+    BadRequest:
+      description: The body is not a JSON object (`malformed_request`), an ID in the path is not a UUID (`invalid_id`), or `after` is not a cursor this API issued (`invalid_cursor`).
+      headers:
+        X-Request-ID: { $ref: "#/components/headers/XRequestID" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            error: { code: invalid_id, message: The ID in the URL must be a UUID., details: {}, request_id: 01JCQ7Z8K3M5N7P9R1T3V5X7Z9 }
+    Unauthorized:
+      description: No usable token (`unauthenticated`), an expired one (`token_expired`), or a failed login (`invalid_credentials`).
+      headers:
+        X-Request-ID: { $ref: "#/components/headers/XRequestID" }
+        WWW-Authenticate:
+          description: Sent on a missing or rejected bearer token.
+          schema: { type: string, example: 'Bearer realm="hiredesk"' }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            error: { code: token_expired, message: The access token has expired. Use your refresh token to get a new one., details: {}, request_id: 01JCQ7Z8K3M5N7P9R1T3V5X7Z9 }
+    Forbidden:
+      description: Authenticated, but not allowed to do this (`forbidden`).
+      headers:
+        X-Request-ID: { $ref: "#/components/headers/XRequestID" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            error: { code: forbidden, message: You do not have permission to do that., details: {}, request_id: 01JCQ7Z8K3M5N7P9R1T3V5X7Z9 }
+    NotFound:
+      description: |
+        No such record, or one the caller may not see — the two are
+        deliberately indistinguishable (`not_found`). Also `not_scored` and
+        `no_review`.
+      headers:
+        X-Request-ID: { $ref: "#/components/headers/XRequestID" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            error: { code: not_found, message: The requested resource was not found., details: {}, request_id: 01JCQ7Z8K3M5N7P9R1T3V5X7Z9 }
+    Conflict:
+      description: |
+        Valid, but not in the resource's current state: `duplicate`,
+        `already_applied`, `already_reviewed`, `not_accepting_applications`,
+        `no_vacancies`, `invalid_transition`, `no_rubric`, `not_ready`,
+        `form_locked` or `conflict`. `details` says more where it can.
+      headers:
+        X-Request-ID: { $ref: "#/components/headers/XRequestID" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            error:
+              code: invalid_transition
+              message: The resource cannot move to that status from its current one.
+              details: { current_status: submitted, requested_status: offer, allowed_next_statuses: [shortlisted, rejected] }
+              request_id: 01JCQ7Z8K3M5N7P9R1T3V5X7Z9
+    PayloadTooLarge:
+      description: The body is larger than 1 MiB (`payload_too_large`).
+      headers:
+        X-Request-ID: { $ref: "#/components/headers/XRequestID" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            error: { code: payload_too_large, message: The request body must be at most 1048576 bytes., details: { limit_bytes: 1048576 }, request_id: 01JCQ7Z8K3M5N7P9R1T3V5X7Z9 }
+    ValidationFailed:
+      description: One or more fields are invalid (`validation_failed`). `details` names each one.
+      headers:
+        X-Request-ID: { $ref: "#/components/headers/XRequestID" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            error: { code: validation_failed, message: One or more fields are invalid., details: { email: is not a valid address }, request_id: 01JCQ7Z8K3M5N7P9R1T3V5X7Z9 }
+    TooManyRequests:
+      description: More than 10 requests to `/v1/auth/*` from this IP in a minute (`rate_limited`).
+      headers:
+        X-Request-ID: { $ref: "#/components/headers/XRequestID" }
+        Retry-After: { $ref: "#/components/headers/RetryAfter" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            error: { code: rate_limited, message: Too many attempts. Wait before trying again., details: { retry_after_seconds: 6 }, request_id: 01JCQ7Z8K3M5N7P9R1T3V5X7Z9 }
+    InternalError:
+      description: Something failed on the server (`internal_error`). The cause is logged under the `request_id`, never returned.
+      headers:
+        X-Request-ID: { $ref: "#/components/headers/XRequestID" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            error: { code: internal_error, message: Something went wrong on our side. Please try again., details: {}, request_id: 01JCQ7Z8K3M5N7P9R1T3V5X7Z9 }
+
+  schemas:
+    ErrorEnvelope:
+      description: The one shape of every error response.
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details, request_id]
+          properties:
+            code:
+              type: string
+              description: Stable and meant for programs. Branch on this, never on `message`.
+              example: validation_failed
+            message:
+              type: string
+              description: For people. May be reworded at any time.
+            details:
+              type: object
+              description: Always an object, possibly empty. For a validation failure, each field's problem.
+              additionalProperties: true
+            request_id:
+              type: string
+              description: The ID of this request, also in the `X-Request-ID` header. Quote it in a bug report.
+              example: 01JCQ7Z8K3M5N7P9R1T3V5X7Z9
+
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        database: { type: string, enum: [unreachable] }
+
+    Role:
+      type: string
+      enum: [admin, interviewer, candidate]
+
+    User:
+      type: object
+      required: [id, email, full_name, role, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        full_name: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        created_at: { type: string, format: date-time }
+
+    RegisterRequest:
+      type: object
+      required: [email, password, full_name]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, format: password, minLength: 8, maxLength: 72 }
+        full_name: { type: string, maxLength: 200 }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
+
+    TokenPair:
+      description: Field names follow OAuth 2.0 (RFC 6749 §5.1).
+      type: object
+      required: [access_token, token_type, expires_in, refresh_token, user]
+      properties:
+        access_token: { type: string, description: Paste this into Authorize. }
+        token_type: { type: string, enum: [Bearer] }
+        expires_in: { type: integer, description: Seconds until the access token expires., example: 900 }
+        refresh_token: { type: string, description: Shown once; the server keeps only its hash. }
+        user: { $ref: "#/components/schemas/User" }
+
+    JobPostStatus:
+      type: string
+      enum: [draft, open, closed]
+
+    JobPost:
+      type: object
+      required: [id, title, description, employment_type, location, vacancies, salary_min, salary_max, status, closes_at, created_by, created_at, updated_at, questions]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        employment_type: { type: string, nullable: true }
+        location: { type: string, nullable: true }
+        vacancies: { type: integer, minimum: 1 }
+        salary_min: { type: number, nullable: true, description: "Two decimal places at most, e.g. 85000.50." }
+        salary_max: { type: number, nullable: true }
+        status: { $ref: "#/components/schemas/JobPostStatus" }
+        closes_at: { type: string, format: date-time, nullable: true }
+        created_by: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        questions:
+          type: array
+          items: { $ref: "#/components/schemas/Question" }
+
+    CreateJobPostRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string }
+        employment_type: { type: string }
+        location: { type: string }
+        vacancies: { type: integer, minimum: 1, default: 1 }
+        salary_min: { type: number }
+        salary_max: { type: number }
+        closes_at: { type: string, format: date-time }
+
+    UpdateJobPostRequest:
+      description: Every field optional; only those present change.
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string }
+        employment_type: { type: string }
+        location: { type: string }
+        vacancies: { type: integer, minimum: 1 }
+        salary_min: { type: number }
+        salary_max: { type: number }
+        closes_at: { type: string, format: date-time }
+
+    JobListing:
+      type: object
+      required: [id, title, location, employment_type, skill_tags, remaining_vacancies]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        location: { type: string, nullable: true }
+        employment_type: { type: string, nullable: true }
+        skill_tags:
+          type: array
+          items: { type: string }
+        remaining_vacancies: { type: integer, minimum: 0 }
+
+    JobListingPage:
+      type: object
+      required: [data, next_cursor]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/JobListing" }
+        next_cursor: { type: string, nullable: true, description: null on the last page. }
+
+    QuestionKind:
+      type: string
+      enum: [text, number, boolean, choice]
+
+    Question:
+      type: object
+      required: [id, prompt, kind, choices, required, min_length, position]
+      properties:
+        id: { type: string, format: uuid }
+        prompt: { type: string }
+        kind: { $ref: "#/components/schemas/QuestionKind" }
+        choices:
+          type: array
+          items: { type: string }
+        required: { type: boolean }
+        min_length: { type: integer, minimum: 0, description: Characters; text questions only. }
+        position: { type: integer, minimum: 1 }
+
+    QuestionList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Question" }
+
+    CreateQuestionRequest:
+      type: object
+      required: [prompt, kind]
+      properties:
+        prompt: { type: string, maxLength: 1000 }
+        kind: { $ref: "#/components/schemas/QuestionKind" }
+        choices:
+          description: Required for `choice`, absent otherwise. Each at most 200 characters.
+          type: array
+          items: { type: string, maxLength: 200 }
+        required: { type: boolean, default: true }
+        min_length: { type: integer, minimum: 0, maximum: 10000, description: Text questions only. }
+        position: { type: integer, minimum: 1, description: Default after the last question. }
+
+    UpdateQuestionRequest:
+      description: Every field optional; only those present change.
+      type: object
+      properties:
+        prompt: { type: string, maxLength: 1000 }
+        kind: { $ref: "#/components/schemas/QuestionKind" }
+        choices:
+          type: array
+          items: { type: string, maxLength: 200 }
+        required: { type: boolean }
+        min_length: { type: integer, minimum: 0, maximum: 10000 }
+        position: { type: integer, minimum: 1 }
+
+    ReorderQuestionsRequest:
+      type: object
+      required: [question_ids]
+      properties:
+        question_ids:
+          type: array
+          items: { type: string, format: uuid }
+
+    CriterionKind:
+      type: string
+      enum: [keyword_match, experience_years, answer_depth, boolean_all]
+
+    CriterionConfig:
+      description: |
+        Parameters of the criterion, by kind:
+        `keyword_match` `{"keywords":["go","gin"]}`;
+        `experience_years` `{"min":0,"target":4}`;
+        `answer_depth` `{"min_chars":50,"target_chars":400}`;
+        `boolean_all` `{"question_ids":["…"]}`.
+        Unknown fields are refused.
+      type: object
+      additionalProperties: true
+
+    CriterionRequest:
+      type: object
+      required: [label, kind, weight, config]
+      properties:
+        label: { type: string }
+        kind: { $ref: "#/components/schemas/CriterionKind" }
+        weight: { type: number, minimum: 0, maximum: 100 }
+        question_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: The question it reads. Required for every kind except `boolean_all`, which names its questions in `config`.
+        config: { $ref: "#/components/schemas/CriterionConfig" }
+
+    Criterion:
+      type: object
+      required: [id, label, kind, weight, question_id, config]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        kind: { $ref: "#/components/schemas/CriterionKind" }
+        weight: { type: number }
+        question_id: { type: string, format: uuid, nullable: true }
+        config: { $ref: "#/components/schemas/CriterionConfig" }
+
+    ReplaceRubricRequest:
+      type: object
+      required: [criteria]
+      properties:
+        criteria:
+          type: array
+          items: { $ref: "#/components/schemas/CriterionRequest" }
+
+    Rubric:
+      type: object
+      required: [job_post_id, version, criteria]
+      properties:
+        job_post_id: { type: string, format: uuid }
+        version: { type: integer, nullable: true }
+        criteria:
+          type: array
+          items: { $ref: "#/components/schemas/Criterion" }
+
+    ReplacedRubric:
+      allOf:
+        - $ref: "#/components/schemas/Rubric"
+        - type: object
+          required: [previous_version, applications_to_rescore]
+          properties:
+            previous_version: { type: integer, nullable: true }
+            applications_to_rescore:
+              type: integer
+              description: Applications whose stored score came from an older version.
+
+    ApplicationStatus:
+      type: string
+      enum: [submitted, shortlisted, interview, offer, rejected]
+
+    Application:
+      type: object
+      required: [id, job_post_id, candidate_id, status, cv_url, submitted_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        job_post_id: { type: string, format: uuid }
+        candidate_id: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/ApplicationStatus" }
+        cv_url: { type: string, format: uri }
+        submitted_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ApplicationPage:
+      type: object
+      required: [data, next_cursor, total]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Application" }
+        next_cursor: { type: string, nullable: true }
+        total: { type: integer, description: Every match across all pages. }
+
+    Answer:
+      type: object
+      required: [id, question_id, answer, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        question_id: { type: string, format: uuid }
+        answer: { type: string, description: Stored as text whatever the question's kind. }
+        created_at: { type: string, format: date-time }
+
+    AnswerInput:
+      type: object
+      required: [question_id, answer]
+      properties:
+        question_id: { type: string, format: uuid }
+        answer:
+          description: A string, number or boolean, matching the question's kind.
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+
+    SubmitApplicationRequest:
+      type: object
+      required: [cv_url, answers]
+      properties:
+        cv_url: { type: string, format: uri, description: Absolute http or https URL. }
+        answers:
+          type: array
+          items: { $ref: "#/components/schemas/AnswerInput" }
+
+    SubmittedApplication:
+      allOf:
+        - $ref: "#/components/schemas/Application"
+        - type: object
+          required: [answers]
+          properties:
+            answers:
+              type: array
+              items: { $ref: "#/components/schemas/Answer" }
+
+    ApplicationEvent:
+      type: object
+      required: [id, actor_id, actor_name, type, payload, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        actor_id: { type: string, format: uuid, nullable: true }
+        actor_name: { type: string, nullable: true }
+        type: { $ref: "#/components/schemas/EventType" }
+        payload: { type: object, additionalProperties: true }
+        created_at: { type: string, format: date-time }
+
+    EventType:
+      type: string
+      enum:
+        - application.submitted
+        - application.status_changed
+        - application.rescored
+        - application.assigned
+        - application.unassigned
+        - application.reviewed
+        - application.review_updated
+
+    ApplicationDetail:
+      allOf:
+        - $ref: "#/components/schemas/Application"
+        - type: object
+          required: [answers, events]
+          properties:
+            answers:
+              type: array
+              items: { $ref: "#/components/schemas/Answer" }
+            events:
+              type: array
+              items: { $ref: "#/components/schemas/ApplicationEvent" }
+            reviews:
+              description: Absent for the candidate.
+              type: array
+              items: { $ref: "#/components/schemas/Review" }
+
+    UpdateStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: "#/components/schemas/ApplicationStatus" }
+
+    Evidence:
+      type: object
+      nullable: true
+      required: [question, answer_id, excerpt]
+      properties:
+        question: { type: string }
+        answer_id: { type: string, format: uuid }
+        excerpt: { type: string, description: About 120 characters around the first keyword match. }
+
+    ScoreEntry:
+      type: object
+      required: [criterion, kind, earned, available, detail, evidence]
+      properties:
+        criterion: { type: string }
+        kind: { $ref: "#/components/schemas/CriterionKind" }
+        earned: { type: number }
+        available: { type: number }
+        detail: { type: string }
+        evidence: { $ref: "#/components/schemas/Evidence" }
+
+    ScoreBreakdown:
+      type: object
+      required: [application_id, total_earned, total_available, percentage, rubric_version, breakdown]
+      properties:
+        application_id: { type: string, format: uuid }
+        total_earned: { type: number }
+        total_available: { type: number }
+        percentage: { type: number }
+        rubric_version: { type: integer }
+        breakdown:
+          type: array
+          items: { $ref: "#/components/schemas/ScoreEntry" }
+
+    Totals:
+      type: object
+      required: [rubric_version, total_earned, total_available, percentage]
+      properties:
+        rubric_version: { type: integer }
+        total_earned: { type: number }
+        total_available: { type: number }
+        percentage: { type: number }
+
+    RescoreResult:
+      type: object
+      required: [application_id, previous, current, changed]
+      properties:
+        application_id: { type: string, format: uuid }
+        previous:
+          allOf:
+            - $ref: "#/components/schemas/Totals"
+          nullable: true
+          description: null if it had no score before.
+        current: { $ref: "#/components/schemas/Totals" }
+        changed: { type: boolean }
+
+    RescoreAllResult:
+      type: object
+      required: [job_post_id, rubric_version, rescored, changed]
+      properties:
+        job_post_id: { type: string, format: uuid }
+        rubric_version: { type: integer }
+        rescored: { type: integer }
+        changed: { type: integer }
+
+    RankingEntry:
+      type: object
+      required: [rank, application_id, candidate_id, candidate_name, status, submitted_at, total_earned, total_available, percentage, rubric_version]
+      properties:
+        rank: { type: integer, minimum: 1 }
+        application_id: { type: string, format: uuid }
+        candidate_id: { type: string, format: uuid }
+        candidate_name: { type: string }
+        status: { $ref: "#/components/schemas/ApplicationStatus" }
+        submitted_at: { type: string, format: date-time }
+        total_earned: { type: number, nullable: true }
+        total_available: { type: number, nullable: true }
+        percentage: { type: number, nullable: true }
+        rubric_version: { type: integer, nullable: true }
+
+    Ranking:
+      type: object
+      required: [job_post_id, data]
+      properties:
+        job_post_id: { type: string, format: uuid }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/RankingEntry" }
+
+    SearchEntry:
+      type: object
+      required: [application_id, candidate_id, candidate_name, status, submitted_at, relevance, total_earned, total_available, percentage, rubric_version]
+      properties:
+        application_id: { type: string, format: uuid }
+        candidate_id: { type: string, format: uuid }
+        candidate_name: { type: string }
+        status: { $ref: "#/components/schemas/ApplicationStatus" }
+        submitted_at: { type: string, format: date-time }
+        relevance: { type: number }
+        total_earned: { type: number, nullable: true }
+        total_available: { type: number, nullable: true }
+        percentage: { type: number, nullable: true }
+        rubric_version: { type: integer, nullable: true }
+
+    SearchPage:
+      type: object
+      required: [job_post_id, query, total, limit, offset, next_offset, data]
+      properties:
+        job_post_id: { type: string, format: uuid }
+        query: { type: string, description: The query as normalised by the server. }
+        total: { type: integer }
+        limit: { type: integer }
+        offset: { type: integer }
+        next_offset: { type: integer, nullable: true }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/SearchEntry" }
+
+    Actor:
+      type: object
+      nullable: true
+      required: [id, name, role]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+
+    TimelineEntry:
+      type: object
+      required: [id, type, actor, payload, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/EventType" }
+        actor: { $ref: "#/components/schemas/Actor" }
+        payload: { type: object, additionalProperties: true }
+        created_at: { type: string, format: date-time }
+
+    TimelinePage:
+      type: object
+      required: [data, next_cursor]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/TimelineEntry" }
+        next_cursor: { type: string, nullable: true }
+
+    AssignRequest:
+      type: object
+      required: [interviewer_id]
+      properties:
+        interviewer_id: { type: string, format: uuid }
+
+    Assignment:
+      type: object
+      required: [application_id, interviewer_id, interviewer_name, interviewer_email, assigned_by, assigned_by_name, assigned_at, reviewed]
+      properties:
+        application_id: { type: string, format: uuid }
+        interviewer_id: { type: string, format: uuid }
+        interviewer_name: { type: string }
+        interviewer_email: { type: string, format: email }
+        assigned_by: { type: string, format: uuid, nullable: true }
+        assigned_by_name: { type: string, nullable: true }
+        assigned_at: { type: string, format: date-time }
+        reviewed: { type: boolean }
+
+    AssignmentList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Assignment" }
+
+    Review:
+      type: object
+      required: [id, application_id, interviewer_id, interviewer_name, mark, notes, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        application_id: { type: string, format: uuid }
+        interviewer_id: { type: string, format: uuid }
+        interviewer_name: { type: string }
+        mark: { type: integer, minimum: 1, maximum: 10 }
+        notes: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateReviewRequest:
+      type: object
+      required: [mark]
+      properties:
+        mark: { type: integer, minimum: 1, maximum: 10, description: 'A whole number. `7.5` and `"8"` are each a 422.' }
+        notes: { type: string, maxLength: 5000 }
+
+    UpdateReviewRequest:
+      type: object
+      properties:
+        mark: { type: integer, minimum: 1, maximum: 10 }
+        notes: { type: string, maxLength: 5000, description: An empty string removes the notes. }

@@ -217,6 +217,10 @@ func newRouter(t *testing.T, pool *pgxpool.Pool, tokens *auth.TokenManager) *gin
 		Users:        users,
 		DB:           pool,
 		PingTimeout:  2 * time.Second,
+		// Generous: the matrix signs in far more than 10 times from one
+		// address. The limiter itself is tested in internal/api.
+		AuthLimiter: api.NewRateLimiter(100_000, time.Minute, 10),
+		InFlight:    api.NewInFlight(),
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -554,6 +558,10 @@ func TestAuthorizationMatrix(t *testing.T) {
 	send := func(method, path, header, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		// One fixed ID for every request, so a refusal and a miss can still
+		// be compared byte for byte: the ID is the only field that varies
+		// per request, and it reveals nothing about the record.
+		req.Header.Set(api.RequestIDHeader, "authz-matrix")
 		if header != "" {
 			req.Header.Set("Authorization", header)
 		}

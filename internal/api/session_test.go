@@ -183,6 +183,7 @@ func (s *testServer) mustRefresh(t *testing.T, token string) tokenResponse {
 func (s *testServer) get(path, header string) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.Header.Set(RequestIDHeader, testRequestID)
 	if header != "" {
 		req.Header.Set("Authorization", header)
 	}
@@ -328,10 +329,11 @@ func TestRefreshReplayRevokesEverySession(t *testing.T) {
 	fresh := s.login(t, "alice@example.com")
 	s.mustRefresh(t, fresh.RefreshToken)
 
-	if !strings.Contains(logged.String(), "refresh token reuse detected for user "+phone.User.ID) {
+	if !strings.Contains(logged.String(), "refresh token reuse detected") ||
+		!strings.Contains(logged.String(), "affected_user_id="+phone.User.ID) {
 		t.Errorf("the reuse was not logged as a security event: %s", logged)
 	}
-	if !strings.Contains(logged.String(), "revoked 2 session(s)") {
+	if !strings.Contains(logged.String(), "sessions_revoked=2") {
 		t.Errorf("log does not report the two sessions revoked: %s", logged)
 	}
 	for _, secret := range []string{phone.RefreshToken, rotated.RefreshToken, laptop.RefreshToken} {

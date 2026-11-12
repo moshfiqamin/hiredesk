@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -294,8 +294,11 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 
 			// A security event, so it is logged although the response is an
 			// ordinary 401. No token or hash is written.
-			log.Printf("security: refresh token reuse detected for user %s from %s; revoked %d session(s)",
-				reuse.UserID, c.ClientIP(), revoked)
+			slog.WarnContext(ctx, "security: refresh token reuse detected",
+				slog.String("affected_user_id", reuse.UserID),
+				slog.String("client_ip", c.ClientIP()),
+				slog.Int64("sessions_revoked", revoked),
+			)
 
 			Respond(c, domain.ErrUnauthenticated)
 

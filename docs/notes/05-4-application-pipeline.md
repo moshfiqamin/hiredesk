@@ -61,7 +61,7 @@ Decisions inside it:
   posts got `/open` and `/close` because there are two moves. Here there are
   seven legal moves to five targets; a route each would be noise, and the
   map already says what is legal.
-  ([`router.go:149`](../../internal/api/router.go#L149))
+  ([`router.go:182`](../../internal/api/router.go#L182))
 - **An unknown status is 422, a known but illegal one is 409.**
   `{"status":"hired"}` is a malformed request: no state could accept it.
   `{"status":"offer"}` on a submitted application is a fine request refused

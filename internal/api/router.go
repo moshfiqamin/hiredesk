@@ -30,6 +30,16 @@ type Deps struct {
 	// DB is pinged by /readyz, for at most PingTimeout.
 	DB          Pinger
 	PingTimeout time.Duration
+
+	// AuthLimiter rate-limits /v1/auth/* per client IP.
+	AuthLimiter *RateLimiter
+
+	// InFlight records every request while it runs, for the shutdown report.
+	InFlight *InFlight
+
+	// AllowedOrigins may call the API from a browser on another origin. Empty
+	// allows none.
+	AllowedOrigins []string
 }
 
 // NewRouter builds the engine with every middleware and route attached.
@@ -40,14 +50,31 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 	// Checked here, at startup, because a nil Users would otherwise surface as
 	// a panic on the first authenticated request.
 	if deps.Auth == nil || deps.Applications == nil || deps.JobPosts == nil || deps.Questions == nil ||
-		deps.Listings == nil || deps.Rubrics == nil || deps.Reviews == nil || deps.Tokens == nil || deps.Users == nil || deps.DB == nil {
-		return nil, errors.New("build router: Auth, Applications, JobPosts, Questions, Listings, Rubrics, Reviews, Tokens, Users and DB are all required")
+		deps.Listings == nil || deps.Rubrics == nil || deps.Reviews == nil || deps.Tokens == nil || deps.Users == nil ||
+		deps.DB == nil || deps.AuthLimiter == nil || deps.InFlight == nil {
+		return nil, errors.New("build router: Auth, Applications, JobPosts, Questions, Listings, Rubrics, Reviews, Tokens, Users, DB, AuthLimiter and InFlight are all required")
 	}
 
-	// gin.Default() with one substitution: its recovery middleware answers a
-	// panic with an empty body, and Recovery answers with the envelope.
+	// gin.New, not gin.Default: Default installs gin.Logger, which writes
+	// unstructured lines including the query string, and gin.Recovery, which
+	// answers a panic with an empty body. Both are replaced below.
 	router := gin.New()
-	router.Use(gin.Logger(), Recovery())
+
+	// The order is the order each request passes through them:
+	//   RequestID  first, so everything after it, every log line included,
+	//              has the ID;
+	//   AccessLog  outside Recovery, so it logs the 500 a panic became;
+	//   Recovery   around everything that could panic;
+	//   CORS       before any refusal, so a browser can read a 401 or 413;
+	//   BodyLimit  before any handler reads a body.
+	// Engine-level middleware also runs for unknown routes and wrong methods.
+	router.Use(
+		RequestID(),
+		AccessLog(deps.InFlight),
+		Recovery(),
+		CORS(deps.AllowedOrigins),
+		BodyLimit(maxBodyBytes),
+	)
 
 	// Off by default, in which case a wrong method on a real path is reported
 	// as a 404.
@@ -66,14 +93,20 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 	router.GET("/healthz", healthz)
 	router.GET("/readyz", readyz(deps.DB, deps.PingTimeout))
 
+	// Swagger UI and the OpenAPI document, both compiled into the binary.
+	if err := registerDocs(router); err != nil {
+		return nil, fmt.Errorf("register docs: %w", err)
+	}
+
 	// Everything a client calls lives under a version prefix. A breaking
 	// change then ships as /v2 beside /v1, and existing clients keep working
 	// until they choose to move.
 	v1 := router.Group("/v1")
 
 	// Braces only to indent the routes under their group; they do not affect
-	// behaviour.
-	authRoutes := v1.Group("/auth")
+	// behaviour. Every route here is a target for password guessing or token
+	// stuffing, so all of them share one per-IP allowance.
+	authRoutes := v1.Group("/auth", deps.AuthLimiter.Middleware())
 	{
 		authRoutes.POST("/register", deps.Auth.Register)
 		authRoutes.POST("/login", deps.Auth.Login)

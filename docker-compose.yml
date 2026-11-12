@@ -98,6 +98,13 @@ services:
       DB_PING_TIMEOUT: ${DB_PING_TIMEOUT:-2s}
       SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-10s}
 
+      # Logging and CORS. Empty values fall back to the defaults in
+      # internal/config: info level, text in development and JSON otherwise,
+      # and no cross-origin access.
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: ${LOG_FORMAT:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+
     ports:
       - "${API_PORT:-8080}:8080"
 

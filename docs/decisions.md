@@ -205,3 +205,212 @@ already expect; a zero score would be a false result.
   `TestSubmitRollsBackWhenScoringFails` in
   [`test/integration/scoring_test.go`](../test/integration/scoring_test.go).
 
+
+---
+
+## D5. Gin as the HTTP framework
+
+**Date:** 2026-11-12 (recorded; chosen in module 0)
+**Status:** accepted
+
+### Decision
+
+Routing and middleware use Gin. Handlers take a `*gin.Context`; everything
+below the handlers (`domain`, `scoring`, `store`, `auth`) imports no HTTP
+package at all.
+
+### Why
+
+- **Route groups with middleware** express the authorization model directly:
+  `protected := v1.Group("", RequireAuth(...))`, then `RequireRole` on a
+  nested group. The route table in `router.go` reads as the access policy.
+- **One place for every error shape.** `NoRoute`, `NoMethod` and a custom
+  recovery let unknown routes, wrong methods and panics return the same
+  envelope as handler errors.
+- **Widely used**, so a reviewer recognises it, and its behaviour under load
+  is well documented.
+
+### Rejected
+
+- **The standard library alone (`net/http` with Go 1.22 patterns).** Now a
+  real option: method and wildcard matching are built in. Rejected because
+  grouped middleware, per-group 405 handling and `c.FullPath()` for the access
+  log would each be written by hand, and the project's teaching goal is the
+  domain, not a router.
+- **Echo, Chi, Fiber.** Chi is closest to the standard library and would have
+  been a fine choice; Fiber is built on fasthttp, not `net/http`, which breaks
+  compatibility with standard middleware and `httptest`.
+
+### Costs
+
+Handlers depend on `gin.Context`, so moving off Gin means touching every
+handler. Contained by keeping handlers thin: they decode, call the store, and
+encode. Gin's defaults also had to be replaced (`gin.Logger`,
+`gin.Recovery`, trusted proxies) because they do not suit production.
+
+---
+
+## D6. Hand-written SQL with pgx, no ORM
+
+**Date:** 2026-11-12 (recorded; chosen in module 2)
+**Status:** accepted
+
+### Decision
+
+Every query is SQL written by hand in `internal/store` (about 80 statements),
+executed with `pgx/v5` and its pool. No ORM, no query builder, no code
+generator.
+
+### Why
+
+The features that matter here are PostgreSQL features, and they are written
+as such:
+
+- **Row locks with a purpose**: `FOR UPDATE`, `FOR NO KEY UPDATE`,
+  `FOR KEY SHARE`, `FOR SHARE`, each chosen per statement (module 4–7 notes).
+- **Set-based writes**: `unnest` multi-row inserts, data-modifying CTEs, and
+  `= ANY($1)` in the rescore, so 500 applications take a fixed number of
+  statements.
+- **Authorization in SQL**: one query per role, so rows a caller may not see
+  never leave the database.
+- **Error identity**: SQLSTATE `23505` plus the constraint name, read with
+  `errors.As`, is how a concurrent duplicate application becomes a 409.
+
+An ORM would hide each of these behind an abstraction that has to be escaped
+to use them, and make the N+1 problem (which this project studies on purpose)
+easy to write without noticing.
+
+### Rejected
+
+- **GORM / ent.** Fast for CRUD; obscures locking, generates queries that are
+  hard to `EXPLAIN`, and lazy-loads relations, which is the N+1 by default.
+- **sqlc.** Generates typed Go from SQL files and would keep every benefit
+  above. A reasonable next step; not taken because writing the scan code by
+  hand was part of learning pgx.
+
+### Costs
+
+More code per query, and column lists that must match `Scan` arguments by
+hand. A mismatch is a runtime error, caught by the integration tests rather
+than the compiler.
+
+---
+
+## D7. PostgreSQL full-text search, not Elasticsearch
+
+**Date:** 2026-11-12 (recorded; chosen in module 8)
+**Status:** accepted
+**Applies to:** `GET /v1/job-posts/:id/applications/search`.
+
+### Decision
+
+Search uses a `tsvector` column on `applications`, a GIN index on it, and
+`plainto_tsquery('english', $2)` with `ts_rank` for ordering.
+
+### Why
+
+- **The data is already there**, inside the same transaction as the
+  application. An application is searchable the moment its submit commits;
+  there is no indexing pipeline to lag, fail or replay.
+- **Authorization stays in one place.** The search query joins the same
+  tables and applies the same admin-only rule as every other read. A separate
+  search cluster would need its own copy of the access rules.
+- **The scale fits.** Searching the answers to one job post means hundreds or
+  thousands of documents, not billions.
+- **What it does well is what is needed**: stemming ("testing" finds
+  "tested"), whole-lexeme matching ("go" does not match "google"), stop words,
+  and parameterised input that cannot break the query.
+
+### Rejected
+
+**Elasticsearch / OpenSearch.** Better relevance tuning, fuzzy matching,
+highlighting and facets. Costs a second datastore to run, secure, back up and
+keep in sync with PostgreSQL, for a feature that one indexed column serves.
+
+### When to revisit
+
+Typo tolerance, cross-post search over millions of applications, or
+relevance tuning beyond `ts_rank` weights. `pg_trgm` covers typos first,
+before a new system is justified.
+
+---
+
+## D8. The search vector is a generated column, not a trigger
+
+**Date:** 2026-11-12 (recorded; chosen in module 8)
+**Status:** accepted
+
+### Decision
+
+```sql
+search_vector tsvector GENERATED ALWAYS AS (to_tsvector('english', search_document)) STORED
+```
+
+in [`migrations/000012_search.up.sql`](../migrations/000012_search.up.sql).
+The application code writes `search_document` (the answers' text);
+PostgreSQL derives the vector.
+
+### Why
+
+- **It cannot drift.** A generated column is recomputed by the database on
+  every write to its inputs, and cannot be written directly. A trigger can be
+  disabled, dropped by a migration, or bypassed with
+  `session_replication_role = replica`; a generated column cannot.
+- **It is declared, not programmed.** One line of DDL, visible in `\d
+  applications`, instead of a PL/pgSQL function and a trigger to read.
+- **`to_tsvector('english', …)` with an explicit configuration is
+  immutable**, which is the condition PostgreSQL places on generated columns.
+
+### Rejected
+
+**A `BEFORE INSERT OR UPDATE` trigger.** Necessary when the vector depends on
+other tables (a trigger can query; a generated column sees only its own row),
+or when weights per field need logic. Neither applies: the answers are
+denormalised into `search_document` before the insert, so the vector depends
+only on its own row.
+
+### Costs
+
+`search_document` is a copy of the answers, kept correct by the write path.
+`make reindex-search` repairs it if that ever fails, rewriting only rows
+that disagree. Changing the text-search configuration means rewriting the
+column, which rewrites the table.
+
+---
+
+## D9. Scores are stored, not computed on read
+
+**Date:** 2026-11-12 (recorded; chosen in module 7)
+**Status:** accepted
+
+### Decision
+
+Each application's per-criterion scores are computed once, inside the submit
+transaction, and stored in `scores` with the rubric version, the points, the
+detail text and the evidence answer. Reads (`/score`, `/ranking`, search
+results) read the stored rows. Rescoring is an explicit admin action.
+
+### Why
+
+- **A score is a record of a decision.** If it were computed on every read,
+  editing the rubric would silently change every candidate's past score, and
+  a shortlist made on Monday could not be explained on Friday. Stored rows
+  keep the version that produced them.
+- **Ranking needs it.** Ordering 500 applicants by score is an `ORDER BY` on
+  stored numbers. Computing it would mean running the scoring engine over
+  every application on every page view.
+- **The evidence is fixed at the moment of judgement**, which is what an
+  audit needs.
+
+### Rejected
+
+**Compute on read.** Always current, no rescore step, nothing to keep in
+sync. Rejected because "always current" is exactly the problem: it rewrites
+history whenever the rubric changes.
+
+### Costs
+
+Scores can be stale against the latest rubric. That is surfaced, not hidden:
+`PUT …/rubric` returns `applications_to_rescore`, every score carries
+`rubric_version`, and `POST …/rescore-all` brings a post up to date in one
+transaction.

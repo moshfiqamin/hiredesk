@@ -32,25 +32,25 @@ Click the link, read the code, then come back.
 | [13](#13-what-the-signature-actually-proves) | What the signature actually proves | [`token.go:115`](../../internal/auth/token.go#L115) |
 | [14](#14-the-algorithm-confusion-attack) | The algorithm-confusion attack | [`token.go:152`](../../internal/auth/token.go#L152) |
 | [15](#15-why-only-fifteen-minutes) | Why only fifteen minutes | [`token.go:17`](../../internal/auth/token.go#L17) |
-| [16](#16-refusing-to-start-on-a-weak-secret) | Refusing to start on a weak secret | [`config.go:278`](../../internal/config/config.go#L278) |
+| [16](#16-refusing-to-start-on-a-weak-secret) | Refusing to start on a weak secret | [`config.go:397`](../../internal/config/config.go#L397) |
 | [17](#17-go-idioms-appearing-for-the-first-time) | Struct embedding, methods, an injected clock | [`token.go:45`](../../internal/auth/token.go#L45) |
-| [18](#18-one-shape-for-every-error) | One shape for every error | [`api/errors.go:29`](../../internal/api/errors.go#L29) |
+| [18](#18-one-shape-for-every-error) | One shape for every error | [`api/errors.go:30`](../../internal/api/errors.go#L30) |
 | [19](#19-sentinel-errors-again-and-why-errorsis-exists) | Sentinel errors again, and why `errors.Is` exists | [`domain/errors.go:18`](../../internal/domain/errors.go#L18) |
 | [20](#20-what-w-does-and-why-it-matters-here) | What `%w` does, and why it matters here | [`domain/errors_test.go:33`](../../internal/domain/errors_test.go#L33) |
-| [21](#21-why-the-status-codes-live-in-api-and-not-in-domain) | Why the status codes live in `api`, not `domain` | [`api/errors.go:69`](../../internal/api/errors.go#L69) |
-| [22](#22-unexpected-errors-log-everything-say-nothing) | Unexpected errors: log everything, say nothing | [`api/errors.go:113`](../../internal/api/errors.go#L113) |
+| [21](#21-why-the-status-codes-live-in-api-and-not-in-domain) | Why the status codes live in `api`, not `domain` | [`api/errors.go:76`](../../internal/api/errors.go#L76) |
+| [22](#22-unexpected-errors-log-everything-say-nothing) | Unexpected errors: log everything, say nothing | [`api/errors.go:120`](../../internal/api/errors.go#L120) |
 | [23](#23-validation-errors-that-name-each-field) | Validation errors that name each field | [`domain/errors.go:80`](../../internal/domain/errors.go#L80) |
-| [24](#24-errors-that-never-reach-a-handler) | Errors that never reach a handler | [`router.go:48`](../../internal/api/router.go#L48) |
+| [24](#24-errors-that-never-reach-a-handler) | Errors that never reach a handler | [`router.go:61`](../../internal/api/router.go#L61) |
 | [25](#25-more-go-idioms-appearing-for-the-first-time) | A nil pointer that is not a nil error, `errors.As`, `TestMain` | [`domain/errors.go:101`](../../internal/domain/errors.go#L101) |
 | [26](#26-one-request-three-layers) | One request, three layers | [`auth_handler.go:23`](../../internal/api/auth_handler.go#L23) |
 | [27](#27-hand-written-sql-with-pgx) | Hand-written SQL with pgx | [`users.go:47`](../../internal/store/users.go#L47) |
 | [28](#28-reading-the-postgresql-error-code-with-errorsas) | Reading the PostgreSQL error code with `errors.As` | [`users.go:123`](../../internal/store/users.go#L123) |
 | [29](#29-struct-tags-and-how-two-packages-read-the-same-field) | Struct tags, and how two packages read the same field | [`auth_handler.go:74`](../../internal/api/auth_handler.go#L74) |
-| [30](#30-validation-decode-clean-check-report) | Validation: decode, clean, check, report | [`validation.go:127`](../../internal/api/validation.go#L127) |
+| [30](#30-validation-decode-clean-check-report) | Validation: decode, clean, check, report | [`validation.go:134`](../../internal/api/validation.go#L134) |
 | [31](#31-why-the-response-is-its-own-struct) | Why the response is its own struct | [`auth_handler.go:92`](../../internal/api/auth_handler.go#L92) |
 | [32](#32-registration) | Registration | [`auth_handler.go:142`](../../internal/api/auth_handler.go#L142) |
 | [33](#33-login-and-user-enumeration) | Login, and user enumeration | [`auth_handler.go:192`](../../internal/api/auth_handler.go#L192) |
-| [34](#34-the-router-and-v1) | The router, and `/v1` | [`router.go:71`](../../internal/api/router.go#L71) |
+| [34](#34-the-router-and-v1) | The router, and `/v1` | [`router.go:103`](../../internal/api/router.go#L103) |
 | [35](#35-go-idioms-appearing-for-the-first-time-in-the-handlers) | Interfaces, build tags, functions that return functions | [`health.go:14`](../../internal/api/health.go#L14) |
 | [36](#36-two-tokens-two-jobs) | Two tokens, two jobs | [`refresh.go:15`](../../internal/auth/refresh.go#L15) |
 | [37](#37-why-mathrand-is-dangerous-for-tokens) | Why `math/rand` is dangerous for tokens | [`refresh.go:33`](../../internal/auth/refresh.go#L33) |
@@ -58,16 +58,16 @@ Click the link, read the code, then come back.
 | [39](#39-what-rotation-buys) | What rotation buys | [`tokens.go:104`](../../internal/store/tokens.go#L104) |
 | [40](#40-a-reused-token-ends-every-session) | A reused token ends every session | [`auth_handler.go:281`](../../internal/api/auth_handler.go#L281) |
 | [41](#41-two-requests-one-token-the-row-lock) | Two requests, one token: the row lock | [`tokens.go:128`](../../internal/store/tokens.go#L128) |
-| [42](#42-logout) | Logout | [`auth_handler.go:331`](../../internal/api/auth_handler.go#L331) |
-| [43](#43-the-auth-middleware-and-v1me) | The auth middleware, and `/v1/me` | [`middleware.go:42`](../../internal/api/middleware.go#L42) |
+| [42](#42-logout) | Logout | [`auth_handler.go:334`](../../internal/api/auth_handler.go#L334) |
+| [43](#43-the-auth-middleware-and-v1me) | The auth middleware, and `/v1/me` | [`middleware.go:43`](../../internal/api/middleware.go#L43) |
 | [44](#44-the-seed-command) | The seed command | [`cmd/seed/main.go:106`](../../cmd/seed/main.go#L106) |
 | [45](#45-go-idioms-appearing-for-the-first-time-in-the-session-code) | Transactions, nullable columns, arrays and slices, goroutines | [`tokens.go:108`](../../internal/store/tokens.go#L108) |
-| [46](#46-what-middleware-is-and-how-gin-chains-it) | What middleware is, and how Gin chains it | [`router.go:96`](../../internal/api/router.go#L96) |
-| [47](#47-cnext-and-cabort) | `c.Next()` and `c.Abort()` | [`errors.go:171`](../../internal/api/errors.go#L171) |
+| [46](#46-what-middleware-is-and-how-gin-chains-it) | What middleware is, and how Gin chains it | [`router.go:129`](../../internal/api/router.go#L129) |
+| [47](#47-cnext-and-cabort) | `c.Next()` and `c.Abort()` | [`errors.go:173`](../../internal/api/errors.go#L173) |
 | [48](#48-forgetting-abort-what-actually-goes-wrong) | Forgetting `Abort`: what actually goes wrong | [`middleware_test.go:132`](../../internal/api/middleware_test.go#L132) |
-| [49](#49-a-typed-context-key-and-currentuser) | A typed context key, and `CurrentUser` | [`middleware.go:19`](../../internal/api/middleware.go#L19) |
-| [50](#50-why-the-user-is-reloaded-instead-of-trusting-the-tokens-role) | Why the user is reloaded instead of trusting the token's role | [`middleware.go:68`](../../internal/api/middleware.go#L68) |
-| [51](#51-requirerole) | `RequireRole` | [`middleware.go:94`](../../internal/api/middleware.go#L94) |
+| [49](#49-a-typed-context-key-and-currentuser) | A typed context key, and `CurrentUser` | [`middleware.go:20`](../../internal/api/middleware.go#L20) |
+| [50](#50-why-the-user-is-reloaded-instead-of-trusting-the-tokens-role) | Why the user is reloaded instead of trusting the token's role | [`middleware.go:69`](../../internal/api/middleware.go#L69) |
+| [51](#51-requirerole) | `RequireRole` | [`middleware.go:99`](../../internal/api/middleware.go#L99) |
 | [52](#52-testing-middleware-with-httptest-and-the-go-idioms-new-here) | Testing middleware with `httptest`; variadics, `slices`, atomics, `recover` | [`middleware_test.go:82`](../../internal/api/middleware_test.go#L82) |
 | [53](#53-resource-level-policy-and-what-makes-a-function-pure) | Resource-level policy, and what makes a function pure | [`policy.go:5`](../../internal/auth/policy.go#L5) |
 | [54](#54-why-a-plain-function-and-not-middleware) | Why a plain function and not middleware | [`policy.go:22`](../../internal/auth/policy.go#L22) |
@@ -775,7 +775,7 @@ random `jti` is what makes it possible later.
 
 ## 16. Refusing to start on a weak secret
 
-**📍 Open:** [`internal/config/config.go:278`](../../internal/config/config.go#L278)
+**📍 Open:** [`internal/config/config.go:397`](../../internal/config/config.go#L397)
 
 Everything above rests on one assumption: nobody else has the secret.
 
@@ -791,7 +791,7 @@ Thirty-two bytes is HMAC-SHA256's natural key size: its output is 32 bytes,
 and a longer key adds nothing. `openssl rand -hex 32` produces 64 hex
 characters carrying 256 bits.
 
-**Two checks, in order** ([`config.go:163`](../../internal/config/config.go#L163)):
+**Two checks, in order** ([`config.go:200`](../../internal/config/config.go#L200)):
 
 1. **Unset, empty or only whitespace** → the existing `MissingVarsError`.
 2. **Set but under 32 bytes** → the new `WeakSecretError`.
@@ -803,7 +803,7 @@ with a guessable key works perfectly, right up until it is exploited.
 **Why a new error type.** `InvalidVarError` prints the offending value,
 which is right for `PORT=abc` and wrong for a secret. A rejected secret is
 often a *real* one with a typo, and startup errors go to logs.
-`WeakSecretError` ([line 139](../../internal/config/config.go#L139))
+`WeakSecretError` ([line 176](../../internal/config/config.go#L176))
 carries only the name and the two lengths, and a test asserts the message
 never contains the value.
 
@@ -893,7 +893,7 @@ changes the whole process, so the testing package forbids combining it with
 
 ## 18. One shape for every error
 
-**📍 Open:** [`internal/api/errors.go:29`](../../internal/api/errors.go#L29)
+**📍 Open:** [`internal/api/errors.go:30`](../../internal/api/errors.go#L30)
 
 Every failure this API reports, from a bad password to a crashed handler, has
 this body:
@@ -916,12 +916,12 @@ alone could not tell a client which.
 invents its own: one returns `{"error":"not found"}`, the next
 `{"message":"..."}`, a third plain text. Every client then needs a parser per
 endpoint. Fixing the shape first means handlers never get the chance — they
-call one function, [`Respond`](../../internal/api/errors.go#L111), and it is the
+call one function, [`Respond`](../../internal/api/errors.go#L118), and it is the
 only code in the project that writes an error body.
 
 **`details` is never absent and never `null`.**
-[`errors.go:46`](../../internal/api/errors.go#L46) has no `omitempty`, and
-[`errors.go:167`](../../internal/api/errors.go#L167) swaps a nil map for an
+[`errors.go:47`](../../internal/api/errors.go#L47) has no `omitempty`, and
+[`errors.go:169`](../../internal/api/errors.go#L169) swaps a nil map for an
 empty one, because Go encodes a nil map as `null`. A field that is sometimes an
 object, sometimes missing and sometimes `null` is three shapes, and the client
 would have to check before every read.
@@ -984,7 +984,7 @@ quietly stops matching — with no compile error, only a 500 where a 404 was
 expected. That is why the `errorlint` linter in this repository rejects `==` on
 errors outright.
 
-**What breaks without it.** With [`errors.go:95`](../../internal/api/errors.go#L95)
+**What breaks without it.** With [`errors.go:102`](../../internal/api/errors.go#L102)
 changed to `err == m.target`, every bare sentinel still maps correctly and all
 three wrapped rows of the table fail, along with the validation test. Verified
 by making the change and running the tests.
@@ -1044,14 +1044,14 @@ fmt.Errorf("insert user: %w: %w", domain.ErrDuplicate, pgErr)
 ```
 
 `errors.Is` finds either. The table has a row for exactly this at
-[`errors_test.go:134`](../../internal/api/errors_test.go#L134), and it also
+[`errors_test.go:139`](../../internal/api/errors_test.go#L139), and it also
 checks the driver's text stays out of the response.
 
 ---
 
 ## 21. Why the status codes live in `api`, and not in `domain`
 
-**📍 Open:** [`internal/api/errors.go:69`](../../internal/api/errors.go#L69)
+**📍 Open:** [`internal/api/errors.go:76`](../../internal/api/errors.go#L76)
 
 The translation is one table, and it is the only place in the project where a
 domain error and an HTTP status appear on the same line:
@@ -1106,13 +1106,13 @@ closed. The status is the same and the client's reaction is not.
 
 ## 22. Unexpected errors: log everything, say nothing
 
-**📍 Open:** [`internal/api/errors.go:113`](../../internal/api/errors.go#L113)
+**📍 Open:** [`internal/api/errors.go:120`](../../internal/api/errors.go#L120)
 
 An error that matches no row of the table is one nobody planned for: the
 database is down, a query has a typo, a pointer was nil. `Respond` does two
 things with it, and they go to different audiences:
 
-- **To the log**, at [`errors.go:119`](../../internal/api/errors.go#L119): the
+- **To the log**, at [`errors.go:125`](../../internal/api/errors.go#L125): the
   method, the path, and the complete error chain.
 - **To the client**: status 500, code `internal_error`, and a fixed sentence
   that is the same for every cause.
@@ -1147,7 +1147,7 @@ either way.
 **Known errors are filtered too.** This is the less obvious half. An error that
 *does* match the table still has text nobody vetted — `select job 42: not
 found` is harmless, but the store is free to wrap anything. So
-[`errors.go:125`](../../internal/api/errors.go#L125) never sends `err.Error()` at
+[`errors.go:137`](../../internal/api/errors.go#L137) never sends `err.Error()` at
 all. The client gets the table's fixed message, plus field details that were
 written to be shown (section 23). The test wraps `ErrDuplicate` together with
 the driver message above and asserts none of it appears in the body.
@@ -1186,7 +1186,7 @@ needs no special row. Code that only cares about the category never has to
 know the type exists.
 
 `Respond` is the one caller that wants the fields, and it gets them with
-`errors.As` at [`api/errors.go:134`](../../internal/api/errors.go#L134):
+`errors.As` at [`api/errors.go:146`](../../internal/api/errors.go#L146):
 
 ```json
 {"error":{"code":"validation_failed","message":"One or more fields are invalid.",
@@ -1210,7 +1210,7 @@ lists of problems per field. Nothing needs them yet, and a client can rely on
 
 ## 24. Errors that never reach a handler
 
-**📍 Open:** [`internal/api/router.go:48`](../../internal/api/router.go#L48)
+**📍 Open:** [`internal/api/router.go:61`](../../internal/api/router.go#L61)
 
 `Respond` only runs when a handler calls it. Three failures happen where no
 handler is involved, and Gin's defaults for all three break the one-shape rule:
@@ -1223,12 +1223,12 @@ handler is involved, and Gin's defaults for all three break the one-shape rule:
 
 That is why the router is not built with `gin.Default()`. `gin.Default()` is
 `gin.New()` plus a logger and a recovery middleware; the two are now listed by
-hand so that [`api.Recovery`](../../internal/api/errors.go#L153) can stand in
+hand so that [`api.Recovery`](../../internal/api/recovery.go#L20) can stand in
 for the second. `gin.CustomRecovery` still does the important part — it catches
 the panic, logs the value and a stack trace, and keeps the process alive — and
 only the response body is ours.
 
-`HandleMethodNotAllowed` at [`router.go:53`](../../internal/api/router.go#L53) is off in
+`HandleMethodNotAllowed` at [`router.go:80`](../../internal/api/router.go#L80) is off in
 Gin by default. Left off, `DELETE /healthz` is reported as "no such endpoint",
 which is untrue and sends a client looking for a typo in the URL.
 
@@ -1267,7 +1267,7 @@ to a nil map panics (reading is fine). `Add` creates the map on first use, at
 `bytes.Buffer` in the standard library follow the same design.
 
 **`errors.As` — the counterpart to `errors.Is`.**
-[`api/errors.go:134`](../../internal/api/errors.go#L134)
+[`api/errors.go:146`](../../internal/api/errors.go#L146)
 
 `errors.Is` asks "is a particular *value* in the chain?" `errors.As` asks "is
 anything of this *type* in the chain?" and, if so, copies it into the variable
@@ -1328,7 +1328,7 @@ against a real Postgres in
 [`users_integration_test.go`](../../internal/store/users_integration_test.go#L113).
 
 **Everything is assembled in one place.**
-[`main.go:86`](../../cmd/api/main.go#L86) builds the pool, the store, the token
+[`main.go:127`](../../cmd/api/main.go#L127) builds the pool, the store, the token
 manager and the handler, and hands them down. Nothing below `main` reads
 configuration or opens a connection.
 
@@ -1485,7 +1485,7 @@ tags. Both libraries do this the first time they see a type:
 | `validator` | `field.Tag.Get("validate")` | "must be present, an email address, at most 254 characters" |
 
 This project does the same thing by hand in one place.
-[`validation.go:43`](../../internal/api/validation.go#L43) registers a function
+[`validation.go:38`](../../internal/api/validation.go#L38) registers a function
 with the validator that reads the **json** tag of a failing field, so the error
 says `full_name` — the name the client sent — and not `FullName`, the Go name
 the client has never seen.
@@ -1514,16 +1514,16 @@ fields. A field named `email` with a perfect tag is silently skipped by JSON.
 
 ## 30. Validation: decode, clean, check, report
 
-**📍 Open:** [`internal/api/validation.go:127`](../../internal/api/validation.go#L127)
+**📍 Open:** [`internal/api/validation.go:134`](../../internal/api/validation.go#L134)
 
 Every handler that takes a body does the same four steps, and each has its own
 failure:
 
 | Step | Where | Failure |
 |---|---|---|
-| Decode the JSON | [`decodeJSON`](../../internal/api/validation.go#L57) | 400 `malformed_request` |
+| Decode the JSON | [`decodeJSON`](../../internal/api/validation.go#L53) | 400 `malformed_request` |
 | Clean the values | in the handler | — |
-| Check the rules | [`validateStruct`](../../internal/api/validation.go#L127) | 422 `validation_failed`, with `details` |
+| Check the rules | [`validateStruct`](../../internal/api/validation.go#L134) | 422 `validation_failed`, with `details` |
 | Do the work | the handler | whatever the store reports |
 
 **Clean before checking.** `" Alice@Example.com "` is a valid address with
@@ -1538,7 +1538,7 @@ would lock the user out.
 
 **From the validator's error to the envelope.** `validate.Struct` returns a
 `validator.ValidationErrors` — a slice with one entry per failed field.
-[`validation.go:136`](../../internal/api/validation.go#L136) gets at it with
+[`validation.go:143`](../../internal/api/validation.go#L143) gets at it with
 `errors.As` (section 28), and each entry becomes one line of the
 `domain.ValidationError` from section 23:
 
@@ -1549,7 +1549,7 @@ would lock the user out.
 ```
 
 That is real output from the running server. The wording is ours
-([`problemFor`](../../internal/api/validation.go#L149)): the validator's own
+([`problemFor`](../../internal/api/validation.go#L156)): the validator's own
 message is `Key: 'registerRequest.Password' Error:Field validation for
 'Password' failed on the 'min' tag`, which names a Go type.
 
@@ -1565,7 +1565,7 @@ as a validation error on `password`, since it is still the client's input at
 fault.
 
 **The body is capped at 1 MB**
-([`validation.go:58`](../../internal/api/validation.go#L58)). Without a cap the
+([`validation.go:57`](../../internal/api/validation.go#L57)). Without a cap the
 decoder reads whatever a client sends.
 
 ---
@@ -1604,7 +1604,7 @@ It works today. It was rejected for five reasons:
 5. **It puts JSON in the domain.** `domain.User` has no tags at all, by the
    same reasoning that kept HTTP status codes out of `domain` in section 21.
 
-**What breaks without it.** [`TestRegister`](../../internal/api/auth_handler_test.go#L204)
+**What breaks without it.** [`TestRegister`](../../internal/api/auth_handler_test.go#L211)
 asserts the response has *exactly* five keys, and that neither the hash, the
 password, nor the words `password` or `hash` appear anywhere in the body.
 Adding a field to `domain.User` cannot change that; adding one to
@@ -1703,7 +1703,7 @@ Measured on the running server, real bcrypt, real Postgres:
 | Correct password | 200 | 372.4 ms |
 
 **What breaks without that one line.**
-[`TestLoginFailuresAreIndistinguishable`](../../internal/api/auth_handler_test.go#L438)
+[`TestLoginFailuresAreIndistinguishable`](../../internal/api/auth_handler_test.go#L448)
 compares status, body and headers, and then counts password comparisons. With
 the line deleted the bodies still match and the test fails on the count: one
 comparison for two requests.
@@ -1731,7 +1731,7 @@ proxy keeps a copy of the token.
 
 ## 34. The router, and `/v1`
 
-**📍 Open:** [`internal/api/router.go:71`](../../internal/api/router.go#L71)
+**📍 Open:** [`internal/api/router.go:103`](../../internal/api/router.go#L103)
 
 `router.Group("/v1")` returns an object with the same `GET`/`POST` methods as
 the engine, which prefixes every path registered on it. Groups nest, so
@@ -1790,7 +1790,7 @@ well. So `readyz(db, timeout)` is called once at startup and *returns* the
 handler; the returned function keeps `db` and `timeout` alive for as long as
 it exists. That is a closure, already met as the injected clock in section 17.
 
-**Method values.** [`router.go:77`](../../internal/api/router.go#L77)
+**Method values.** [`router.go:110`](../../internal/api/router.go#L110)
 
 `deps.Auth.Register` with no parentheses is not a call. It is a function value
 with the receiver already bound — a `func(*gin.Context)` that remembers which
@@ -1972,7 +1972,7 @@ breaking SHA-256.
 method of [`TokenStore`](../../internal/store/tokens.go#L33) takes a hash. The
 one place a token exists in memory is the handler, between the request and the
 response.
-[`TestLoginIssuesARefreshTokenAndStoresOnlyItsHash`](../../internal/api/session_test.go#L206)
+[`TestLoginIssuesARefreshTokenAndStoresOnlyItsHash`](../../internal/api/session_test.go#L207)
 checks what the store was handed.
 
 **A malformed token never reaches the database.**
@@ -2070,7 +2070,7 @@ column. Erring wide costs a few more logins.
 
 **The response gives nothing away.** The replay gets the same 401 body as an
 expired token, an unknown token, or garbage.
-[`TestRefreshFailuresAreIndistinguishable`](../../internal/api/session_test.go#L347)
+[`TestRefreshFailuresAreIndistinguishable`](../../internal/api/session_test.go#L349)
 compares six kinds of failure byte for byte. A thief should not learn that
 detection fired.
 
@@ -2082,10 +2082,10 @@ somebody should look at.
 
 **If the mass revocation itself fails**, the request is answered with a 500 and
 still issues nothing; the presented token is already revoked.
-[`TestRefreshReplayWhenRevocationFails`](../../internal/api/session_test.go#L426).
+[`TestRefreshReplayWhenRevocationFails`](../../internal/api/session_test.go#L428).
 
 **What breaks without it.**
-[`TestRefreshReplayRevokesEverySession`](../../internal/api/session_test.go#L291)
+[`TestRefreshReplayRevokesEverySession`](../../internal/api/session_test.go#L292)
 logs one user in on two devices, rotates one token, replays the old one, and
 then checks that the rotated token, the other device and nothing belonging to
 a second user are affected as they should be. On the running server: two live
@@ -2168,7 +2168,7 @@ missed theft is not.
 
 ## 42. Logout
 
-**📍 Open:** [`internal/api/auth_handler.go:331`](../../internal/api/auth_handler.go#L331)
+**📍 Open:** [`internal/api/auth_handler.go:334`](../../internal/api/auth_handler.go#L334)
 
 Logout revokes the presented refresh token and returns **204 No Content**.
 
@@ -2181,7 +2181,7 @@ first — creating a session in order to end one.
 
 **It always answers 204**, for a live token, an already-revoked one, one that
 never existed, and garbage
-([`TestLogoutIsIdempotentAndRevealsNothing`](../../internal/api/session_test.go#L476)).
+([`TestLogoutIsIdempotentAndRevealsNothing`](../../internal/api/session_test.go#L478)).
 An endpoint that said "no such token" would be a free way to test guesses.
 
 **The revocation never overwrites.** `AND revoked_at IS NULL` at
@@ -2197,7 +2197,7 @@ fifteen minutes.
 
 ## 43. The auth middleware, and `/v1/me`
 
-**📍 Open:** [`internal/api/middleware.go:42`](../../internal/api/middleware.go#L42)
+**📍 Open:** [`internal/api/middleware.go:43`](../../internal/api/middleware.go#L43)
 
 *Rewritten as `RequireAuth` later in this module; sections 46–52 cover the
 current version. What follows still holds.*
@@ -2208,7 +2208,7 @@ token with the `TokenManager` from section 11, and either answers 401 or
 leaves the authenticated user on the request for the handler.
 
 It is attached to a **group**
-([`router.go:96`](../../internal/api/router.go#L96)), not to a route. Every
+([`router.go:129`](../../internal/api/router.go#L129)), not to a route. Every
 route registered on `protected` is guarded, so protecting the next endpoint is
 adding a line inside the braces, and forgetting to protect it is impossible.
 
@@ -2230,11 +2230,11 @@ a 401 — it is not a JWT. And an access token sent to `/v1/auth/refresh` gets a
 401 — it is not 32 bytes of base64url. Both are in the test tables.
 
 **The database is read on every guarded request**
-([`middleware.go:68`](../../internal/api/middleware.go#L68)), not only by
+([`middleware.go:69`](../../internal/api/middleware.go#L69)), not only by
 `/v1/me`. The token says who the caller was when it was issued. Reading the
 row makes the answer current and means a user deleted since then gets a 401,
 not a profile
-([`TestMeForADeletedUser`](../../internal/api/session_test.go#L599)).
+([`TestMeForADeletedUser`](../../internal/api/session_test.go#L601)).
 Section 50 has the full argument.
 
 **How the user travels** to the handler — a typed key and `CurrentUser` — is
@@ -2326,7 +2326,7 @@ say which is which. A caller who swapped them would store the token and hand
 out the hash.
 
 **A type assertion with `ok`.**
-[`middleware.go:137`](../../internal/api/middleware.go#L137)
+[`middleware.go:142`](../../internal/api/middleware.go#L142)
 
 `value.(*domain.User)` converts an `any` back to a concrete type. The
 one-result form panics if the type is wrong; the two-result form,
@@ -2356,7 +2356,7 @@ loop variable needed.
 
 ## 46. What middleware is, and how Gin chains it
 
-**📍 Open:** [`internal/api/router.go:96`](../../internal/api/router.go#L96)
+**📍 Open:** [`internal/api/router.go:129`](../../internal/api/router.go#L129)
 
 A Gin route is not one function. It is a **list** of `gin.HandlerFunc`, and
 each one has the same signature, `func(c *gin.Context)`. "Middleware" is
@@ -2367,8 +2367,8 @@ The list is built from three places, outermost first:
 
 | Registered with | Applies to | Here |
 |---|---|---|
-| `router.Use(…)` | every route on the engine | `gin.Logger()`, `Recovery()` ([`router.go:49`](../../internal/api/router.go#L49)) |
-| `v1.Group("", …)` | every route registered on that group | `RequireAuth` ([`router.go:96`](../../internal/api/router.go#L96)) |
+| `router.Use(…)` | every route on the engine | `gin.Logger()`, `Recovery()` ([`router.go:61`](../../internal/api/router.go#L61)) |
+| `v1.Group("", …)` | every route registered on that group | `RequireAuth` ([`router.go:129`](../../internal/api/router.go#L129)) |
 | the route itself | that route only | `deps.Auth.Me` |
 
 So a request for `GET /v1/me` runs this list:
@@ -2397,7 +2397,7 @@ gets its dependencies without a global variable.
 
 ## 47. `c.Next()` and `c.Abort()`
 
-**📍 Open:** [`internal/api/middleware.go:82`](../../internal/api/middleware.go#L82) and [`internal/api/errors.go:171`](../../internal/api/errors.go#L171)
+**📍 Open:** [`internal/api/middleware.go:87`](../../internal/api/middleware.go#L87) and [`internal/api/errors.go:173`](../../internal/api/errors.go#L173)
 
 Both move Gin's index; neither stops the Go function that calls it.
 
@@ -2423,7 +2423,7 @@ function. `c.AbortWithStatusJSON(status, body)` is `Abort` plus writing the
 body.
 
 In this codebase every error goes through `Respond`, which ends in
-[`write`](../../internal/api/errors.go#L163), which calls
+[`write`](../../internal/api/errors.go#L165), which calls
 `c.AbortWithStatusJSON`. So rejecting a request is always two lines:
 
 ```go
@@ -2490,7 +2490,7 @@ says "carry on".
 **How this codebase guards against it.**
 
 - There is one place an error is written, and it always aborts
-  ([`errors.go:171`](../../internal/api/errors.go#L171)). No middleware calls
+  ([`errors.go:173`](../../internal/api/errors.go#L173)). No middleware calls
   `c.JSON` for a failure.
 - Every middleware test counts how many requests reached the handler and
   checks the handler's output is absent from the body.
@@ -2512,7 +2512,7 @@ The change was reverted with `git checkout` and the tests pass again.
 
 ## 49. A typed context key, and `CurrentUser`
 
-**📍 Open:** [`internal/api/middleware.go:19`](../../internal/api/middleware.go#L19) and [`internal/api/middleware.go:129`](../../internal/api/middleware.go#L129)
+**📍 Open:** [`internal/api/middleware.go:20`](../../internal/api/middleware.go#L20) and [`internal/api/middleware.go:134`](../../internal/api/middleware.go#L134)
 
 `c.Set(key, value)` stores a value for the rest of this request, and
 `c.Get(key)` reads it back. In Gin 1.11 the store is a `map[any]any`, so the
@@ -2562,23 +2562,23 @@ type assertion and a decision about what to do when it fails.
 `CurrentUser` does that once:
 
 - the two-value assertion `value.(*domain.User)`
-  ([`middleware.go:137`](../../internal/api/middleware.go#L137)) reports a
+  ([`middleware.go:142`](../../internal/api/middleware.go#L142)) reports a
   wrong type through `ok` instead of panicking;
 - it returns `(domain.User, bool)`, so a handler on an unguarded route gets
   `false` and must handle it, rather than a nil pointer to dereference;
-- it returns a **copy** ([`middleware.go:141`](../../internal/api/middleware.go#L141)).
+- it returns a **copy** ([`middleware.go:146`](../../internal/api/middleware.go#L146)).
   `*user` dereferences the pointer, and returning a struct by value copies
   every field. A handler that changes its copy cannot change what
   `RequireRole`, or anything later, sees.
 
 `Me` is now three lines: read `CurrentUser`, respond
-([`auth_handler.go:354`](../../internal/api/auth_handler.go#L354)).
+([`auth_handler.go:357`](../../internal/api/auth_handler.go#L357)).
 
 ---
 
 ## 50. Why the user is reloaded instead of trusting the token's role
 
-**📍 Open:** [`internal/api/middleware.go:68`](../../internal/api/middleware.go#L68)
+**📍 Open:** [`internal/api/middleware.go:69`](../../internal/api/middleware.go#L69)
 
 The access token carries a `role` claim, and its signature is valid. It is
 still not used for authorisation.
@@ -2631,13 +2631,13 @@ credential, which may be perfectly valid. A 401 tells a well-behaved client
 its tokens are bad, so it discards them and sends the user back to the login
 form — during an outage, when login will fail too. A 500 says "try again".
 Only a lookup that *succeeds* and finds no user is a 401
-([`middleware.go:69`](../../internal/api/middleware.go#L69)).
+([`middleware.go:70`](../../internal/api/middleware.go#L70)).
 
 ---
 
 ## 51. `RequireRole`
 
-**📍 Open:** [`internal/api/middleware.go:94`](../../internal/api/middleware.go#L94)
+**📍 Open:** [`internal/api/middleware.go:99`](../../internal/api/middleware.go#L99)
 
 `RequireRole(roles ...string)` lets a request through if `CurrentUser` holds
 one of the roles, and answers 403 otherwise. It reads the user `RequireAuth`
@@ -2658,10 +2658,10 @@ is sent ([`middleware_test.go:226`](../../internal/api/middleware_test.go#L226))
 **Registered in the wrong order** — `RequireRole` without `RequireAuth` in
 front — `CurrentUser` finds nothing. That is a mistake in this server, not the
 client's, so it is a 500, and the log says which middleware is missing
-([`middleware.go:110`](../../internal/api/middleware.go#L110)).
+([`middleware.go:115`](../../internal/api/middleware.go#L115)).
 
 **It panics on a mistake in the route table.**
-[`middleware.go:96`](../../internal/api/middleware.go#L96)
+[`middleware.go:101`](../../internal/api/middleware.go#L101)
 
 `RequireRole()` with no roles, or with a misspelling like `"admn"`, would
 refuse every request — silently, and only noticed when someone tries the
@@ -2672,13 +2672,13 @@ router fails too. The standard library does the same in
 `regexp.MustCompile`. Returning an error was rejected: every route
 registration would need error handling for a condition that is always a bug.
 
-**`slices.Clone`** ([`middleware.go:106`](../../internal/api/middleware.go#L106))
+**`slices.Clone`** ([`middleware.go:111`](../../internal/api/middleware.go#L111))
 copies the roles. Called as `RequireRole(roles...)`, the function receives
 the caller's own slice, not a copy, and a later `roles[0] = …` would change
 which roles the route accepts. A test does exactly that
 ([`middleware_test.go:329`](../../internal/api/middleware_test.go#L329)).
 
-**`slices.Contains`** ([`middleware.go:117`](../../internal/api/middleware.go#L117))
+**`slices.Contains`** ([`middleware.go:122`](../../internal/api/middleware.go#L122))
 is a linear scan. With at most three roles, it is faster than building a map.
 
 **`domain.IsRole`** ([`user.go:14`](../../internal/domain/user.go#L14)) lists
@@ -2792,7 +2792,7 @@ I/O, the core decides.
 
 ## 54. Why a plain function and not middleware
 
-**📍 Open:** [`internal/api/middleware.go:94`](../../internal/api/middleware.go#L94) for contrast
+**📍 Open:** [`internal/api/middleware.go:99`](../../internal/api/middleware.go#L99) for contrast
 
 Middleware runs **before** the handler, and at that point it has:
 

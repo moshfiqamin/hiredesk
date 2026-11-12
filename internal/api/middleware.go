@@ -11,6 +11,7 @@ import (
 
 	"github.com/moshfiqamin/hiredesk/internal/auth"
 	"github.com/moshfiqamin/hiredesk/internal/domain"
+	"github.com/moshfiqamin/hiredesk/internal/platform"
 )
 
 // contextKey is the type of every key this package stores on a gin.Context.
@@ -78,6 +79,10 @@ func RequireAuth(tokens *auth.TokenManager, users UserGetter) gin.HandlerFunc {
 		}
 
 		c.Set(currentUserKey, user)
+
+		// Also on the request's context, where the logger reads it: every log
+		// line from here on, the access log included, names the user.
+		c.Request = c.Request.WithContext(platform.WithUserID(c.Request.Context(), user.ID))
 
 		// No c.Next() is needed: when this function returns without aborting,
 		// Gin runs the next handler in the chain.

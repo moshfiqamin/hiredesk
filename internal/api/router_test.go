@@ -93,6 +93,8 @@ func TestReadyzReportsAnUnreachableDatabase(t *testing.T) {
 		Users:        users,
 		DB:           downPinger{},
 		PingTimeout:  time.Second,
+		AuthLimiter:  unlimited(),
+		InFlight:     NewInFlight(),
 	})
 	if err != nil {
 		t.Fatalf("NewRouter() unexpected error: %v", err)
@@ -118,4 +120,15 @@ func TestReadyzReportsAnUnreachableDatabase(t *testing.T) {
 	if live.Code != http.StatusOK {
 		t.Errorf("/healthz status = %d, want %d while the database is down", live.Code, http.StatusOK)
 	}
+}
+
+// testRequestID is sent by the shared request helpers, so two responses that
+// must be byte-for-byte identical, such as a refusal and a miss, carry the
+// same ID and can still be compared whole.
+const testRequestID = "test-request-id"
+
+// unlimited returns a rate limiter no test will exhaust, for suites that sign
+// in many times from the one address httptest uses.
+func unlimited() *RateLimiter {
+	return NewRateLimiter(1_000_000, time.Minute, 10)
 }

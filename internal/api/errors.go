@@ -4,12 +4,13 @@ package api
 
 import (
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/moshfiqamin/hiredesk/internal/domain"
+	"github.com/moshfiqamin/hiredesk/internal/platform"
 )
 
 // Machine-readable codes for errors that do not come from the domain.
@@ -25,7 +26,7 @@ const internalMessage = "Something went wrong on our side. Please try again."
 
 // errorBody is the one shape every error response has:
 //
-//	{"error":{"code":"...","message":"...","details":{...}}}
+//	{"error":{"code":"...","message":"...","details":{...},"request_id":"..."}}
 type errorBody struct {
 	Error errorDetail `json:"error"`
 }
@@ -44,6 +45,12 @@ type errorDetail struct {
 	//
 	// any, not string, so a value can be a list.
 	Details map[string]any `json:"details"`
+
+	// RequestID is the ID the server logged this request under, so a user
+	// can quote it in a bug report and an operator can find every log line
+	// of the failing request. Empty only when RequestID middleware is not
+	// installed, as in some handler tests.
+	RequestID string `json:"request_id"`
 }
 
 // detailedError is an error that carries details written to be shown to a
@@ -115,10 +122,15 @@ func lookup(err error) (mapping, bool) {
 func Respond(c *gin.Context, err error) {
 	m, known := lookup(err)
 	if !known {
-		// The only place the real cause is recorded. The path is quoted so a
-		// crafted URL cannot forge extra log lines; the query string is left
-		// out because it can carry tokens.
-		log.Printf("internal error: %s %q: %v", c.Request.Method, c.Request.URL.Path, err)
+		// The only place the real cause is recorded, under the same request
+		// ID the client is given. The query string is left out because it
+		// can carry tokens; structured fields cannot forge extra log lines
+		// the way a crafted path in a printf string could.
+		slog.ErrorContext(c.Request.Context(), "internal error",
+			slog.String("method", c.Request.Method),
+			slog.String("path", c.Request.URL.Path),
+			slog.String("error", err.Error()),
+		)
 
 		write(c, http.StatusInternalServerError, codeInternal, internalMessage, nil)
 		return
@@ -152,16 +164,6 @@ func NoMethod(c *gin.Context) {
 	write(c, http.StatusMethodNotAllowed, codeMethodNotAllowed, "That method is not allowed on this endpoint.", nil)
 }
 
-// Recovery returns middleware that turns a panic in a handler into the same
-// 500 envelope Respond produces, in place of gin.Recovery's empty body.
-func Recovery() gin.HandlerFunc {
-	// CustomRecovery has already logged the panic value and stack trace by the
-	// time it calls this function.
-	return gin.CustomRecovery(func(c *gin.Context, _ any) {
-		write(c, http.StatusInternalServerError, codeInternal, internalMessage, nil)
-	})
-}
-
 // write sends the envelope and aborts, so no later handler or middleware in
 // the chain can add a second body.
 func write(c *gin.Context, status int, code, message string, details map[string]any) {
@@ -171,6 +173,11 @@ func write(c *gin.Context, status int, code, message string, details map[string]
 	}
 
 	c.AbortWithStatusJSON(status, errorBody{
-		Error: errorDetail{Code: code, Message: message, Details: details},
+		Error: errorDetail{
+			Code:      code,
+			Message:   message,
+			Details:   details,
+			RequestID: platform.RequestID(c.Request.Context()),
+		},
 	})
 }

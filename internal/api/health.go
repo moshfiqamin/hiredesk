@@ -2,7 +2,7 @@ package api
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -41,7 +41,7 @@ func readyz(db Pinger, timeout time.Duration) gin.HandlerFunc {
 			// Logged here because the response deliberately does not carry the
 			// detail: a health endpoint is usually unauthenticated, and the
 			// driver's error can name the host, port and user.
-			log.Printf("readiness check failed: %v", err)
+			slog.WarnContext(c.Request.Context(), "readiness check failed", slog.String("error", err.Error()))
 
 			// 503, not 500: the instance is working but its dependency is not,
 			// and the distinction is what tells a load balancer to stop

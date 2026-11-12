@@ -14,12 +14,12 @@ full reasoning lives here.
 |---|---|---|
 | [1](#1-gomod-and-the-module-path) | `go.mod` and the module path | [`go.mod`](../../go.mod) |
 | [2](#2-why-internal-is-special) | Why `internal/` is special | [`internal/`](../../internal) |
-| [3](#3-config-in-a-struct-not-osgetenv) | Config in a struct, not `os.Getenv` | [`config.go:62`](../../internal/config/config.go#L62) |
-| [4](#4-reporting-every-missing-variable-at-once) | Reporting every missing variable at once | [`config.go:157`](../../internal/config/config.go#L157) |
-| [5](#5-the-string-pointer) | The `*[]string` pointer | [`config.go:263`](../../internal/config/config.go#L263) |
-| [6](#6-named-error-types-and-errorsas) | Named error types and `errors.As` | [`config.go:109`](../../internal/config/config.go#L109) |
+| [3](#3-config-in-a-struct-not-osgetenv) | Config in a struct, not `os.Getenv` | [`config.go:67`](../../internal/config/config.go#L67) |
+| [4](#4-reporting-every-missing-variable-at-once) | Reporting every missing variable at once | [`config.go:194`](../../internal/config/config.go#L194) |
+| [5](#5-the-string-pointer) | The `*[]string` pointer | [`config.go:382`](../../internal/config/config.go#L382) |
+| [6](#6-named-error-types-and-errorsas) | Named error types and `errors.As` | [`config.go:146`](../../internal/config/config.go#L146) |
 | [7](#7-healthz-vs-readyz) | `/healthz` vs `/readyz` | [`health.go:21`](../../internal/api/health.go#L21) |
-| [8](#8-gin-modes-and-trusted-proxies) | Gin modes and trusted proxies | [`main.go:73`](../../cmd/api/main.go#L73) |
+| [8](#8-gin-modes-and-trusted-proxies) | Gin modes and trusted proxies | [`main.go:102`](../../cmd/api/main.go#L102) |
 | [9](#9-the-multi-stage-dockerfile) | The multi-stage Dockerfile | [`Dockerfile:4`](../../Dockerfile#L4) |
 | [10](#10-cgo_enabled0-and-static-linking) | `CGO_ENABLED=0` and static linking | [`Dockerfile:20`](../../Dockerfile#L20) |
 | [11](#11-docker-layer-cache-ordering) | Docker layer cache ordering | [`Dockerfile:12`](../../Dockerfile#L12) |
@@ -48,7 +48,7 @@ require github.com/gin-gonic/gin v1.11.0
 versioning and dependency management.
 
 The `module` line is not just a name. It is the **import path prefix** for
-everything inside, which is why [`main.go:19`](../../cmd/api/main.go#L19)
+everything inside, which is why [`main.go:20`](../../cmd/api/main.go#L20)
 imports `github.com/moshfiqamin/hiredesk/internal/config` rather than a
 relative `./internal/config`. Go has no relative imports: every package is
 addressed by module path + directory. Change the `module` line and every
@@ -98,7 +98,7 @@ The resulting shape:
 
 ## 3. Config in a struct, not `os.Getenv`
 
-**📍 Open:** [`internal/config/config.go:62`](../../internal/config/config.go#L62)
+**📍 Open:** [`internal/config/config.go:67`](../../internal/config/config.go#L67)
 
 ```go
 type Config struct {
@@ -115,7 +115,7 @@ Scattering `os.Getenv` across the codebase costs five things:
 `""` for an unset variable — no error, no panic. Call it inside token signing
 and the server boots happily, passes `/healthz` happily, and then signs tokens
 with an empty key the first time someone logs in.
-[`Load()`](../../internal/config/config.go#L157) refuses to boot instead. A
+[`Load()`](../../internal/config/config.go#L194) refuses to boot instead. A
 server that will not start is a loud, cheap failure; a server signing tokens
 with `""` is a silent, expensive one.
 
@@ -140,7 +140,7 @@ signatures.** `NewAuthService(cfg *config.Config)` tells you what it needs;
 
 ## 4. Reporting every missing variable at once
 
-**📍 Open:** [`internal/config/config.go:157`](../../internal/config/config.go#L157)
+**📍 Open:** [`internal/config/config.go:194`](../../internal/config/config.go#L194)
 
 ```go
 var missing []string
@@ -162,7 +162,7 @@ configuration error: missing required environment variable(s): DATABASE_URL, JWT
 
 Everything wrong, in one run.
 
-Note the ordering decision at [line 163](../../internal/config/config.go#L163):
+Note the ordering decision at [line 200](../../internal/config/config.go#L200):
 required variables are reported **before** optional ones are validated. A boot
 with no configuration at all should complain about the configuration, not
 about `PORT`.
@@ -171,7 +171,7 @@ about `PORT`.
 
 ## 5. The `*[]string` pointer
 
-**📍 Open:** [`internal/config/config.go:263`](../../internal/config/config.go#L263)
+**📍 Open:** [`internal/config/config.go:382`](../../internal/config/config.go#L382)
 
 ```go
 func lookupRequired(name string, missing *[]string) string {
@@ -194,7 +194,7 @@ Pass `missing []string` by value and the caller's slice never grows. The
 function would appear to work and silently do nothing. This catches nearly
 everyone learning Go.
 
-**Related:** [`lookupNonEmpty`](../../internal/config/config.go#L292) collapses
+**Related:** [`lookupNonEmpty`](../../internal/config/config.go#L411) collapses
 "unset" and "set but blank" into one case. `os.LookupEnv` distinguishes them,
 but that distinction is never useful for configuration — an empty secret is as
 broken as a missing one. It also trims whitespace, so a stray newline from a
@@ -204,7 +204,7 @@ broken as a missing one. It also trims whitespace, so a stray newline from a
 
 ## 6. Named error types and `errors.As`
 
-**📍 Open:** [`internal/config/config.go:109`](../../internal/config/config.go#L109)
+**📍 Open:** [`internal/config/config.go:146`](../../internal/config/config.go#L146)
 
 ```go
 type MissingVarsError struct {
@@ -222,7 +222,7 @@ Go's interface model in miniature.
 **Why a type instead of `fmt.Errorf`.** The type carries `Names []string` as
 structured data, so the caller can recognise this specific failure:
 
-**📍 Open:** [`cmd/api/main.go:27`](../../cmd/api/main.go#L27)
+**📍 Open:** [`cmd/api/main.go:38`](../../cmd/api/main.go#L38)
 
 ```go
 var missing *config.MissingVarsError
@@ -234,8 +234,8 @@ if errors.As(err, &missing) {
 With a formatted string the only way to detect the case is
 `strings.Contains` on the message — which breaks the moment you reword it.
 
-[`InvalidVarError`](../../internal/config/config.go#L122) also has
-[`Unwrap()`](../../internal/config/config.go#L133), which lets `errors.Is` and
+[`InvalidVarError`](../../internal/config/config.go#L159) also has
+[`Unwrap()`](../../internal/config/config.go#L170), which lets `errors.Is` and
 `errors.As` see through to the wrapped `strconv` failure. Wrapping preserves the
 chain; `fmt.Errorf("...: %v", err)` flattens it to text. Use `%w`, not `%v`,
 when you want the chain intact.
@@ -274,7 +274,7 @@ which point `/readyz` gains a 503 branch and `/healthz` stays exactly as it is.
 
 ## 8. Gin modes and trusted proxies
 
-**📍 Open:** [`cmd/api/main.go:73`](../../cmd/api/main.go#L73)
+**📍 Open:** [`cmd/api/main.go:102`](../../cmd/api/main.go#L102)
 
 ```go
 if cfg.IsProduction() {
@@ -286,7 +286,7 @@ router, err := api.NewRouter(api.Deps{ /* ... */ })
 
 **Order matters.** The engine reads the mode as it installs middleware, so
 setting it afterwards leaves debug behaviour in production. The engine itself
-is built in [`internal/api/router.go:48`](../../internal/api/router.go#L48),
+is built in [`internal/api/router.go:61`](../../internal/api/router.go#L61),
 where the routes moved in module 3.
 
 `gin.Default()` is `gin.New()` plus two middlewares: a request logger, and a
@@ -296,7 +296,7 @@ the two out, because module 3 swaps the recovery handler for one that answers
 in the API's error format — see
 [module 3, section 24](03-auth.md#24-errors-that-never-reach-a-handler).
 
-**📍 Open:** [`internal/api/router.go:59`](../../internal/api/router.go#L59)
+**📍 Open:** [`internal/api/router.go:86`](../../internal/api/router.go#L86)
 
 ```go
 if err := router.SetTrustedProxies(nil); err != nil {

@@ -76,7 +76,7 @@ func (d errorDetail) stringDetails() map[string]string {
 }
 
 // decode fails the test unless body is exactly the envelope: one top-level
-// key, and code, message and details beneath it.
+// key, and code, message, details and request_id beneath it.
 func decode(t *testing.T, body []byte) errorDetail {
 	t.Helper()
 
@@ -87,8 +87,13 @@ func decode(t *testing.T, body []byte) errorDetail {
 	if len(raw) != 1 || raw["error"] == nil {
 		t.Fatalf("body = %s, want exactly one top-level key, \"error\"", body)
 	}
-	if len(raw["error"]) != 3 {
-		t.Fatalf("error object = %s, want exactly code, message and details", body)
+	if len(raw["error"]) != 4 {
+		t.Fatalf("error object = %s, want exactly code, message, details and request_id", body)
+	}
+	// Always present and always a string, even where no middleware set one,
+	// so a client never has to check for it.
+	if got := string(raw["error"]["request_id"]); !strings.HasPrefix(got, `"`) {
+		t.Fatalf("request_id = %s, want a JSON string", got)
 	}
 	// An absent or null details would be a second shape.
 	if got := string(raw["error"]["details"]); !strings.HasPrefix(got, "{") {
@@ -224,7 +229,10 @@ func TestRespondHidesUnexpectedErrors(t *testing.T) {
 
 	// The same detail must reach the server's log, with enough to find the
 	// request.
-	for _, want := range []string{driverMessage, "insert user", "POST", "/auth/register"} {
+	// Quoted characters in the driver's message are escaped in a structured
+	// log line, so its distinctive fragments are checked rather than the
+	// whole string.
+	for _, want := range []string{"duplicate key value violates unique constraint", "users_email_key", "SQLSTATE 23505", "insert user", "POST", "/auth/register"} {
 		if !strings.Contains(logged.String(), want) {
 			t.Errorf("log is missing %q: %s", want, logged)
 		}
