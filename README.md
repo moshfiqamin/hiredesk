@@ -62,8 +62,9 @@ was the evidence (here, a criterion over several yes/no questions).
 
 ## Quick start
 
-Needs only Docker (with Compose v2), `make` and `openssl`, which macOS and most
-Linux distributions already have.
+Running it needs only Docker (with Compose v2), `make` and `openssl`, which
+macOS and most Linux distributions already have. Running the tests also needs
+Go 1.27.3 (see [Test strategy](#test-strategy)).
 
 ```bash
 git clone https://github.com/moshfiqamin/hiredesk.git && cd hiredesk && make up
@@ -72,6 +73,27 @@ git clone https://github.com/moshfiqamin/hiredesk.git && cd hiredesk && make up
 That creates `.env` with a random `JWT_SECRET`, builds the image, starts
 PostgreSQL, waits for its healthcheck, applies all 13 migrations, and starts
 the API on port 8080. The first build takes a minute or two.
+
+**Do not create `.env` by copying `.env.example`.** Its `JWT_SECRET` is a
+placeholder that is deliberately too short, so a copied file makes the API
+refuse to start and restart in a loop, while `make up` still prints the links
+as if it worked. If you already copied it:
+
+```bash
+rm .env && make up
+```
+
+Deletes the copied file so `make up` generates a proper one with a random
+secret.
+
+Check it is up:
+
+```bash
+curl -s localhost:8080/healthz
+```
+
+Prints `{"status":"ok"}`. If it fails to connect, `make ps` shows whether the
+API is restarting, and `make logs` shows why.
 
 Then open **<http://localhost:8080/docs>**: Swagger UI, served from inside the
 binary. To use it:
@@ -154,9 +176,12 @@ The rule is checked, not just stated: `go list -deps ./internal/domain
 | SQL | `internal/store` | integration tests against the running PostgreSQL | 83.1% |
 | End to end | `test/integration` | the production router over real stores, on a PostgreSQL started by testcontainers-go | (included below) |
 
-Unit-test numbers are from `make test` (statement coverage per package). The
-store figure is from the integration run, measured with `-coverpkg` across
-`./internal/...`; that run alone covers **69.9%** of all statements in
+Unit-test numbers are statement coverage per package from
+`go test -race -cover ./...`, exactly as CI runs it, with no `.env` present.
+`make test` can report a higher figure for `config` (81.7% on one machine),
+because the Makefile exports every variable in `.env` into the test process.
+The store figure is from the integration run, measured with `-coverpkg`
+across `./internal/...`; that run alone covers **69.9%** of all statements in
 `internal/`. `cmd/` is not counted: the seeder has a unit test (20.2%), and
 the API's `main` is exercised by the shutdown procedure, not by a test.
 
@@ -179,7 +204,9 @@ Run them:
 make test
 ```
 
-Unit tests with the race detector. Needs Go 1.27.3 locally; nothing else.
+Unit tests with the race detector. Needs Go 1.27.3 locally, but no database
+and no Docker. On Linux, Go's race detector also needs a C compiler; if it
+reports `-race requires cgo`, install `gcc`.
 
 ```bash
 make test-integration
