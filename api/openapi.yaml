@@ -1629,8 +1629,15 @@ components:
       allOf:
         - $ref: "#/components/schemas/Application"
         - type: object
-          required: [answers, events]
+          required: [answers, events, allowed_next_statuses]
           properties:
+            allowed_next_statuses:
+              description: |
+                The statuses this application may move to next, from the same
+                table `PATCH /v1/applications/{id}/status` enforces. Empty
+                once rejected.
+              type: array
+              items: { $ref: "#/components/schemas/ApplicationStatus" }
             answers:
               type: array
               items: { $ref: "#/components/schemas/Answer" }
@@ -1714,7 +1721,7 @@ components:
 
     RankingEntry:
       type: object
-      required: [rank, application_id, candidate_id, candidate_name, status, submitted_at, total_earned, total_available, percentage, rubric_version]
+      required: [rank, application_id, candidate_id, candidate_name, status, submitted_at, total_earned, total_available, percentage, rubric_version, breakdown]
       properties:
         rank: { type: integer, minimum: 1 }
         application_id: { type: string, format: uuid }
@@ -1726,6 +1733,16 @@ components:
         total_available: { type: number, nullable: true }
         percentage: { type: number, nullable: true }
         rubric_version: { type: integer, nullable: true }
+        breakdown:
+          description: Each criterion's points in rubric order; empty when unscored.
+          type: array
+          items:
+            type: object
+            required: [criterion, earned, available]
+            properties:
+              criterion: { type: string }
+              earned: { type: number }
+              available: { type: number }
 
     Ranking:
       type: object

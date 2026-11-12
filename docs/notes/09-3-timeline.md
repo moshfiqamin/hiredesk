@@ -12,7 +12,7 @@ by whom, and seventy-two new cells in `TestAuthorizationMatrix`.
 | # | Topic | Code |
 |---|---|---|
 | [1](#1-what-the-log-can-answer-that-a-status-column-cannot) | **What the log can answer that a status column cannot** | — |
-| [2](#2-the-endpoint) | The endpoint | [`application_handler.go:992`](../../internal/api/application_handler.go#L992) |
+| [2](#2-the-endpoint) | The endpoint | [`application_handler.go:1027`](../../internal/api/application_handler.go#L1027) |
 | [3](#3-resolving-the-actor-at-read-time) | **Resolving the actor at read time** | [`applications.go:589`](../../internal/store/applications.go#L589) |
 | [4](#4-the-audit-are-all-seven-events-written) | The audit: are all seven events written? | [`timeline_test.go:33`](../../test/integration/timeline_test.go#L33) |
 | [5](#5-the-audit-does-every-event-have-an-actor) | The audit: does every event have an actor? | — |
@@ -55,7 +55,7 @@ events per application, read through an index that already exists.
 
 ## 2. The endpoint
 
-**📍 Open:** [`internal/api/application_handler.go:992`](../../internal/api/application_handler.go#L992)
+**📍 Open:** [`internal/api/application_handler.go:1027`](../../internal/api/application_handler.go#L1027)
 
 - **Access** follows the score endpoint (07-3): `CanViewApplication` first,
   so anyone who may not see the application gets the standard 404, then

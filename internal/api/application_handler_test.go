@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -75,6 +76,11 @@ type fakeApplications struct {
 	ranking       []domain.RankedApplication
 	lastRankLimit int
 
+	// points is what CriterionPoints returns; lastPointsIDs the IDs it was
+	// given.
+	points        map[string][]domain.CriterionPoints
+	lastPointsIDs []string
+
 	// searchResults and searchTotal are what SearchApplications returns;
 	// lastSearch is the query, limit and offset it was given, nil until then.
 	searchResults []domain.SearchResult
@@ -114,6 +120,17 @@ func (f *fakeApplications) RankApplications(_ context.Context, jobPostID string,
 		return nil, domain.ErrNotFound
 	}
 	return f.ranking, nil
+}
+
+func (f *fakeApplications) CriterionPoints(_ context.Context, ids []string) (map[string][]domain.CriterionPoints, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.lastPointsIDs = ids
+	if f.failWith != nil {
+		return nil, f.failWith
+	}
+	return f.points, nil
 }
 
 func (f *fakeApplications) RescoreApplication(_ context.Context, id, actorID string) (*domain.RescoreResult, error) {
@@ -350,9 +367,14 @@ func TestGetApplication(t *testing.T) {
 				t.Fatalf("status = %d, want %d; body = %s", rec.Code, tt.wantStatus, rec.Body)
 			}
 			if tt.wantStatus == http.StatusOK {
-				var got applicationResponse
+				var got applicationDetailResponse
 				if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got.ID != tt.id {
 					t.Errorf("body = %s, want application %s", rec.Body, tt.id)
+				}
+				// The moves offered must be exactly the ones PATCH accepts.
+				want := domain.AllowedApplicationTransitions(got.Status)
+				if !slices.Equal(got.AllowedNextStatuses, want) {
+					t.Errorf("allowed_next_statuses = %v, want %v", got.AllowedNextStatuses, want)
 				}
 			}
 		})

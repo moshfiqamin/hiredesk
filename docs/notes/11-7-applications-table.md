@@ -10,19 +10,19 @@ each candidate. Every bit of what is on screen lives in the URL.
 | # | Section | Open |
 |---|---|---|
 | 1 | Why server-side pagination, even for a few hundred rows | [`internal/store/applications.go:176`](../../internal/store/applications.go#L176) |
-| 2 | What the list endpoint had to learn | [`internal/api/application_handler.go:152`](../../internal/api/application_handler.go#L152) |
+| 2 | What the list endpoint had to learn | [`internal/api/application_handler.go:153`](../../internal/api/application_handler.go#L153) |
 | 3 | Keyset paging by score, and its one weakness | [`internal/store/applications.go:184`](../../internal/store/applications.go#L184) |
-| 4 | A cursor that knows its sort | [`internal/api/application_handler.go:309`](../../internal/api/application_handler.go#L309) |
-| 5 | Who sees scores and reviewers | [`internal/api/application_handler.go:298`](../../internal/api/application_handler.go#L298) |
+| 4 | A cursor that knows its sort | [`internal/api/application_handler.go:315`](../../internal/api/application_handler.go#L315) |
+| 5 | Who sees scores and reviewers | [`internal/api/application_handler.go:304`](../../internal/api/application_handler.go#L304) |
 | 6 | The URL as the single source of truth | [`web/src/lib/applications/view.ts:18`](../../web/src/lib/applications/view.ts#L18) |
 | 7 | How debouncing works, and the 300ms | [`web/src/hooks/use-debounced-callback.ts:14`](../../web/src/hooks/use-debounced-callback.ts#L14) |
 | 8 | Keeping the search box and the URL in step | [`web/src/components/applications/applications-view.tsx:92`](../../web/src/components/applications/applications-view.tsx#L92) |
-| 9 | Search is per role, and pages by offset | [`web/src/hooks/use-applications.ts:50`](../../web/src/hooks/use-applications.ts#L50) |
+| 9 | Search is per role, and pages by offset | [`web/src/hooks/use-applications.ts:53`](../../web/src/hooks/use-applications.ts#L53) |
 | 10 | A score column that reads like a shortlist | [`web/src/components/applications/cells.tsx:55`](../../web/src/components/applications/cells.tsx#L55) |
-| 11 | Bulk status change, one request per row | [`web/src/hooks/use-applications.ts:66`](../../web/src/hooks/use-applications.ts#L66) |
-| 12 | Paging without a flash: `keepPreviousData` | [`web/src/hooks/use-applications.ts:36`](../../web/src/hooks/use-applications.ts#L36) |
+| 11 | Bulk status change, one request per row | [`web/src/hooks/use-applications.ts:69`](../../web/src/hooks/use-applications.ts#L69) |
+| 12 | Paging without a flash: `keepPreviousData` | [`web/src/hooks/use-applications.ts:39`](../../web/src/hooks/use-applications.ts#L39) |
 | 13 | Empty, loading and error, per situation | [`web/src/components/applications/applications-view.tsx:499`](../../web/src/components/applications/applications-view.tsx#L499) |
-| 14 | The candidate detail page | [`web/src/components/applications/application-detail.tsx:65`](../../web/src/components/applications/application-detail.tsx#L65) |
+| 14 | The candidate detail page | [`web/src/components/applications/application-detail.tsx:83`](../../web/src/components/applications/application-detail.tsx#L83) |
 | 15 | The matrix column module 11.2 forgot | [`test/integration/authz_test.go:298`](../../test/integration/authz_test.go#L298) |
 | 16 | Verification | — |
 
@@ -59,7 +59,7 @@ So the browser asks for one page, `limit=25`, and a `total` for "Showing
 
 ## 2. What the list endpoint had to learn
 
-**📍 Open:** [`internal/api/application_handler.go:152`](../../internal/api/application_handler.go#L152)
+**📍 Open:** [`internal/api/application_handler.go:153`](../../internal/api/application_handler.go#L153)
 
 `GET /v1/applications` returned bare application rows: IDs, status, dates.
 The table needs the candidate's name, the role's title, the score and the
@@ -114,7 +114,7 @@ id)`, which makes the score order as cheap as the date order.
 
 ## 4. A cursor that knows its sort
 
-**📍 Open:** [`internal/api/application_handler.go:309`](../../internal/api/application_handler.go#L309)
+**📍 Open:** [`internal/api/application_handler.go:315`](../../internal/api/application_handler.go#L315)
 
 The cursor gained an optional score, `s`
 ([`cursor.go:35`](../../internal/api/cursor.go#L35)). `omitempty` leaves it
@@ -125,7 +125,7 @@ mismatch as `400 invalid_cursor` either way. Both directions are tested.
 
 ## 5. Who sees scores and reviewers
 
-**📍 Open:** [`internal/api/application_handler.go:298`](../../internal/api/application_handler.go#L298)
+**📍 Open:** [`internal/api/application_handler.go:304`](../../internal/api/application_handler.go#L304)
 
 | Caller | `score` | `assignees` | `sort=score` |
 |---|---|---|---|
@@ -138,7 +138,7 @@ either: the order alone would leak it. The response distinguishes "hidden"
 from "not scored yet": `score` is absent for the first and
 `{"percentage": null}` for the second. A bare nullable number could not tell
 them apart. `Assignees` is a pointer to a slice
-([line 166](../../internal/api/application_handler.go#L166)) because
+([line 166](../../internal/api/application_handler.go#L167)) because
 `omitempty` drops a nil pointer but not an empty slice behind one: an admin
 sees `[]`, everyone else sees no key. The store computes nothing it will not
 return (the score and assignee joins are left out of the SQL for roles that
@@ -238,7 +238,7 @@ in between.
 
 ## 9. Search is per role, and pages by offset
 
-**📍 Open:** [`web/src/hooks/use-applications.ts:50`](../../web/src/hooks/use-applications.ts#L50)
+**📍 Open:** [`web/src/hooks/use-applications.ts:53`](../../web/src/hooks/use-applications.ts#L53)
 
 The module 8 endpoint is `GET /v1/job-posts/:id/applications/search`: one
 role's answers. So search runs when a role is chosen; with text but no role,
@@ -270,14 +270,14 @@ names as its label, since initials alone would be read as letters).
 
 ## 11. Bulk status change, one request per row
 
-**📍 Open:** [`web/src/hooks/use-applications.ts:66`](../../web/src/hooks/use-applications.ts#L66)
+**📍 Open:** [`web/src/hooks/use-applications.ts:69`](../../web/src/hooks/use-applications.ts#L69)
 
 The API changes one application's status per request, and each is judged on
 its own: a submitted application can be shortlisted, one at the offer stage
 cannot. A bulk endpoint would need its own partial-failure semantics; the
 per-row route already has them. So the hook sends one PATCH per selected row,
 four at a time (four workers sharing one queue,
-[line 74](../../web/src/hooks/use-applications.ts#L74)): bounded load on the
+[line 74](../../web/src/hooks/use-applications.ts#L77)): bounded load on the
 API, without fifty requests at once or one at a time.
 
 The confirmation names the count ("Move 2 applications to Shortlisted?") and
@@ -291,7 +291,7 @@ third state, `aria-checked="mixed"`, when some rows are selected.
 
 ## 12. Paging without a flash: `keepPreviousData`
 
-**📍 Open:** [`web/src/hooks/use-applications.ts:36`](../../web/src/hooks/use-applications.ts#L36)
+**📍 Open:** [`web/src/hooks/use-applications.ts:39`](../../web/src/hooks/use-applications.ts#L39)
 
 Every filter or page change is a new query key, and a new key starts with no
 data, which would drop the table to a skeleton on every click.
@@ -318,7 +318,7 @@ it after three attempts: one try and two retries, the 11.2 policy for a 5xx.
 
 ## 14. The candidate detail page
 
-**📍 Open:** [`web/src/components/applications/application-detail.tsx:65`](../../web/src/components/applications/application-detail.tsx#L65)
+**📍 Open:** [`web/src/components/applications/application-detail.tsx:83`](../../web/src/components/applications/application-detail.tsx#L83)
 
 The name links to `/admin/applications/:id`: the score breakdown (each
 criterion's points, the engine's explanation and the evidence excerpt), the

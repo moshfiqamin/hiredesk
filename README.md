@@ -167,6 +167,7 @@ The rule is checked, not just stated: `go list -deps ./internal/domain
 - **An authorization matrix test.** Every caller (anonymous, three roles, assigned and unassigned interviewers) against every protected route on a real PostgreSQL: 334 subtests, and a route added without a row fails the build ([`authz_test.go`](test/integration/authz_test.go)).
 - **A concurrent duplicate-application test.** Ten goroutines submit the same candidate's application at once, released by one start gate; exactly one succeeds and the rest get 409 `already_applied`, enforced by a unique constraint rather than a check-then-insert ([`concurrency_test.go`](test/integration/concurrency_test.go)).
 - **An N+1 query, measured.** The ranking endpoint is deliberately naive today: 502 statements for 500 applicants, **53.9 ms median server time** (20 runs, API and PostgreSQL in Docker on one laptop). The single-query fix is designed but **not yet built**, so there is no "after" number yet ([notes](docs/notes/07-5-ranking.md)).
+- **A score you can audit, on screen.** The admin frontend draws each criterion as earned against available on one zero-based axis, highlights the words that matched in the answer (XSS-safe: segments rendered as text, never `dangerouslySetInnerHTML`), and says in a sentence why any criterion scored zero ([`score-breakdown.tsx`](web/src/components/score/score-breakdown.tsx), [notes](docs/notes/13-2-evidence.md)).
 - **Whole-word full-text search on a GIN index.** A generated `tsvector` column with stemming: "testing" finds "tested", "go" does not find "google", and the query is a bound parameter ([`000012_search.up.sql`](migrations/000012_search.up.sql), [decision D7](docs/decisions.md)).
 - **Graceful shutdown, proven.** On SIGTERM a request already in flight finishes with 200, new connections are refused, then the pool closes and the process exits 0. Past the 10-second budget it logs which requests it abandoned and exits 1 ([`cmd/api/main.go`](cmd/api/main.go), [notes](docs/notes/10-4-graceful-shutdown.md)).
 - **Request IDs end to end.** Every response carries `X-Request-ID`, every error body carries `request_id`, and every log line written during the request carries both the ID and the user ID, read from `context.Context` rather than passed down ([notes](docs/notes/10-2-structured-logging.md)).
@@ -225,8 +226,6 @@ testcontainers.
 
 - **Email, notifications, file uploads.** A CV is a URL, not a stored file.
 - **Multi-tenancy.** One organisation per deployment.
-- **A frontend.** `/docs` is the UI. CORS is in place for when one exists
-  (`ALLOWED_ORIGINS`).
 - **Rate limiting beyond `/v1/auth/*`.** The limiter is in memory, per
   process: right for one instance, wrong for several. More than one instance
   needs a shared store (Redis) or limiting at the proxy.
@@ -274,10 +273,10 @@ rendered at `/docs`. In brief:
 | `GET` `PUT` | `/v1/job-posts/:id/rubric` | admin |
 | `POST` | `/v1/job-posts/:id/applications` | candidate |
 | `GET` | `/v1/job-posts/:id/applications/search?q=` | admin |
-| `GET` | `/v1/job-posts/:id/ranking` | admin |
+| `GET` | `/v1/job-posts/:id/ranking` | admin (with each row's per-criterion points) |
 | `POST` | `/v1/job-posts/:id/rescore-all` | admin |
 | `GET` | `/v1/applications?sort=score` | any signed-in user (filtered per role, in SQL); score order for admins and interviewers |
-| `GET` | `/v1/applications/:id` | admin, assigned interviewer, its candidate |
+| `GET` | `/v1/applications/:id` | admin, assigned interviewer, its candidate (with `allowed_next_statuses`) |
 | `PATCH` | `/v1/applications/:id/status` | admin |
 | `GET` | `/v1/applications/:id/score` | admin, assigned interviewer |
 | `POST` | `/v1/applications/:id/rescore` | admin |

@@ -71,3 +71,49 @@ func TestRankApplications(t *testing.T) {
 		t.Errorf("missing post: %v, want ErrNotFound", err)
 	}
 }
+
+// TestCriterionPoints pins the breakdown behind a ranking row: every
+// criterion of the latest score, in rubric order, adding up to the total,
+// and nothing at all for an application with no score.
+func TestCriterionPoints(t *testing.T) {
+	pool := startPostgres(t)
+	seedScoring(t, pool)
+	ctx := context.Background()
+	apps := store.NewApplicationStore(pool)
+
+	ids := addCandidates(t, pool, 3)
+	if _, err := pool.Exec(ctx, `DELETE FROM scores WHERE application_id = $1::text::uuid`, ids[2]); err != nil {
+		t.Fatalf("unscore: %v", err)
+	}
+
+	points, err := apps.CriterionPoints(ctx, ids)
+	if err != nil {
+		t.Fatalf("CriterionPoints: %v", err)
+	}
+	if _, ok := points[ids[2]]; ok {
+		t.Errorf("unscored application has points %v", points[ids[2]])
+	}
+
+	ranked, err := apps.RankApplications(ctx, subOpenPostID, domain.MaxRankingLimit)
+	if err != nil {
+		t.Fatalf("RankApplications: %v", err)
+	}
+	for _, r := range ranked {
+		if r.Totals == nil {
+			continue
+		}
+		var earned, available float64
+		for _, p := range points[r.ApplicationID] {
+			earned += p.Earned
+			available += p.Available
+		}
+		if len(points[r.ApplicationID]) == 0 || earned != r.Totals.Earned || available != r.Totals.Available {
+			t.Errorf("%s: points sum to %v of %v, ranking says %v of %v",
+				r.ApplicationID, earned, available, r.Totals.Earned, r.Totals.Available)
+		}
+	}
+
+	if empty, err := apps.CriterionPoints(ctx, nil); err != nil || len(empty) != 0 {
+		t.Errorf("no IDs: %v, %v; want an empty map", empty, err)
+	}
+}

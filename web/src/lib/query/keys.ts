@@ -38,6 +38,7 @@ export const queryKeys = {
     // Nested under the post, so invalidating the post refreshes these too.
     questions: (id: string) => [...queryKeys.jobPosts.detail(id), "questions"] as const,
     rubric: (id: string) => [...queryKeys.jobPosts.detail(id), "rubric"] as const,
+    ranking: (id: string) => [...queryKeys.jobPosts.detail(id), "ranking"] as const,
   },
   applications: {
     all: ["applications"] as const,
@@ -49,5 +50,6 @@ export const queryKeys = {
       [...queryKeys.applications.lists(), "search", filters] as const,
     detail: (id: string) => [...queryKeys.applications.all, "detail", id] as const,
     score: (id: string) => [...queryKeys.applications.detail(id), "score"] as const,
+    assignments: (id: string) => [...queryKeys.applications.detail(id), "assignments"] as const,
   },
 } as const;

@@ -195,6 +195,54 @@ export interface ApplicationDetail {
   updated_at: string;
   answers: Answer[];
   events: ApplicationEvent[];
+  /** Every review for an admin, only their own for an interviewer, absent for the candidate. */
+  reviews?: Review[];
+  /** The statuses PATCH .../status will accept next, from the server's own table. */
+  allowed_next_statuses: ApplicationStatus[];
+}
+
+export interface Review {
+  id: string;
+  application_id: string;
+  interviewer_id: string;
+  interviewer_name: string;
+  /** 1 to 10. */
+  mark: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Assignment is one row of GET /v1/applications/:id/assignments. */
+export interface Assignment {
+  application_id: string;
+  interviewer_id: string;
+  interviewer_name: string;
+  interviewer_email: string;
+  assigned_by: string | null;
+  assigned_by_name: string | null;
+  assigned_at: string;
+  reviewed: boolean;
+}
+
+/** RankingEntry is one row of GET /v1/job-posts/:id/ranking; score fields are null when unscored. */
+export interface RankingEntry {
+  rank: number;
+  application_id: string;
+  candidate_id: string;
+  candidate_name: string;
+  status: ApplicationStatus;
+  submitted_at: string;
+  total_earned: number | null;
+  total_available: number | null;
+  percentage: number | null;
+  rubric_version: number | null;
+  breakdown: { criterion: string; earned: number; available: number }[];
+}
+
+export interface Ranking {
+  job_post_id: string;
+  data: RankingEntry[];
 }
 
 export interface ScoreEntry {

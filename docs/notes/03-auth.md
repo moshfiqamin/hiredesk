@@ -75,7 +75,7 @@ Click the link, read the code, then come back.
 | [56](#56-why-the-negative-cases-matter-more-than-the-positive-ones) | Why the negative cases matter more | [`policy_test.go:74`](../../internal/auth/policy_test.go#L74) |
 | [57](#57-counting-the-combinations) | Counting the combinations | [`policy_test.go:154`](../../internal/auth/policy_test.go#L154) |
 | [58](#58-filtering-in-sql-not-in-go) | Filtering in SQL, not in Go | [`applications.go:62`](../../internal/store/applications.go#L62) |
-| [59](#59-two-encodings-of-one-rule-and-the-check-that-they-agree) | Two encodings of one rule, and the check that they agree | [`application_handler.go:372`](../../internal/api/application_handler.go#L372) |
+| [59](#59-two-encodings-of-one-rule-and-the-check-that-they-agree) | Two encodings of one rule, and the check that they agree | [`application_handler.go:378`](../../internal/api/application_handler.go#L378) |
 | [60](#60-403-or-404) | 403 or 404 | [`decisions.md`](../decisions.md) |
 | [61](#61-testcontainers-go-and-why-a-real-postgresql-beats-a-mock) | testcontainers-go, and why a real PostgreSQL beats a mock | [`authz_test.go:93`](../../test/integration/authz_test.go#L93) |
 | [62](#62-testauthorizationmatrix) | `TestAuthorizationMatrix`; generics, spreading a slice, package build tags | [`authz_test.go:324`](../../test/integration/authz_test.go#L324) |
@@ -3037,7 +3037,7 @@ connection after row 400) is reported only by `rows.Err()`, and a hand-written
 
 ## 59. Two encodings of one rule, and the check that they agree
 
-**📍 Open:** [`internal/api/application_handler.go:372`](../../internal/api/application_handler.go#L372)
+**📍 Open:** [`internal/api/application_handler.go:378`](../../internal/api/application_handler.go#L378)
 
 The visibility rule now exists twice:
 
@@ -3065,7 +3065,7 @@ handler calls the pure policy. The store gathers facts; the policy decides.
 **📍 Open:** [`docs/decisions.md`](../decisions.md) — decision D1
 
 **A refused view answers 404, identical to a missing record**
-([`application_handler.go:376`](../../internal/api/application_handler.go#L376)).
+([`application_handler.go:382`](../../internal/api/application_handler.go#L382)).
 The full record — when 403 is still right, what was rejected, what it costs —
 is in `docs/decisions.md`. The core argument:
 
@@ -3213,7 +3213,7 @@ provide Docker, which is all testcontainers needs.
 **Go idioms appearing for the first time**
 
 - **A generic type.** `listResponse[T any]`
-  ([`application_handler.go:133`](../../internal/api/application_handler.go#L133))
+  ([`application_handler.go:134`](../../internal/api/application_handler.go#L134))
   is one struct for every list the API will return. `T any` is a *type
   parameter*; `listResponse[applicationResponse]` fills it in.
 - **Spreading a slice into a variadic call.** `s.db.Query(ctx, query, args...)`

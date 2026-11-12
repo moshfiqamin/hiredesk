@@ -31,6 +31,7 @@ type ApplicationStore interface {
 	RescoreApplication(ctx context.Context, id, actorID string) (*domain.RescoreResult, error)
 	RescoreJobPost(ctx context.Context, jobPostID, actorID string) (*domain.JobPostRescore, error)
 	RankApplications(ctx context.Context, jobPostID string, limit int) ([]domain.RankedApplication, error)
+	CriterionPoints(ctx context.Context, ids []string) (map[string][]domain.CriterionPoints, error)
 	SearchApplications(ctx context.Context, jobPostID, query string, limit, offset int) ([]domain.SearchResult, int, error)
 }
 
@@ -225,6 +226,11 @@ type applicationDetailResponse struct {
 	// interviewer, and absent for anyone who may see no reviews. A pointer
 	// so that "absent" (nil, omitted) and "none yet" ([]) are different.
 	Reviews *[]reviewResponse `json:"reviews,omitempty"`
+
+	// AllowedNextStatuses are the statuses the application may move to
+	// from its current one, from the same table PATCH .../status enforces,
+	// so a client offers only the moves the server will accept.
+	AllowedNextStatuses []string `json:"allowed_next_statuses"`
 }
 
 // updateStatusRequest is the body of PATCH /v1/applications/:id/status.
@@ -396,6 +402,7 @@ func (h *ApplicationHandler) Get(c *gin.Context) {
 		applicationResponse: newApplicationResponse(app),
 		Answers:             newAnswerList(history.Answers),
 		Events:              newEventList(history.Events),
+		AllowedNextStatuses: domain.AllowedApplicationTransitions(app.Status),
 	}
 	if history.Reviews != nil {
 		reviews := make([]reviewResponse, 0, len(history.Reviews))
@@ -773,6 +780,17 @@ type rankingEntry struct {
 	TotalAvailable *float64 `json:"total_available"`
 	Percentage     *float64 `json:"percentage"`
 	RubricVersion  *int     `json:"rubric_version"`
+
+	// Breakdown is each criterion's points, in rubric order; [] when the
+	// application has no score.
+	Breakdown []criterionPointsResponse `json:"breakdown"`
+}
+
+// criterionPointsResponse is one criterion's points in a ranking row.
+type criterionPointsResponse struct {
+	Criterion string  `json:"criterion"`
+	Earned    float64 `json:"earned"`
+	Available float64 `json:"available"`
 }
 
 // rankingResponse is the body of GET /v1/job-posts/:id/ranking.
@@ -809,11 +827,28 @@ func (h *ApplicationHandler) Ranking(c *gin.Context) {
 		return
 	}
 
+	// The breakdown bars, for every scored row of this page at once.
+	scored := make([]string, 0, len(ranked))
+	for _, r := range ranked {
+		if r.Totals != nil {
+			scored = append(scored, r.ApplicationID)
+		}
+	}
+	points, err := h.apps.CriterionPoints(c.Request.Context(), scored)
+	if err != nil {
+		Respond(c, fmt.Errorf("rank applications: breakdown: %w", err))
+		return
+	}
+
 	out := rankingResponse{JobPostID: postID, Data: make([]rankingEntry, 0, len(ranked))}
 	for _, r := range ranked {
 		entry := rankingEntry{
 			Rank: r.Rank, ApplicationID: r.ApplicationID, CandidateID: r.CandidateID,
 			CandidateName: r.CandidateName, Status: r.Status, SubmittedAt: r.SubmittedAt.UTC(),
+			Breakdown: make([]criterionPointsResponse, 0, len(points[r.ApplicationID])),
+		}
+		for _, p := range points[r.ApplicationID] {
+			entry.Breakdown = append(entry.Breakdown, criterionPointsResponse{Criterion: p.Label, Earned: p.Earned, Available: p.Available})
 		}
 		if t := r.Totals; t != nil {
 			// Copies, so each pointer refers to this entry's own values.

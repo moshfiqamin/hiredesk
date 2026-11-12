@@ -18,12 +18,12 @@ Part 2 is [07-2-scoring-on-submit.md](07-2-scoring-on-submit.md).
 | # | Topic | Code |
 |---|---|---|
 | [1](#1-who-may-see-a-breakdown) | **Who may see a breakdown** | [`policy.go:47`](../../internal/auth/policy.go#L47) |
-| [2](#2-the-response) | The response | [`application_handler.go:526`](../../internal/api/application_handler.go#L526) |
+| [2](#2-the-response) | The response | [`application_handler.go:533`](../../internal/api/application_handler.go#L533) |
 | [3](#3-one-query-four-tables) | **One query, four tables** | [`applications.go:673`](../../internal/store/applications.go#L673) |
-| [4](#4-flat-rows-to-nested-json) | **Flat rows to nested JSON** | [`application_handler.go:559`](../../internal/api/application_handler.go#L559) |
+| [4](#4-flat-rows-to-nested-json) | **Flat rows to nested JSON** | [`application_handler.go:566`](../../internal/api/application_handler.go#L566) |
 | [5](#5-how-the-n1-was-avoided) | **How the N+1 was avoided** | [`scoring_test.go:294`](../../test/integration/scoring_test.go#L294) |
 | [6](#6-the-excerpt) | The excerpt | [`excerpt.go:35`](../../internal/scoring/excerpt.go#L35) |
-| [7](#7-why-the-excerpt-is-cut-on-the-server) | **Why the excerpt is cut on the server** | [`application_handler.go:580`](../../internal/api/application_handler.go#L580) |
+| [7](#7-why-the-excerpt-is-cut-on-the-server) | **Why the excerpt is cut on the server** | [`application_handler.go:587`](../../internal/api/application_handler.go#L587) |
 | [8](#8-go-idioms-new-in-this-part) | Go idioms new in this part | — |
 | [9](#9-verification) | Verification | — |
 
@@ -78,7 +78,7 @@ returns the exact 404 of an absent one, checked byte for byte in the
 authorization matrix.
 
 The handler applies the two policies in order
-([`application_handler.go:617`](../../internal/api/application_handler.go#L617)):
+([`application_handler.go:624`](../../internal/api/application_handler.go#L624)):
 `CanViewApplication` first (404), then `CanViewScore` (403, line 518).
 `CanViewScore` is narrower than `CanViewApplication`, never wider;
 `TestCanViewScore` checks that for every combination of role, ownership and
@@ -91,7 +91,7 @@ work, and timing reveals nothing either.
 
 ## 2. The response
 
-**📍 Open:** [`internal/api/application_handler.go:526`](../../internal/api/application_handler.go#L526)
+**📍 Open:** [`internal/api/application_handler.go:533`](../../internal/api/application_handler.go#L533)
 
 The shape from section 3 of the overview, field for field:
 
@@ -140,7 +140,7 @@ the first of the workflow's five checks.
 float64s does not always stay on two decimals: `0.1 + 0.2` is
 `0.30000000000000004`, because neither has an exact binary form. The totals
 and the percentage are rounded to cents
-([line 471](../../internal/api/application_handler.go#L559)), so a column
+([line 471](../../internal/api/application_handler.go#L566)), so a column
 adding to 0.3 is shown as 0.3.
 
 ## 3. One query, four tables
@@ -190,7 +190,7 @@ switches to `rubric_criteria_pkey` as it grows. Execution time 0.23 ms.
 
 ## 4. Flat rows to nested JSON
 
-**📍 Open:** [`internal/api/application_handler.go:559`](../../internal/api/application_handler.go#L559)
+**📍 Open:** [`internal/api/application_handler.go:566`](../../internal/api/application_handler.go#L566)
 
 SQL returns rectangles; the response is a tree. Two steps turn one into the
 other.
@@ -310,7 +310,7 @@ means one regex decides both. A test pins exactly that case.
 
 ## 7. Why the excerpt is cut on the server
 
-**📍 Open:** [`internal/api/application_handler.go:580`](../../internal/api/application_handler.go#L580)
+**📍 Open:** [`internal/api/application_handler.go:587`](../../internal/api/application_handler.go#L587)
 
 The alternative — send the whole answer and let the browser trim it — is
 worse on every axis that matters:

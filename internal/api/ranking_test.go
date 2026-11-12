@@ -25,6 +25,9 @@ func TestRanking(t *testing.T) {
 				Totals: &domain.ScoreTotals{RubricVersion: 2, Earned: 80, Available: 100}},
 			{Rank: 2, ApplicationID: "a2", CandidateName: "Ben", Status: "submitted", SubmittedAt: when},
 		}
+		f.apps.points = map[string][]domain.CriterionPoints{
+			"a1": {{Label: "Go", Earned: 24, Available: 30}, {Label: "Depth", Earned: 56, Available: 70}},
+		}
 
 		rec := f.get(path, f.headers["admin"])
 		if rec.Code != http.StatusOK {
@@ -47,6 +50,16 @@ func TestRanking(t *testing.T) {
 			if string(got.Data[1][k]) != "null" {
 				t.Errorf("unscored %s = %s, want null", k, got.Data[1][k])
 			}
+		}
+		// Only scored rows are asked for, in one call.
+		if len(f.apps.lastPointsIDs) != 1 || f.apps.lastPointsIDs[0] != "a1" {
+			t.Errorf("breakdown asked for %v, want [a1]", f.apps.lastPointsIDs)
+		}
+		if got, want := string(got.Data[0]["breakdown"]), `[{"criterion":"Go","earned":24,"available":30},{"criterion":"Depth","earned":56,"available":70}]`; got != want {
+			t.Errorf("breakdown = %s, want %s", got, want)
+		}
+		if string(got.Data[1]["breakdown"]) != "[]" {
+			t.Errorf("unscored breakdown = %s, want []", got.Data[1]["breakdown"])
 		}
 		if f.apps.lastRankLimit != domain.DefaultRankingLimit {
 			t.Errorf("limit = %d, want the default", f.apps.lastRankLimit)

@@ -25,3 +25,11 @@ type RankedApplication struct {
 	// below every scored one.
 	Totals *ScoreTotals
 }
+
+// CriterionPoints is one criterion's share of a stored score, without its
+// evidence: what a ranking row needs to draw a breakdown bar.
+type CriterionPoints struct {
+	Label     string
+	Earned    float64
+	Available float64
+}
