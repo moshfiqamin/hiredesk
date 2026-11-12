@@ -1,0 +1,23 @@
+# Secret-scan configuration, used by the `secret-scan` CI job and by running
+# gitleaks locally. It keeps every default rule and allowlists only the exact
+# test-fixture values below, never whole files, so a real secret added to one
+# of those files is still caught.
+
+title = "HireDesk secret scan"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures that look like secrets but are not"
+regexTarget = "secret"
+regexes = [
+  # base64 of "not-a-cursor": a cursor the API must reject.
+  '''^(after=)?bm90LWEtY3Vyc29y$''',
+  # A JWT whose signature is the literal "sig": it must fail verification.
+  '''^eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxIn0\.c2ln$''',
+  # The signing key used only by the integration test suite.
+  '''^integration-test-signing-key-0123456789-abcdef$''',
+  # A deliberately wrong password in the log-redaction test.
+  '''^wrong-guess-123$''',
+]

@@ -31,13 +31,14 @@ docker-compose.yml
 docker-compose.*.yml
 
 # ---- Docs and local config ----
-README.md
+# Markdown anywhere in the tree, and every dotfile or dot-directory at the
+# root (editor, linter and local tool settings): none is needed to compile.
+**/*.md
+.*
 Makefile
 LICENSE
 docs/
 *.docx
-.vscode/
-.idea/
 
 # ---- Web frontend (built from its own context in web/) ----
 web/

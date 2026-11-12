@@ -1,0 +1,36 @@
+# Weekly dependency update pull requests. Each one runs the full CI, so an
+# update that breaks a test or the build never merges unnoticed.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    # Minor and patch updates arrive as one pull request instead of many.
+    groups:
+      go-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Base images in both Dockerfiles and the images docker-compose.yml pins.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: /web
+    schedule:
+      interval: weekly

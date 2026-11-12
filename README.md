@@ -60,63 +60,84 @@ That is a real response from `GET /v1/applications/:id/score`, captured while
 driving the API from its Swagger UI. `evidence` is `null` when no single answer
 was the evidence (here, a criterion over several yes/no questions).
 
-## Quick start
+## Contents
 
-Running it needs only Docker (with Compose v2), `make` and `openssl`, which
-macOS and most Linux distributions already have. Running the tests also needs
-Go 1.27.3 (see [Test strategy](#test-strategy)).
+1. [Getting started, step by step](#getting-started-step-by-step)
+2. [Troubleshooting](#troubleshooting)
+3. [How to read this repository](#how-to-read-this-repository)
+4. [Architecture](#architecture)
+5. [Technical highlights](#technical-highlights)
+6. [Test strategy](#test-strategy)
+7. [Out of scope, deliberately](#out-of-scope-deliberately)
+8. [What I would build next](#what-i-would-build-next)
+9. [Reference](#reference): endpoints, errors, commands, configuration, layout
+10. [Contributing and security](#contributing-and-security)
+
+## Getting started, step by step
+
+Every step says what to type, where, and what you should see. All commands are
+run in a terminal, from the repository folder unless a step says otherwise.
+
+### Step 1. Install the prerequisites
+
+| Tool | Needed for | Check it with |
+|---|---|---|
+| Docker with Compose v2 | running everything | `docker compose version` |
+| Git | getting the code | `git --version` |
+| GNU Make and `openssl` | the `make` commands (preinstalled on macOS and most Linux) | `make --version` and `openssl version` |
+| Go 1.27.3 | **only** for running the Go tests (step 8) | `go version` |
+| Node.js 22 | **only** for the browser tests (step 8) | `node --version` |
+
+Docker must be running. On macOS and Windows that means Docker Desktop is open.
+
+### Step 2. Get the code
 
 ```bash
-git clone https://github.com/moshfiqamin/hiredesk.git && cd hiredesk && make up
+git clone https://github.com/moshfiqamin/hiredesk.git
+cd hiredesk
 ```
 
-That creates `.env` with a random `JWT_SECRET`, builds the image, starts
-PostgreSQL, waits for its healthcheck, applies all 13 migrations, and starts
-the API on port 8080 and the Next.js frontend on port 3000. The first build
-takes a few minutes.
-
-<http://localhost:3000> is the whole product. Strangers see the open roles
-and each role's questions without an account, register, and apply through a
-form built from the role's questions, with a draft saved as they type.
-Candidates track their applications through the pipeline. Interviewers get a
-worklist, unreviewed first, and an anchored 1–10 review form. Admins build
-roles, application forms and rubrics, read each score with its evidence, rank
-applicants against the vacancies and assign interviewers by load. Run
-`make seed`, then sign in as `admin@hiredesk.test` / `admin-password`
-(accounts below).
-
-**Do not create `.env` by copying `.env.example`.** Its `JWT_SECRET` is a
-placeholder that is deliberately too short, so a copied file makes the API
-refuse to start and restart in a loop, while `make up` still prints the links
-as if it worked. If you already copied it:
+### Step 3. Start the stack
 
 ```bash
-rm .env && make up
+make up
 ```
 
-Deletes the copied file so `make up` generates a proper one with a random
-secret.
+This one command:
 
-Check it is up:
+1. creates `.env` from `.env.example`, with a freshly generated random `JWT_SECRET`;
+2. builds the API and frontend images (the first build takes a few minutes);
+3. starts PostgreSQL and waits for its health check;
+4. applies all 13 database migrations;
+5. starts the API on port **8080**, the frontend on port **3000**, and a
+   database browser on port **8081**.
+
+> **Do not create `.env` by copying `.env.example`.** Its `JWT_SECRET` is a
+> placeholder that is deliberately too short, so the API refuses to start.
+> If you already copied it, run `rm .env && make up` and a proper one is
+> generated.
+
+### Step 4. Check that it is running
 
 ```bash
 curl -s localhost:8080/healthz
 ```
 
-Prints `{"status":"ok"}`. If it fails to connect, `make ps` shows whether the
-API is restarting, and `make logs` shows why.
+You should see `{"status":"ok"}`. Then check the database connection:
 
-Then open **<http://localhost:8080/docs>**: Swagger UI, served from inside the
-binary. To use it:
+```bash
+curl -s localhost:8080/readyz
+```
 
-1. `make seed` creates four development accounts (table below).
-2. In `/docs`, run `POST /v1/auth/login` with `admin@hiredesk.test` /
-   `admin-password`. The example body is already filled in.
-3. Copy `access_token` from the response, press **Authorize**, paste it.
+Also `{"status":"ok"}`. If either fails, see [Troubleshooting](#troubleshooting).
 
-Every padlocked operation now runs as that user. The whole flow (create a job
-post, add questions, set a rubric, open it, sign in as a candidate, apply,
-read the score) works from the browser without curl.
+### Step 5. Create the demo accounts
+
+```bash
+make seed
+```
+
+Creates four accounts. It is safe to run twice: existing accounts are left alone.
 
 | Role | Email | Password |
 |---|---|---|
@@ -125,11 +146,139 @@ read the score) works from the browser without curl.
 | candidate | `candidate1@hiredesk.test` | `candidate-password` |
 | candidate | `candidate2@hiredesk.test` | `candidate-password` |
 
-These are development fixtures with published passwords. The seeder refuses
-to run with `ENV=production`.
+These are local development fixtures with published passwords. The seeder
+refuses to run when `ENV=production`.
 
-If port 8080, 3000 or 5432 is already taken on your machine, set `API_PORT`,
-`WEB_PORT` or `POSTGRES_PORT` in `.env` and run `make down && make up`.
+### Step 6. Walk through the product
+
+Open **<http://localhost:3000>**. The whole hiring flow takes about five
+minutes. Use a private browser window for each new person, so that two
+sign-ins do not overwrite each other.
+
+**As the admin** (`admin@hiredesk.test`):
+
+1. Sign in, then choose **Create role**. Enter a title, a location and the
+   number of vacancies, then **Create draft**.
+2. Open **Questions**, use **Add question** twice: one *Text* question such as
+   "Describe a Go project you built", and one *Number* question such as
+   "Years of Go?". Then **Save form**.
+3. Open **Rubric**, use **Add criterion** to build the scoring rules, for
+   example "Go knowledge" (weight 60, keywords `go`, `goroutines`, `postgres`)
+   reading the first question, and a second criterion worth 40. Save becomes
+   available once the weights add up to exactly 100. Then **Save rubric**.
+4. Choose **Open for applications**.
+
+**As a candidate**, in a new private window:
+
+5. Go to **<http://localhost:3000/roles>** without signing in, open the role,
+   and choose **Create an account to apply** (or sign in as
+   `candidate1@hiredesk.test`).
+6. Fill in the form, which is built from the role's questions, and choose
+   **Send application**. The application appears under **My applications**
+   with its status.
+
+**Back as the admin:**
+
+7. Open the role, then **Ranking**. Choose the candidate to see the score
+   breakdown: each criterion's points, and the words in the answer that earned
+   them.
+8. Under **Interviewers**, choose **Manage** and assign the seeded interviewer.
+
+**As the interviewer** (`interviewer@hiredesk.test`):
+
+9. Sign in. The candidate is on **My assignments**. Open it, choose a mark
+   from 1 to 10, write notes and **Submit review**. The admin now sees the
+   review on the application.
+
+**Just want to see scores?** `make seed-bulk` creates an open role with 500
+applications, each scored through the real code path.
+
+### Step 7. Explore the API in Swagger UI
+
+Open **<http://localhost:8080/docs>**: interactive API documentation served
+from inside the binary.
+
+1. Expand `POST /v1/auth/login` and choose **Try it out**. The example body
+   already holds the admin's credentials; choose **Execute**.
+2. Copy `access_token` from the response.
+3. Choose **Authorize** at the top of the page, paste the token, and confirm.
+
+Every padlocked operation now runs as the admin.
+
+### Step 8. Run the tests
+
+```bash
+make test
+```
+
+Unit tests with the race detector. Needs Go; no database and no Docker.
+
+```bash
+make test-integration
+```
+
+SQL tests against the running database, plus the authorization matrix on a
+throwaway PostgreSQL. Needs Go, `make up` running, and Docker.
+
+```bash
+make e2e
+```
+
+The full hiring flow in a real browser. Needs Node, plus `make up` and
+`make seed`. Playwright downloads Chromium the first time.
+
+```bash
+make lint
+```
+
+`golangci-lint` with 13 linters. Needs `golangci-lint` installed.
+
+### Step 9. Stop or reset
+
+```bash
+make down
+```
+
+Stops everything. The database is kept for next time.
+
+```bash
+make reset
+```
+
+Deletes the database and starts fresh. It asks for confirmation first.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `curl` says connection refused | The API is still starting or is restarting | `make ps` shows its state; `make logs` shows why |
+| Logs say `JWT_SECRET is too short` | `.env` was copied from `.env.example` | `rm .env && make up` |
+| `port is already allocated` | Another program uses 8080, 3000 or 5432 | Set `API_PORT`, `WEB_PORT` or `POSTGRES_PORT` in `.env`, then `make down && make up` |
+| `role "hiredesk" does not exist` | A local PostgreSQL answers on 5432 instead of the container | Set `POSTGRES_PORT=5433` in `.env`, then `make down && make up` |
+| `-race requires cgo` on Linux | The race detector needs a C compiler | Install `gcc` |
+| Sign-in returns 429 | The API allows 10 sign-ins a minute per address | Wait a minute |
+
+**Known issue:** in the rubric builder, changing a criterion's kind after
+typing its name and weight can lose those values. Choose the kind first, then
+fill in the fields. The cause and the fix are described in
+[`docs/notes/14-3-responsive-accessible.md`](docs/notes/14-3-responsive-accessible.md).
+
+## How to read this repository
+
+For a reviewer with limited time, in this order:
+
+1. **[`internal/scoring/engine.go`](internal/scoring/engine.go)**: the core
+   idea, a pure function from answers and a rubric to an auditable score.
+2. **[`test/integration/authz_test.go`](test/integration/authz_test.go)**:
+   every caller against every protected route, on a real PostgreSQL.
+3. **[`internal/store/tokens.go`](internal/store/tokens.go)**: refresh-token
+   rotation with replay detection, in SQL.
+4. **[`docs/decisions.md`](docs/decisions.md)**: the major decisions, what
+   was rejected, and what each one costs.
+5. **[`docs/notes/`](docs/notes/)**: one design note per module, in build
+   order, each linking to the lines it explains.
+6. **[`web/src/components/score/score-breakdown.tsx`](web/src/components/score/score-breakdown.tsx)**:
+   the score shown on screen, with its evidence highlighted.
 
 ## Architecture
 
@@ -408,6 +557,7 @@ Needs PostgreSQL with the migrations applied; `make up` provides both.
 ### Layout
 
 ```
+.github/              CI workflow, Dependabot, pull request template
 api/                  OpenAPI document and Swagger UI, embedded into the binary
 cmd/api/              the server
 cmd/seed/             development accounts and bulk data
@@ -423,16 +573,22 @@ migrations/           golang-migrate pairs, applied on start
 test/integration/     tests on a real PostgreSQL via testcontainers-go
 web/                  Next.js frontend (App Router, Tailwind, shadcn/ui)
 docs/decisions.md     decision records
-docs/design/          the approved interactive design prototype
+docs/design/          the interactive design prototype
 docs/notes/           design notes, one per module
+CONTRIBUTING.md       conventions and the change workflow
+SECURITY.md           how to report a vulnerability
+.gitleaks.toml        secret-scan configuration used by CI
 ```
 
 The image is a multi-stage build: 74 MB, three static binaries (API, seeder,
 reindexer), CA certificates and an unprivileged user (UID 10001), with no Go
 toolchain and no source.
 
-## Further reading
+## Contributing and security
 
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): conventions, the step-by-step change
+  workflow, adding a migration or a route, and the pull request checklist.
+- [`SECURITY.md`](SECURITY.md): how to report a vulnerability privately.
 - [`docs/decisions.md`](docs/decisions.md): why Gin, why hand-written SQL,
   why PostgreSQL search, 403 versus 404, generated column versus trigger,
   why scores are stored.

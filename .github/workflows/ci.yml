@@ -103,3 +103,64 @@ jobs:
           # Pinned, not "latest": a new release can add rules and turn the
           # pipeline red on a commit that changed nothing.
           version: v2.15
+
+  # Every commit in the history, not only the diff: a secret deleted in a later
+  # commit is still published, so it must still fail the build. The binary is
+  # pinned and verified against the release's own checksum file.
+  secret-scan:
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: 8.24.0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # Full history; the default shallow clone holds only the last commit.
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          curl -sSfLO "${base}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfLO "${base}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          sha256sum --check --ignore-missing "gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          tar -xzf "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" gitleaks
+
+      # --redact keeps any value it finds out of the public CI log.
+      - name: Scan the full history
+        run: ./gitleaks git . --config .gitleaks.toml --redact --no-banner --verbose
+
+  # The Next.js frontend: the same lint, type check and production build a
+  # developer runs, so a broken page fails here rather than in `make up`.
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # ci, not install: fails if package-lock.json disagrees with package.json
+      # instead of silently rewriting it.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Production build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          NEXT_PUBLIC_API_URL: http://localhost:8080

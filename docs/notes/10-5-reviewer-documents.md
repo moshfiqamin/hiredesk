@@ -9,7 +9,7 @@ a fresh clone, the documented commands only.
 | # | Section | Open |
 |---|---|---|
 | 1 | The README's order, and why | [`README.md:1`](../../README.md#L1) |
-| 2 | Only measured numbers | [`README.md:169`](../../README.md#L169) |
+| 2 | Only measured numbers | [`README.md:318`](../../README.md#L318) |
 | 3 | The decision records | [`docs/decisions.md:1`](../decisions.md#L1) |
 | 4 | The clean-clone test | — |
 
@@ -34,7 +34,7 @@ browser walkthrough of part 1.
 
 ## 2. Only measured numbers
 
-**📍 Open:** [`README.md:169`](../../README.md#L169)
+**📍 Open:** [`README.md:318`](../../README.md#L318)
 
 Every figure in the README was produced in this module and can be reproduced:
 

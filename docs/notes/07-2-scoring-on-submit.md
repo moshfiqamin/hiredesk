@@ -57,8 +57,8 @@ state the rest of the design already expects: the ranking query planned for
 module 7 uses a `LEFT JOIN` precisely so unscored applications still appear,
 and the rescore endpoint can score them once the rubric is repaired.
 
-**Why that is not "log and continue".** The project error convention
-forbids swallowing errors.
+**Why that is not "log and continue".** The error convention in
+[`CONTRIBUTING.md`](../../CONTRIBUTING.md) forbids swallowing errors.
 No error is swallowed here: an empty rubric is not an error from any call,
 it is a state, and the state is recorded durably in the event row rather
 than in a log line nobody reads.
