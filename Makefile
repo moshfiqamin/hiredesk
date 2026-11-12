@@ -14,6 +14,7 @@ POSTGRES_PASSWORD ?= hiredesk_dev_password
 POSTGRES_DB       ?= hiredesk
 API_PORT          ?= 8080
 ADMINER_PORT      ?= 8081
+WEB_PORT          ?= 3000
 
 COMPOSE := docker compose
 BINARY  := bin/hiredesk-api
@@ -41,9 +42,10 @@ help: ## Show this help
 	@echo ""
 
 # Depends on the .env file target below, so a fresh clone needs only `make up`.
-up: .env ## Start the whole stack (postgres + migrations + api + adminer)
+up: .env ## Start the whole stack (postgres + migrations + api + web + adminer)
 	$(COMPOSE) up --build -d
 	@echo ""
+	@echo "Web      → http://localhost:$(WEB_PORT)"
 	@echo "API      → http://localhost:$(API_PORT)/healthz"
 	@echo "Readiness→ http://localhost:$(API_PORT)/readyz"
 	@echo "Database → http://localhost:$(ADMINER_PORT)/?pgsql=postgres&username=$(POSTGRES_USER)&db=$(POSTGRES_DB)"

@@ -72,7 +72,11 @@ git clone https://github.com/moshfiqamin/hiredesk.git && cd hiredesk && make up
 
 That creates `.env` with a random `JWT_SECRET`, builds the image, starts
 PostgreSQL, waits for its healthcheck, applies all 13 migrations, and starts
-the API on port 8080. The first build takes a minute or two.
+the API on port 8080 and the Next.js frontend on port 3000. The first build
+takes a few minutes.
+
+The frontend is in progress: <http://localhost:3000> currently shows the
+design tokens every screen will be built from, in light and dark.
 
 **Do not create `.env` by copying `.env.example`.** Its `JWT_SECRET` is a
 placeholder that is deliberately too short, so a copied file makes the API
@@ -117,8 +121,8 @@ read the score) works from the browser without curl.
 These are development fixtures with published passwords. The seeder refuses
 to run with `ENV=production`.
 
-If port 8080 or 5432 is already taken on your machine, set `API_PORT` or
-`POSTGRES_PORT` in `.env` and run `make down && make up`.
+If port 8080, 3000 or 5432 is already taken on your machine, set `API_PORT`,
+`WEB_PORT` or `POSTGRES_PORT` in `.env` and run `make down && make up`.
 
 ## Architecture
 
@@ -350,7 +354,7 @@ missing required variable is reported at once.
 | `ENV` | no | `development` | `production` switches Gin to release mode |
 | `LOG_LEVEL` | no | `info` | `debug`, `info`, `warn` or `error` |
 | `LOG_FORMAT` | no | `text` in development, `json` otherwise | `text` is refused in production |
-| `ALLOWED_ORIGINS` | no | empty (no cross-origin access) | Comma-separated `scheme://host[:port]`; wildcards refused |
+| `ALLOWED_ORIGINS` | no | empty in the binary; Compose sets `http://localhost:<WEB_PORT>` | Comma-separated `scheme://host[:port]`; wildcards refused |
 | `DB_MAX_CONNS` | no | `10` | Pool ceiling, 1–500 |
 | `DB_MIN_CONNS` | no | `2` | Idle connections kept open; at most `DB_MAX_CONNS` |
 | `DB_MAX_CONN_LIFETIME` | no | `1h` | Maximum age of a connection |
@@ -358,7 +362,8 @@ missing required variable is reported at once.
 | `DB_CONNECT_TIMEOUT` | no | `5s` | Budget for the startup ping |
 | `DB_PING_TIMEOUT` | no | `2s` | Budget for the `/readyz` ping |
 | `SHUTDOWN_TIMEOUT` | no | `10s` | Grace period for in-flight requests on SIGTERM |
-| `API_PORT` · `POSTGRES_PORT` · `ADMINER_PORT` | no | `8080` · `5432` · `8081` | Host ports Compose publishes |
+| `API_PORT` · `WEB_PORT` · `POSTGRES_PORT` · `ADMINER_PORT` | no | `8080` · `3000` · `5432` · `8081` | Host ports Compose publishes |
+| `NEXT_PUBLIC_API_URL` | no | `http://localhost:<API_PORT>` | The API URL as the browser sees it; baked into the frontend at build time |
 
 Durations use Go syntax (`30s`, `1h30m`). See [`.env.example`](.env.example)
 for the full, commented template.
@@ -387,7 +392,9 @@ internal/scoring/     the pure scoring engine
 internal/store/       PostgreSQL pool and hand-written SQL
 migrations/           golang-migrate pairs, applied on start
 test/integration/     tests on a real PostgreSQL via testcontainers-go
+web/                  Next.js frontend (App Router, Tailwind, shadcn/ui)
 docs/decisions.md     decision records
+docs/design/          the approved interactive design prototype
 docs/notes/           design notes, one per module
 ```
 

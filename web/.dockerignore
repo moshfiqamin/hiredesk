@@ -1,0 +1,14 @@
+# Host build output and dependencies are rebuilt inside the image; copying them
+# would bloat the context and could smuggle in binaries for the wrong platform.
+node_modules
+.next
+out
+
+# Secrets never enter an image layer.
+.env
+.env.*
+
+Dockerfile
+.dockerignore
+*.md
+.DS_Store

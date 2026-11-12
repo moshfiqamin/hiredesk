@@ -1,0 +1,379 @@
+/*
+ * HireDesk design tokens.
+ *
+ * Three layers, read top to bottom:
+ *   1. Palette   — raw colours sampled from the approved reference photo
+ *                  ("Across the desk", Unsplash). Never used by components.
+ *   2. Semantic  — what a colour is FOR (surface, body text, the one accent,
+ *                  score bands). Components read only these.
+ *   3. Bridges   — @theme inline maps semantic tokens onto Tailwind utility
+ *                  names (bg-surface, text-muted-foreground, ...) and onto the
+ *                  names the shadcn/ui components already expect.
+ *
+ * Every semantic token is redefined under .dark, the class next-themes puts
+ * on <html>. Changing a value here restyles every screen at once.
+ */
+
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* `dark:` utilities follow the .dark class set by next-themes, not the OS
+   media query, so the user's explicit choice wins over their system setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------
+ * 1. Palette
+ * ------------------------------------------------------------------------- */
+:root {
+  --palette-mist-50: #fbfbf8;
+  --palette-mist-100: #f3f3ef;
+  --palette-mist-200: #ecede7;
+  --palette-mist-300: #e4e6df;
+  --palette-birch-300: #d9dad2;
+  --palette-birch-400: #c3c5bb;
+  --palette-birch-600: #8a8f88;
+  --palette-moss-500: #646a64;
+  --palette-moss-600: #4f5651;
+  --palette-graphite-900: #1f2426;
+
+  --palette-sage-100: #dfe8e2;
+  --palette-sage-300: #a2c9b5;
+  --palette-sage-400: #8bb8a1;
+  --palette-sage-600: #4a6b5b;
+  --palette-sage-700: #3d5b4d;
+  --palette-sage-800: #30503f;
+
+  --palette-night-900: #111413;
+  --palette-night-850: #141716;
+  --palette-night-800: #1a1e1c;
+  --palette-night-750: #1f2522;
+  --palette-night-700: #2a302d;
+  --palette-night-600: #3a423e;
+  --palette-night-400: #6b736e;
+}
+
+/* ---------------------------------------------------------------------------
+ * 2. Semantic tokens — light
+ * ------------------------------------------------------------------------- */
+:root {
+  /* Neutral scale: page → raised surface → sunken well → sidebar. */
+  --background: var(--palette-mist-100);
+  --surface: var(--palette-mist-50);
+  --surface-sunken: var(--palette-mist-200);
+  --surface-hover: #f0f1ec;
+  --surface-selected: #e8eee9;
+  --sidebar: var(--palette-mist-300);
+  --border: var(--palette-birch-300);
+  --border-strong: var(--palette-birch-400);
+  /* Form-field edges carry meaning, so they need 3:1 (WCAG 1.4.11); the
+     decorative hairlines above do not. 3.2:1 against --surface. */
+  --border-field: var(--palette-birch-600);
+
+  /* Text: body 15.1:1, secondary 7.3:1, muted 5.4:1 against --surface. */
+  --foreground: var(--palette-graphite-900);
+  --text-secondary: var(--palette-moss-600);
+  --muted-foreground: var(--palette-moss-500);
+
+  /* The one accent. Primary actions, current selection and focus only. */
+  --primary: var(--palette-sage-600);
+  --primary-hover: var(--palette-sage-700);
+  --primary-foreground: #ffffff;
+  --primary-soft: var(--palette-sage-100);
+  --primary-ink: var(--palette-sage-800);
+  --ring: var(--palette-sage-600);
+
+  /*
+   * Score bands. Hues follow the Okabe–Ito colour-blind-safe set (blue,
+   * ochre, vermilion) and are always paired with a fill pattern and a word,
+   * so no reader depends on telling the colours apart.
+   */
+  --band-strong: #1f5f8b;
+  --band-strong-bg: #e2edf5;
+  --band-adequate: #7d5800;
+  --band-adequate-bg: #f6ecd2;
+  --band-weak: #a8391a;
+  --band-weak-bg: #f8e5df;
+
+  --destructive: #a8391a;
+
+  /* Type scale. 14px base suits a dense, table-heavy tool; 1.125–1.25 steps. */
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.8125rem;
+  --font-size-base: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.1875rem;
+  --font-size-xl: 1.5rem;
+  --font-size-2xl: 1.875rem;
+  --line-height-tight: 1.2;
+  --line-height-snug: 1.35;
+  --line-height-body: 1.5;
+
+  /* Spacing scale on a 4px grid. Tailwind's p-1, p-2 ... use the same base. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* One radius for controls; flat elevation — borders, not shadows. */
+  --radius: 0.3125rem;
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+
+  /* shadcn/ui names, pointed at the semantic tokens above. */
+  --card: var(--surface);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface);
+  --popover-foreground: var(--foreground);
+  --secondary: var(--surface-sunken);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--surface-sunken);
+  --accent: var(--surface-hover);
+  --accent-foreground: var(--foreground);
+  --input: var(--border-field);
+  --sidebar-foreground: var(--text-secondary);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--surface);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --chart-1: var(--palette-sage-600);
+  --chart-2: var(--band-strong);
+  --chart-3: var(--band-adequate);
+  --chart-4: var(--band-weak);
+  --chart-5: var(--palette-moss-500);
+}
+
+/* ---------------------------------------------------------------------------
+ * 2. Semantic tokens — dark. Every colour token is redefined; nothing is
+ *    inverted automatically. Scales, spacing and radius do not change.
+ * ------------------------------------------------------------------------- */
+.dark {
+  --background: var(--palette-night-850);
+  --surface: var(--palette-night-800);
+  --surface-sunken: var(--palette-night-900);
+  --surface-hover: #1e2321;
+  --surface-selected: #1d2a24;
+  --sidebar: var(--palette-night-900);
+  --border: var(--palette-night-700);
+  --border-strong: var(--palette-night-600);
+  --border-field: var(--palette-night-400);
+
+  /* Text: body 13.6:1, secondary 8.0:1, muted 5.9:1 against --surface. */
+  --foreground: #e5e8e3;
+  --text-secondary: #adb4ae;
+  --muted-foreground: #949b95;
+
+  --primary: var(--palette-sage-400);
+  --primary-hover: var(--palette-sage-300);
+  --primary-foreground: #0e1a14;
+  --primary-soft: #1f2e27;
+  --primary-ink: #a9d0bb;
+  --ring: var(--palette-sage-400);
+
+  --band-strong: #86bfe6;
+  --band-strong-bg: #132a3a;
+  --band-adequate: #e3bf62;
+  --band-adequate-bg: #30260c;
+  --band-weak: #f09b80;
+  --band-weak-bg: #381b12;
+
+  --destructive: #f09b80;
+
+  --card: var(--surface);
+  --card-foreground: var(--foreground);
+  --popover: var(--palette-night-750);
+  --popover-foreground: var(--foreground);
+  --secondary: var(--surface-sunken);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--surface-sunken);
+  --accent: var(--surface-hover);
+  --accent-foreground: var(--foreground);
+  --input: var(--border-field);
+  --sidebar-foreground: var(--text-secondary);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--palette-night-750);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --chart-1: var(--palette-sage-400);
+  --chart-2: var(--band-strong);
+  --chart-3: var(--band-adequate);
+  --chart-4: var(--band-weak);
+  --chart-5: var(--muted-foreground);
+
+  /* Native controls and scrollbars switch to their dark rendering. */
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------------------
+ * 3. Bridges into Tailwind
+ * ------------------------------------------------------------------------- */
+@theme inline {
+  /* `inline` makes utilities emit var(--token), so a .dark override on <html>
+     reaches them; without it Tailwind would copy the light value in. */
+  --font-sans: var(--font-instrument-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
+  --font-heading: var(--font-sans);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-selected: var(--surface-selected);
+  --color-border-strong: var(--border-strong);
+  --color-border-field: var(--border-field);
+  --color-text-secondary: var(--text-secondary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-ink: var(--primary-ink);
+  --color-band-strong: var(--band-strong);
+  --color-band-strong-bg: var(--band-strong-bg);
+  --color-band-adequate: var(--band-adequate);
+  --color-band-adequate-bg: var(--band-adequate-bg);
+  --color-band-weak: var(--band-weak);
+  --color-band-weak-bg: var(--band-weak-bg);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* Replaces Tailwind's default text-* sizes, so text-sm is 13px everywhere,
+     shadcn components included. */
+  --text-xs: var(--font-size-xs);
+  --text-xs--line-height: var(--line-height-body);
+  --text-sm: var(--font-size-sm);
+  --text-sm--line-height: var(--line-height-body);
+  --text-base: var(--font-size-base);
+  --text-base--line-height: var(--line-height-body);
+  --text-md: var(--font-size-md);
+  --text-md--line-height: var(--line-height-body);
+  --text-lg: var(--font-size-lg);
+  --text-lg--line-height: var(--line-height-snug);
+  --text-xl: var(--font-size-xl);
+  --text-xl--line-height: var(--line-height-tight);
+  --text-2xl: var(--font-size-2xl);
+  --text-2xl--line-height: var(--line-height-tight);
+
+  --spacing: var(--space-1);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  --default-transition-duration: var(--duration-fast);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-base text-foreground antialiased;
+  }
+  ::selection {
+    background: var(--primary-soft);
+    color: var(--foreground);
+  }
+  /* Digits line up in every table and score without per-component classes. */
+  table,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /*
+   * Score band chip: colour + fill pattern + word.
+   *   strong   → solid square
+   *   adequate → hatched square
+   *   weak     → dashed outline
+   */
+  .score-band {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 1px var(--space-2) 1px 6px;
+    border-radius: calc(var(--radius) * 0.6);
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .score-band::before {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1.5px solid currentColor;
+  }
+  .score-band[data-band="strong"] {
+    color: var(--band-strong);
+    background: var(--band-strong-bg);
+  }
+  .score-band[data-band="strong"]::before {
+    background: currentColor;
+  }
+  .score-band[data-band="adequate"] {
+    color: var(--band-adequate);
+    background: var(--band-adequate-bg);
+  }
+  .score-band[data-band="adequate"]::before {
+    background: repeating-linear-gradient(135deg, currentColor 0 2px, transparent 2px 4px);
+  }
+  .score-band[data-band="weak"] {
+    color: var(--band-weak);
+    background: var(--band-weak-bg);
+  }
+  .score-band[data-band="weak"]::before {
+    border-style: dashed;
+  }
+}

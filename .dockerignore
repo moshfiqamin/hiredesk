@@ -39,6 +39,9 @@ docs/
 .vscode/
 .idea/
 
+# ---- Web frontend (built from its own context in web/) ----
+web/
+
 # ---- OS noise ----
 .DS_Store
 Thumbs.db

@@ -2,6 +2,11 @@ module github.com/moshfiqamin/hiredesk
 
 go 1.27.3
 
+// The Next.js frontend holds no Go code, but npm packages in web/node_modules
+// can ship Go files (flatted does), which ./... would otherwise build, test
+// and lint as if they were part of this module.
+ignore ./web
+
 require (
 	github.com/gin-gonic/gin v1.11.0
 	github.com/go-playground/validator/v10 v10.30.6
