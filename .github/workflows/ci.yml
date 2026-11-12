@@ -156,6 +156,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Route-aware globals such as LayoutProps are generated into .next/types,
+      # which a fresh checkout does not have; tsc fails without this step.
+      - name: Generate route types
+        run: npx next typegen
+
       - name: Type check
         run: npx tsc --noEmit
 
