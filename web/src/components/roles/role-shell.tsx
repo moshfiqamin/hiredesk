@@ -28,6 +28,7 @@ const tabs = [
   { segment: "", label: "Overview" },
   { segment: "/edit", label: "Details" },
   { segment: "/questions", label: "Questions" },
+  { segment: "/rubric", label: "Rubric" },
 ] as const;
 
 /**

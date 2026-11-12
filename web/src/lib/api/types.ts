@@ -82,3 +82,36 @@ export interface QuestionInput {
   min_length?: number;
   choices?: string[];
 }
+
+export type CriterionKind = "keyword_match" | "experience_years" | "answer_depth" | "boolean_all";
+
+/** Criterion is one stored rubric criterion. config's shape depends on kind. */
+export interface Criterion {
+  id: string;
+  label: string;
+  kind: CriterionKind;
+  weight: number;
+  question_id: string | null;
+  config: Record<string, unknown>;
+}
+
+/** Rubric is GET /v1/job-posts/:id/rubric. version is null before the first save. */
+export interface Rubric {
+  job_post_id: string;
+  version: number | null;
+  criteria: Criterion[];
+}
+
+/** ReplacedRubric is what PUT /v1/job-posts/:id/rubric returns. */
+export interface ReplacedRubric extends Rubric {
+  previous_version: number | null;
+  applications_to_rescore: number;
+}
+
+export interface CriterionInput {
+  label: string;
+  kind: CriterionKind;
+  weight: number;
+  question_id: string | null;
+  config: Record<string, unknown>;
+}
