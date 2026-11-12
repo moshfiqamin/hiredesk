@@ -9,13 +9,13 @@ an API client, a signed-in session, and one new API endpoint.
 
 | # | Section | Open |
 |---|---|---|
-| 1 | What TanStack Query replaces | [`web/src/hooks/use-job-posts.ts:10`](../../web/src/hooks/use-job-posts.ts#L10) |
+| 1 | What TanStack Query replaces | [`web/src/hooks/use-job-posts.ts:12`](../../web/src/hooks/use-job-posts.ts#L12) |
 | 2 | Stale time versus cache time | [`web/src/lib/query/client.ts:42`](../../web/src/lib/query/client.ts#L42) |
 | 3 | Retrying: why a 422 is never retried | [`web/src/lib/query/client.ts:17`](../../web/src/lib/query/client.ts#L17) |
 | 4 | Refetch on window focus: kept on | [`web/src/lib/query/client.ts:55`](../../web/src/lib/query/client.ts#L55) |
 | 5 | Mutations are not retried | [`web/src/lib/query/client.ts:61`](../../web/src/lib/query/client.ts#L61) |
 | 6 | The query key convention | [`web/src/lib/query/keys.ts:4`](../../web/src/lib/query/keys.ts#L4) |
-| 7 | Invalidation, and why mutations need it | [`web/src/hooks/use-job-posts.ts:29`](../../web/src/hooks/use-job-posts.ts#L29) |
+| 7 | Invalidation, and why mutations need it | [`web/src/hooks/use-job-posts.ts:31`](../../web/src/hooks/use-job-posts.ts#L31) |
 | 8 | One pattern for loading, empty and error | [`web/src/components/states/states.tsx:94`](../../web/src/components/states/states.tsx#L94) |
 | 9 | The provider, and devtools in development only | [`web/src/components/providers.tsx:12`](../../web/src/components/providers.tsx#L12) |
 | 10 | The API client and the refresh race | [`web/src/lib/api/client.ts:79`](../../web/src/lib/api/client.ts#L79) |
@@ -31,7 +31,7 @@ an API client, a signed-in session, and one new API endpoint.
 
 ## 1. What TanStack Query replaces
 
-**📍 Open:** [`web/src/hooks/use-job-posts.ts:10`](../../web/src/hooks/use-job-posts.ts#L10)
+**📍 Open:** [`web/src/hooks/use-job-posts.ts:12`](../../web/src/hooks/use-job-posts.ts#L12)
 
 The obvious way to load data in React is a `useState` for the result and a
 `useEffect` that fetches it:
@@ -64,7 +64,7 @@ of but does not own. `useJobPosts` is the whole cost of fetching the roles
 list. The hook returns `data`, `error`, `isPending`, `isFetching` and
 `refetch`, and every item in the table above is handled by the library.
 
-The `signal` passed to `queryFn` ([line 15](../../web/src/hooks/use-job-posts.ts#L15))
+The `signal` passed to `queryFn` ([line 17](../../web/src/hooks/use-job-posts.ts#L17))
 is an `AbortSignal`. When a query's component unmounts or its key changes
 before the response arrives, TanStack Query aborts the `fetch`, so the race
 condition in the second row cannot happen.
@@ -192,7 +192,7 @@ in a segment is a compile error.
 
 ## 7. Invalidation, and why mutations need it
 
-**📍 Open:** [`web/src/hooks/use-job-posts.ts:29`](../../web/src/hooks/use-job-posts.ts#L29)
+**📍 Open:** [`web/src/hooks/use-job-posts.ts:31`](../../web/src/hooks/use-job-posts.ts#L31)
 
 The cache holds copies of server data. A mutation changes the server, and
 the copies do not know: after creating a role, the cached roles list is
@@ -202,10 +202,10 @@ missing a row, and with a 30-second `staleTime` it would stay that way.
 currently on screen; the rest refetch when next used. `useCreateJobPost`
 does two things on success:
 
-1. `setQueryData` ([line 37](../../web/src/hooks/use-job-posts.ts#L37))
+1. `setQueryData` ([line 39](../../web/src/hooks/use-job-posts.ts#L39))
    writes the response into the new post's detail entry. The response *is*
    the post, so opening it next needs no request.
-2. `invalidateQueries` ([line 41](../../web/src/hooks/use-job-posts.ts#L41))
+2. `invalidateQueries` ([line 43](../../web/src/hooks/use-job-posts.ts#L43))
    on `["jobPosts", "list"]`, because a list's contents depend on things the
    client cannot reproduce exactly (sort order, server-computed counts).
    Splicing the row in by hand would duplicate server logic in the browser.
